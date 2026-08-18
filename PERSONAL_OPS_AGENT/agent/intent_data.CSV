@@ -1,0 +1,95 @@
+text,intent
+search my Gmail for emails from Ali,search_gmail
+find emails from Ahmed,search_gmail
+look for the invoice in my inbox,search_gmail
+find the email Sarah sent me yesterday,search_gmail
+search my mailbox for project updates,search_gmail
+look through Gmail for emails about the meeting,search_gmail
+find messages from my manager,search_gmail
+search my inbox for the latest client email,search_gmail
+look for an email mentioning the deadline,search_gmail
+find the conversation about the project,search_gmail
+check Gmail for messages from John,search_gmail
+search my emails for the contract,search_gmail
+find emails containing the word invoice,search_gmail
+look for recent messages about the internship,search_gmail
+search the inbox for yesterday's emails,search_gmail
+find the email regarding the interview,search_gmail
+check if I received an email from Sarah,search_gmail
+look through my Gmail for the proposal,search_gmail
+find the message about tomorrow's meeting,search_gmail
+search my mailbox for emails from the client,search_gmail
+
+add this data to my spreadsheet,add_to_sheet
+put this information in the sheet,add_to_sheet
+add a new row to the spreadsheet,add_to_sheet
+save these details in my sheet,add_to_sheet
+update the spreadsheet with this information,add_to_sheet
+add this record to the spreadsheet,add_to_sheet
+write this data into the sheet,add_to_sheet
+insert this information into my spreadsheet,add_to_sheet
+add the new entry to the sheet,add_to_sheet
+put these values in the spreadsheet,add_to_sheet
+record this information in my sheet,add_to_sheet
+add this to my Google Sheet,add_to_sheet
+update my sheet with these details,add_to_sheet
+enter this information into the spreadsheet,add_to_sheet
+save this data to the sheet,add_to_sheet
+append this information to my spreadsheet,add_to_sheet
+add another row with these details,add_to_sheet
+put the results into the sheet,add_to_sheet
+store these values in the spreadsheet,add_to_sheet
+write this information to my sheet,add_to_sheet
+
+read the document,read_doc
+open and read this document,read_doc
+tell me what's in this file,read_doc
+read the contents of this document,read_doc
+go through this document,read_doc
+what does this document contain,read_doc
+read this file for me,read_doc
+analyze the document,read_doc
+look through this document,read_doc
+extract the information from this document,read_doc
+read the uploaded file,read_doc
+tell me what this document says,read_doc
+go over the contents of this file,read_doc
+read the PDF,read_doc
+what information is in this document,read_doc
+examine this document,read_doc
+process this file,read_doc
+give me the contents of the document,read_doc
+look at this uploaded document,read_doc
+understand this document,read_doc
+
+send an email to Ali,send_email
+email Ahmed about the meeting,send_email
+send Sarah a message,send_email
+write and send an email to my manager,send_email
+send an email to the client,send_email
+email John and tell him I'll be late,send_email
+send this message by email,send_email
+send an email confirming the meeting,send_email
+email my manager about the project,send_email
+send the details to Sarah by email,send_email
+write an email to Ahmed and send it,send_email
+send a message to the client via email,send_email
+email the team about the update,send_email
+send this information to John,send_email
+send an email regarding the interview,send_email
+send the report to my manager by email,send_email
+email Sarah the project details,send_email
+send this to my colleague through email,send_email
+send an email about tomorrow's meeting,send_email
+send the document to the client by email,send_email
+
+hello,general
+how are you,general
+what can you do,general
+thanks,general
+good morning,general
+tell me a joke,general
+who are you,general
+help me,general
+what is your name,general
+nice to meet you,general
