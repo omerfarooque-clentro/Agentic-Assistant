@@ -15,7 +15,7 @@ class ThreadListView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         return serializer.save(user=self.request.user)
     
-class MessageView(generics.CreateAPIView):
+class MessageListView(generics.ListCreateAPIView):
     serializer_class = MessageSerializer
     permission_classes = [IsAuthenticated]
 
@@ -27,3 +27,11 @@ class MessageView(generics.CreateAPIView):
         )
 
         serializer.save(thread=thread, role="user")
+
+    def get_queryset(self,):
+        thread = get_object_or_404(
+            Thread,
+            id=9,
+            user=self.request.user,
+        )
+        return thread.messages.all()

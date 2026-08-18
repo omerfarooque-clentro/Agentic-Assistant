@@ -1,11 +1,13 @@
+import os
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
-
+from psycopg_pool import ConnectionPool
 from agent.hitl import approval_result, email_approval
 from agent.state import AgentState
 from agent.nodes import after_tools, agent_node, should_continue, tools, nlp_node
 from agent.tools import search_gmail
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.postgres import PostgresSaver
 
 
 graph = StateGraph(AgentState)
@@ -47,6 +49,22 @@ graph.add_conditional_edges(
     },
 )
 
-memory = MemorySaver()
+DB_URI = (
+    f"postgresql://{os.getenv('DB_USER')}:"
+    f"{os.getenv('DB_PASSWORD')}@"
+    f"{os.getenv('DB_HOST', 'localhost')}:"
+    f"{os.getenv('DB_PORT', '5432')}/"
+    f"{os.getenv('DB_NAME')}"
+)
 
-app = graph.compile(checkpointer = memory)
+pool = ConnectionPool(
+    conninfo=DB_URI,
+    max_size=10,
+    kwargs={"autocommit": True},
+)
+
+memory = PostgresSaver(pool)
+
+memory.setup()
+
+app = graph.compile(checkpointer=memory)

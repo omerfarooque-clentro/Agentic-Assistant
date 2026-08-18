@@ -41,16 +41,72 @@ class LoginView(generics.GenericAPIView):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def new_chat_view(request):
+    serializer = AgentChatSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    message = serializer.validated_data["message"]
+    
+    thread = Thread.objects.create(
+        user=request.user,
+        name="New Thread",
+    )
+    message_obj = Message.objects.create(
+        thread=thread,
+        role="user",
+        content=message,
+    )
+    
+    result = run_agent(
+        message=message,
+        thread_id=str(thread.id),
+    )
+
+    if result["status"] == "approval_required":
+        return Response(
+            {
+                "thread_id": thread.id,
+                "status": "approval_required",
+                "approval": result["interrupt"],
+                "details" :  "go to /approve-email/ endpoint to approve or cancel the email, type:bool, fields: thread_id, approved",
+            },
+            status=status.HTTP_200_OK,
+        )
+    
+    message_obj = Message.objects.create(
+        thread=thread,
+        role="agent",
+        content=result["result"]["messages"][-1].content,
+    )
+
+    return Response(
+        {
+            "thread_id": thread.id,
+            "status": "completed",
+            "response": result["result"]["messages"][-1].content,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def agent_chat_view(request, thread_id):
     serializer = AgentChatSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     message = serializer.validated_data["message"]
-
+ 
     thread = get_object_or_404(
         Thread,
         id=thread_id,
         user=request.user,
+    )
+
+    message_obj = Message.objects.create(
+        thread=thread,
+        role="user",
+        content=message,
     )
 
     result = run_agent(
@@ -68,6 +124,12 @@ def agent_chat_view(request, thread_id):
             },
             status=status.HTTP_200_OK,
         )
+    
+    message_obj = Message.objects.create(
+        thread=thread,
+        role="agent",
+        content=result["result"]["messages"][-1].content,
+    )
 
     return Response(
         {

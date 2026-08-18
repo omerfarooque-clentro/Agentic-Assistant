@@ -12,7 +12,7 @@ class Thread(models.Model):
         return f"{self.name} — {self.user.username}"
 
 class Message(models.Model):
-    thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name='Messages')
+    thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name='messages')
     content = models.TextField()
     role = models.CharField(max_length=50)  # e.g., 'user', 'assistant', etc.
     created_at = models.DateTimeField(auto_now_add=True)

@@ -5,14 +5,13 @@ from agent.nlp_router import nlp_decider
 from agent.state import AgentState
 from agent.tools import search_gmail, add_to_sheet, read_doc, send_email
 from dotenv import load_dotenv
-
-
+ 
 
 load_dotenv()
 os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
 
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     temperature=0,
 )
 
