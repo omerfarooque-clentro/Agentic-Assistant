@@ -8,9 +8,14 @@ https://docs.djangoproject.com/en/6.1/howto/deployment/wsgi/
 """
 
 import os
+import sys
+import asyncio
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'PERSONAL_OPS_AGENT.settings')
+if sys.platform == "win32":
+	asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 application = get_wsgi_application()

@@ -1,16 +1,23 @@
 from langchain_core.messages import HumanMessage
-from agent.graph import app
+from .tools import get_user_tools
+from .graph import create_graph, ensure_checkpointer
 
 
-def run_agent(message: str, thread_id: str):
+async def run_agent(message: str, thread_id: str, user):
+
+    await ensure_checkpointer()
+    tools = await get_user_tools(user)
+    
+    app = create_graph(tools)
+
     config = {
         "configurable": {
             "thread_id": thread_id,
         },
-        "recursion_limit": 10
+        "recursion_limit": 10,
     }
 
-    result = app.invoke(
+    result = await app.ainvoke(
         {
             "messages": [
                 HumanMessage(content=message)
@@ -19,7 +26,7 @@ def run_agent(message: str, thread_id: str):
         config=config,
     )
 
-    state = app.get_state(config)
+    state = await app.aget_state(config)
 
     if state.interrupts:
         return {

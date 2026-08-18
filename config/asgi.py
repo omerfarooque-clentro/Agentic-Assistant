@@ -8,9 +8,42 @@ https://docs.djangoproject.com/en/6.1/howto/deployment/asgi/
 """
 
 import os
+import sys
+import asyncio
 
 from django.core.asgi import get_asgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'PERSONAL_OPS_AGENT.settings')
+if sys.platform == "win32":
+	asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-application = get_asgi_application()
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+
+django_application = get_asgi_application()
+
+from agent.graph import close_checkpointer, setup_checkpointer
+
+
+async def application(scope, receive, send):
+	if scope["type"] != "lifespan":
+		await django_application(scope, receive, send)
+		return
+
+	while True:
+		message = await receive()
+
+		if message["type"] == "lifespan.startup":
+			try:
+				await setup_checkpointer()
+			except Exception as error:
+				await send({
+					"type": "lifespan.startup.failed",
+					"message": str(error),
+				})
+				return
+
+			await send({"type": "lifespan.startup.complete"})
+
+		elif message["type"] == "lifespan.shutdown":
+			await close_checkpointer()
+			await send({"type": "lifespan.shutdown.complete"})
+			return
