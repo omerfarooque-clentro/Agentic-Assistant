@@ -11,12 +11,18 @@ TOKEN_FILE = SERVICES_DIR / "token.json"
 CREDENTIALS_FILE = SERVICES_DIR / "credentials.json"
 
 # Master list of all required Google API scopes
+# Master list of all required Google API scopes
 SCOPES = [
+    # Gmail Scopes
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/gmail.modify",  # Required for drafting, trashing, & updating threads
+    "https://www.googleapis.com/auth/gmail.labels",  # Required for list_labels & label/unlabel operations
+    # Workspace Scopes
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/documents.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/gmail.send"
 ]
 
 def get_google_credentials():

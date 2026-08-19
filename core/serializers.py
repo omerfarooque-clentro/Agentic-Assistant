@@ -7,7 +7,7 @@ class AgentChatSerializer(serializers.Serializer):
     message = serializers.CharField()
 
 class ApproveEmailSerializer(serializers.Serializer):
-    approved = serializers.CharField()
+    approved = serializers.BooleanField()
 
 class RegisterationSerializer(serializers.ModelSerializer):
     class Meta:

@@ -16,6 +16,7 @@ class MCPIntegration(models.Model):
         blank=True,
         null=True,
     )
+    expires_at = models.DateTimeField(blank=True, null=True)
 
     enabled = models.BooleanField(default=False)
 

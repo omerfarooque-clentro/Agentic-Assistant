@@ -8,3 +8,6 @@ class AgentState(TypedDict):
     email_approved: bool
     user_id: int
     thread_id: int
+    intent: str
+    confidence: float
+    available_domains: list[str]

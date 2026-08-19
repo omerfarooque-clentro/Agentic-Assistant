@@ -48,6 +48,31 @@
         try { await api('/registration/', { method: 'POST', body: JSON.stringify(formData(event.currentTarget)), public: true, skipRefresh: true }); window.location = '/signin/'; } catch (error) { showError(error); }
       });
     },
+    initSettings() {
+      if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
+      const errorTarget = document.querySelector('#settings-error');
+      const setError = error => { errorTarget.textContent = error.message; };
+      const updateCard = (service, connected) => {
+        const card = document.querySelector(`[data-account="${service}"]`);
+        if (!card) return;
+        card.querySelector('.account-state').textContent = connected ? 'Connected' : 'Not connected';
+        card.querySelector('.connect-account').classList.toggle('hidden', connected);
+        card.querySelector('.revoke-account').classList.toggle('hidden', !connected);
+      };
+      const loadStatus = async () => {
+        const data = await api('/api/integrations/status/');
+        const connected = new Set((data.integrations || []).filter(item => item.enabled).map(item => item.service));
+        ['gmail', 'calendar', 'docs', 'sheets', 'slack'].forEach(service => updateCard(service, connected.has(service)));
+      };
+      document.querySelectorAll('.connect-account').forEach(button => button.onclick = async () => {
+        try { const data = await api(`/api/integrations/${button.dataset.service}/connect/`); window.location.href = data.authorization_url; } catch (error) { setError(error); }
+      });
+      document.querySelectorAll('.revoke-account').forEach(button => button.onclick = async () => {
+        try { await api(`/api/integrations/${button.dataset.service}/disconnect/`, { method: 'POST' }); updateCard(button.dataset.service, false); } catch (error) { setError(error); }
+      });
+      document.querySelector('#settings-logout').onclick = () => { localStorage.clear(); window.location = '/signin/'; };
+      loadStatus().catch(setError);
+    },
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
       const state = { threadId: null };
@@ -56,6 +81,8 @@
       const title = document.querySelector('#thread-title');
       const threadList = document.querySelector('#thread-list');
       document.querySelector('#user-label').textContent = localStorage.getItem('ops_user') || 'Workspace online';
+      const loadIntegrations = async () => { try { const data = await api('/api/integrations/status/'); (data.integrations || []).forEach(item => { const state = document.querySelector(`#${item.service}-state`); if (state) state.textContent = item.enabled ? 'Connected' : 'Connect'; }); } catch (error) { console.warn('Could not load integrations', error); } };
+      document.querySelectorAll('[data-integration]').forEach(button => button.onclick = async () => { const service = button.dataset.integration; try { const data = await api(`/api/integrations/${service}/connect/`); window.location.href = data.authorization_url; } catch (error) { addMessage('agent', error.message); } });
       const addMessage = (role, content, pending = false) => { const item = document.createElement('article'); item.className = `message ${role} ${pending ? 'pending' : ''}`; item.innerHTML = `<span class="message-label">${role === 'user' ? 'YOU' : 'OPS AGENT'}</span><div class="message-content"></div>`; item.querySelector('.message-content').textContent = content; transcript.appendChild(item); transcript.scrollTop = transcript.scrollHeight; return item; };
       const selectThread = async id => { state.threadId = id; title.textContent = 'Thread ' + id; document.querySelectorAll('.thread-item').forEach(item => item.classList.toggle('active', item.dataset.id == id)); transcript.innerHTML = '<div class="loading-line">Loading thread history...</div>'; try { const messages = await api(`/api/thread/${encodeURIComponent(id)}/messages/`); transcript.innerHTML = ''; (Array.isArray(messages) ? messages : messages.results || []).forEach(message => addMessage(message.role === 'assistant' ? 'agent' : message.role, message.content)); } catch (error) { transcript.innerHTML = ''; addMessage('agent', error.message); } };
       const loadThreads = async () => { try { const data = await api('/api/list_thread/'); const threads = Array.isArray(data) ? data : data.results || []; threadList.innerHTML = threads.length ? '' : '<div class="rail-empty">No threads yet.<br>Start with a question.</div>'; threads.forEach(thread => { const item = document.createElement('button'); item.className = 'thread-item'; item.dataset.id = thread.id; item.textContent = thread.name || `Thread ${thread.id}`; item.onclick = () => selectThread(thread.id); threadList.appendChild(item); }); if (threads[0]) selectThread(threads[0].id); } catch (error) { threadList.innerHTML = `<div class="rail-empty">${error.message}</div>`; } };
@@ -67,7 +94,7 @@
       document.querySelector('#logout').onclick = () => { localStorage.removeItem('ops_access'); localStorage.removeItem('ops_refresh'); localStorage.removeItem('ops_user'); window.location = '/signin/'; };
       document.querySelector('#approve-action').onclick = () => approve(true); document.querySelector('#cancel-action').onclick = () => approve(false);
       async function approve(value) { try { const data = await api(`/api/thread/${state.threadId}/approve-email/`, { method: 'POST', body: JSON.stringify({ approved: value }) }); document.querySelector('#approval-card').classList.add('hidden'); addMessage('agent', data.result || 'Action updated.'); } catch (error) { addMessage('agent', error.message); } }
-      document.querySelector('#clock').textContent = new Intl.DateTimeFormat([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date()); loadThreads();
+      document.querySelector('#clock').textContent = new Intl.DateTimeFormat([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date()); loadIntegrations(); loadThreads();
     }
   };
 })();

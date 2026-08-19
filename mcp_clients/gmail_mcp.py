@@ -1,12 +1,12 @@
 import asyncio
 
 from mcp_clients.common import get_tools as load_tools
-from mcp_clients.common import google_workspace_config, print_tools
+from mcp_clients.common import gmail_config, print_tools
 
 
 async def get_tools():
-    """Return Gmail tools from the Google Workspace MCP server."""
-    return await load_tools("gmail", google_workspace_config())
+    """Return Gmail tools from the dedicated Gmail MCP server."""
+    return await load_tools("gmail", gmail_config())
 
 
 async def main() -> None:
