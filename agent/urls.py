@@ -5,7 +5,7 @@ from agent import integration_views
 
 urlpatterns = [
     path("thread/<int:thread_id>/chat/", views.agent_chat_view, name="chat-agent"),
-    path("thread/<int:thread_id>/approve-email/", views.approve_email_view, name="approve-email"),
+    path("thread/<int:thread_id>/action-email/", views.approve_email_view, name="approve-email"),
     path("chat/", views.new_chat_view, name="new-chat"),
     path("integrations/<str:service>/connect/", integration_views.integration_connect_view, name="integration-connect"),
     path("integrations/<str:service>/callback/", integration_views.integration_callback_view, name="integration-callback"),

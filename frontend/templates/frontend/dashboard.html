@@ -2,11 +2,36 @@
 {% block title %}Workspace | Personal Ops{% endblock %}
 {% block content %}
 <div class="app-shell">
-  <aside class="sidebar"><div class="brand-mark">PO<span>+</span></div><div class="rail-heading"><span>Threads</span><button id="new-thread" class="icon-button" title="New thread">+</button></div><div id="thread-list" class="thread-list"><div class="loading-line">Loading threads...</div></div><div class="integrations"><div class="rail-heading"><span>Connections</span></div><button class="integration-button" data-integration="gmail"><span>Gmail</span><strong id="gmail-state">Connect</strong></button><button class="integration-button" data-integration="calendar"><span>Calendar</span><strong id="calendar-state">Connect</strong></button><button class="integration-button" data-integration="docs"><span>Docs</span><strong id="docs-state">Connect</strong></button><button class="integration-button" data-integration="sheets"><span>Sheets</span><strong id="sheets-state">Connect</strong></button><button class="integration-button" data-integration="slack"><span>Slack</span><strong id="slack-state">Connect</strong></button><a class="settings-link" href="/settings/">Manage connected accounts</a></div><div class="sidebar-footer"><span class="status-dot"></span><span id="user-label">Workspace online</span><button id="logout" class="text-button">Log out</button></div></aside>
-  <main class="workspace chat-panel"><header class="workspace-header chat-header"><div><span class="eyebrow">OPERATIONS DESK</span><h1 id="thread-title">Good morning.</h1></div><div class="header-meta"><span class="live-pill"><i></i> Live workspace</span><span id="clock"></span></div></header>
+  <aside class="sidebar">
+    <div class="brand-mark">PO<span>+</span><span class="brand-status"><i class="status-dot"></i>Live</span></div>
+    <div class="rail-heading"><span>Threads</span><button id="new-thread" class="icon-button" title="New thread">+</button></div>
+    <div id="thread-list" class="thread-list">
+      <div class="thread-skeleton"><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div></div>
+    </div>
+    <div class="connections">
+      <div class="rail-heading" style="margin-top:0"><span>Connections</span></div>
+      <button class="connection-row" data-integration="gmail"><span><span class="dot dot-off" id="gmail-dot"></span>Gmail</span><span class="connection-state off" id="gmail-state">Connect</span></button>
+      <button class="connection-row" data-integration="calendar"><span><span class="dot dot-off" id="calendar-dot"></span>Calendar</span><span class="connection-state off" id="calendar-state">Connect</span></button>
+      <button class="connection-row" data-integration="docs"><span><span class="dot dot-off" id="docs-dot"></span>Docs</span><span class="connection-state off" id="docs-state">Connect</span></button>
+      <button class="connection-row" data-integration="sheets"><span><span class="dot dot-off" id="sheets-dot"></span>Sheets</span><span class="connection-state off" id="sheets-state">Connect</span></button>
+      <button class="connection-row" data-integration="slack"><span><span class="dot dot-off" id="slack-dot"></span>Slack</span><span class="connection-state off" id="slack-state">Connect</span></button>
+      <a class="settings-link" href="/settings/">Manage connected accounts →</a>
+    </div>
+    <div class="sidebar-footer"><span class="user-avatar" id="user-avatar">?</span><span id="user-label">Workspace online</span><button id="logout" class="logout-btn">Log out</button></div>
+  </aside>
+  <main class="chat-panel">
+    <header class="chat-header"><div><span class="eyebrow">Operations desk</span><h1 id="thread-title">Good morning.</h1></div><div class="header-meta"><span class="live-pill"><i class="status-dot"></i>Live workspace</span><span id="clock"></span></div></header>
+    <div id="error-banner" class="error-banner hidden">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+      <span class="msg" id="error-banner-msg"></span>
+      <button class="retry" id="error-banner-retry">Retry</button>
+      <button class="dismiss" id="error-banner-dismiss">×</button>
+    </div>
     <section id="transcript" class="transcript"><div class="empty-state"><div class="empty-orbit">+</div><h2>What needs moving?</h2><p>Ask me to search, organize, draft, schedule, or keep your day on track.</p><div class="suggestions"><button data-prompt="Give me a quick overview of my inbox">Inbox overview</button><button data-prompt="What is on my calendar today?">Today's calendar</button><button data-prompt="Add a note to my operations doc">Capture a note</button></div></div></section>
-    <section id="approval-card" class="approval-card hidden"><div><span class="eyebrow">YOUR APPROVAL</span><h3>One action is waiting on you</h3><pre id="approval-detail"></pre></div><div class="approval-actions"><button id="approve-action" class="primary-button">Approve</button><button id="cancel-action" class="secondary-button">Cancel</button></div></section>
-    <form id="chat-form" class="composer chat-input"><textarea id="message-input" name="message" rows="1" placeholder="Tell your operations agent what to do..." required></textarea><button class="send-button" type="submit" title="Send message">↑</button><div class="composer-note">Enter to send <span>•</span> Your connected tools are ready</div></form>
+    <div class="composer-wrap">
+      <form id="chat-form" class="composer"><textarea id="message-input" name="message" rows="1" placeholder="Tell your operations agent what to do..." required></textarea><button class="send-button" type="submit" title="Send message">↑</button></form>
+      <div class="composer-note" id="composer-note">Enter to send <span>•</span> Checking connected tools...</div>
+    </div>
   </main>
 </div>
 {% endblock %}

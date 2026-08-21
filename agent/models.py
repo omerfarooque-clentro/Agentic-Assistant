@@ -19,7 +19,7 @@ class MCPIntegration(models.Model):
     expires_at = models.DateTimeField(blank=True, null=True)
 
     enabled = models.BooleanField(default=False)
-
+    scopes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -30,3 +30,6 @@ class MCPIntegration(models.Model):
                 name="unique_user_mcp_service",
             )
         ]
+
+
+        

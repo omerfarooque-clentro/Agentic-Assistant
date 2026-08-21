@@ -1,19 +1,21 @@
 import os
 
+import asyncio
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from psycopg_pool import AsyncConnectionPool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from agent.llm import llm
-from agent.hitl import approval_result, email_approval, EMAIL_APPROVAL_TOOL_NAMES
+from agent.hitl import approval_result, approval_node, TOOL_NAMES_BY_DOMAIN
 from agent.state import AgentState
 from agent.nodes import (
-    after_tools,
     agent_node,
-    should_continue,
     nlp_node,
     supervisor_router,
+    scoped_after_tools,
+    scoped_should_continue,
+    thread_naming_node,
 )
 
 
@@ -27,26 +29,28 @@ DB_URI = (
 
 pool = None
 memory = None
+_init_lock = asyncio.Lock()
 
 async def setup_checkpointer():
     global pool, memory
-    if memory is not None:
-        return
+    async with _init_lock:
+        if memory is not None:
+            return
 
-    if pool is None:
-        pool = AsyncConnectionPool(DB_URI, max_size=10, kwargs={"autocommit": True}, open=False)
+        if pool is None:
+            pool = AsyncConnectionPool(DB_URI, max_size=10, kwargs={"autocommit": True}, open=False)
 
-    try:
-        await pool.open()
-        checkpointer = AsyncPostgresSaver(pool)
-        await checkpointer.setup()
-        memory = checkpointer
-    except Exception:
-        await pool.close()
-        pool = None
-        memory = None
-        raise
-
+        try:
+            await pool.open()
+            checkpointer = AsyncPostgresSaver(pool)
+            await checkpointer.setup()
+            memory = checkpointer
+        except Exception:
+            await pool.close()
+            pool = None
+            memory = None
+            raise
+         
 
 async def ensure_checkpointer():
     """Initialize the checkpointer for non-ASGI entry points and tests."""
@@ -55,54 +59,11 @@ async def ensure_checkpointer():
 
 async def close_checkpointer():
     global pool, memory
-    if pool is not None:
-        await pool.close()
-    pool = None
-    memory = None
-
-
-def scoped_should_continue(state, domain):
-    last_message = state["messages"][-1]
-
-    if not last_message.tool_calls:
-        print(f"[ROUTER:{domain}] scoped_should_continue -> 'end' (no tool calls)")
-        return "end"
-    print(f"tool call name is {last_message.tool_calls[0]['name']}")
-    if domain == "email":
-        for tool_call in last_message.tool_calls:
-            if tool_call["name"] in EMAIL_APPROVAL_TOOL_NAMES:
-                print(f"[ROUTER:{domain}] scoped_should_continue -> 'email_approval'")
-                return "email_approval"
-
-    print(f"[ROUTER:{domain}] scoped_should_continue -> 'tools'")
-    return "tools"
-
-
-def scoped_after_tools(state, domain):
-    print("\n========== AFTER TOOLS ==========")
-
-    for i, message in enumerate(state["messages"]):
-        print(
-            i,
-            type(message).__name__,
-            "name=", getattr(message, "name", None),
-            "tool_calls=", getattr(message, "tool_calls", None),
-            "content=", getattr(message, "content", None),
-        )
-
-    print("=================================\n")
-
-    last_message = state["messages"][-1]
-
-    if (
-        domain == "email"
-        and getattr(last_message, "name", None) in EMAIL_APPROVAL_TOOL_NAMES
-    ):
-        print(f"[ROUTER:{domain}] scoped_after_tools -> 'end'")
-        return "end"
-
-    print(f"[ROUTER:{domain}] scoped_after_tools -> 'agent'")
-    return "agent"
+    async with _init_lock:
+        if pool is not None:
+            await pool.close()
+        pool = None
+        memory = None
 
 
 DOMAINS = ["email", "calendar", "docs", "sheets", "slack", "research"]
@@ -110,8 +71,6 @@ DOMAINS = ["email", "calendar", "docs", "sheets", "slack", "research"]
 def create_graph(tools_groups):
     if memory is None:
         raise RuntimeError("Checkpointer not set up. Call setup_checkpointer() first.")
-
-    print(f"[GRAPH] Building graph for domains: {list(tools_groups.keys())}")
 
     graph = StateGraph(AgentState)
 
@@ -128,7 +87,9 @@ def create_graph(tools_groups):
         "nlp",
         supervisor_router,
                 {
-                        "general": END,
+                        # Chit-chat/unrouted intent falls back to the research agent (web
+                        # search) when available, since that's a direct/no-approval domain.
+                        "general": "research_agent" if "research" in available_domains else "thread_naming",
                         **{
                                 domain: f"{domain}_agent"
                                 for domain in DOMAINS
@@ -137,11 +98,13 @@ def create_graph(tools_groups):
                 },
     )
 
+    graph.add_node("thread_naming", thread_naming_node)
+    graph.add_edge("thread_naming", END)
+   
     for domain in DOMAINS:
         domain_tools = tools_groups.get(domain, [])
         if not domain_tools:
             continue
-        print(f"[GRAPH] Wiring '{domain}' agent+tools nodes with tools: {[t.name for t in domain_tools]}")
         llm_with_tools = llm.bind_tools(domain_tools)
 
         def make_agent(llm_with_tools):
@@ -160,35 +123,34 @@ def create_graph(tools_groups):
             lambda state, domain=domain: scoped_should_continue(state, domain),
             {
                 "tools": tools_name,
-                "email_approval": "email_approval",
-                "end": END,
+                "approval": "approval",
+                "end": "thread_naming",
             },
         )
-
+        
         graph.add_conditional_edges(
             tools_name,
             lambda state, domain=domain: scoped_after_tools(state, domain),
             {
                 "agent": agent_name,
-                "end": END,
+                "end": "thread_naming",
             },
 
         )
-
-
-    if tools_groups.get("email"):
-        print("[GRAPH] Wiring 'email_approval' HITL node")
-
-        graph.add_node("email_approval", email_approval)
+ 
+    approval_domains = [
+        domain for domain in TOOL_NAMES_BY_DOMAIN if tools_groups.get(domain)
+    ]
+    if approval_domains:
+        graph.add_node("approval", approval_node)
 
         graph.add_conditional_edges(
-            "email_approval",
+            "approval",
             approval_result,
             {
-                "send": "email_tools",
-                "cancel": END,
+                **{domain: f"{domain}_tools" for domain in approval_domains},
+                "cancel": "thread_naming",
             },
         )
 
-    print("[GRAPH] Graph build complete, compiling with checkpointer")
     return graph.compile(checkpointer=memory)

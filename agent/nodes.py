@@ -1,11 +1,15 @@
-from langchain_core.messages import SystemMessage
+from agent.llm import llm
+from agent.messages_for_llm import messages_for_llm
+from agent.hitl import APPROVAL_TOOL_NAMES
 from agent.nlp_router import nlp_decider
 from agent.state import AgentState
-from .prompts import SYSTEM_PROMPT
+from conversations.models import Thread
+ 
 
+# Domains whose write actions are gated behind human-in-the-loop approval.
+APPROVAL_DOMAINS = {"email", "calendar", "docs", "sheets", "slack"}
 
 def nlp_node(state: AgentState, available_domains=()):
-    print("[NODE:nlp] Classifying intent...")
     result = nlp_decider(
         state["messages"][-1].content,
         available_domains=state.get("available_domains", available_domains)
@@ -16,8 +20,6 @@ def nlp_node(state: AgentState, available_domains=()):
     else:
         routing_status = "low_confidence"
 
-    print(f"[NODE:nlp] intent={result['intent']} confidence={result['confidence']:.2f} status={routing_status}")
-
     return {
         "intent": result["intent"],
         "confidence": result["confidence"],
@@ -26,19 +28,8 @@ def nlp_node(state: AgentState, available_domains=()):
 
 
 def agent_node(state: AgentState, llm_with_tools):
-    print("[NODE:agent] Invoking LLM with bound tools...")
-
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        *state["messages"],
-    ]
+    messages = messages_for_llm(state)
     response = llm_with_tools.invoke(messages)
-
-    tool_calls = getattr(response, "tool_calls", None) or []
-    if tool_calls:
-        print(f"[NODE:agent] LLM requested tool calls: {[call['name'] for call in tool_calls]}")
-    else:
-        print("[NODE:agent] LLM returned a final response (no tool calls)")
 
     return {
         "messages": [response]
@@ -46,39 +37,74 @@ def agent_node(state: AgentState, llm_with_tools):
 
 
 def supervisor_router(state: AgentState):
-    print(state)
     domain = state.get("intent")
     allowed_domains = state.get("available_domains", set())
 
     if domain in allowed_domains:
-        print(f"[ROUTER] supervisor_router -> '{domain}_agent'")
         return domain
-    
-    print(f"[ROUTER] supervisor_router -> 'general' (domain '{domain}' not allowed)")
+
     return "general"
     
 
-def should_continue(state: AgentState):
+def scoped_should_continue(state, domain):
     last_message = state["messages"][-1]
 
     if not last_message.tool_calls:
-        print("[ROUTER] should_continue -> 'end' (no tool calls)")
         return "end"
+    if domain in APPROVAL_DOMAINS:
+        for tool_call in last_message.tool_calls:
+            if tool_call["name"] in APPROVAL_TOOL_NAMES:
+                return "approval"
 
-    for tool_call in last_message.tool_calls:
-        if tool_call["name"] == "send_email":
-            print("[ROUTER] should_continue -> 'email_approval' (send_email requested)")
-            return "email_approval"
-
-    print("[ROUTER] should_continue -> 'tools'")
     return "tools"
 
-def after_tools(state):
+
+
+
+def scoped_after_tools(state, domain):
     last_message = state["messages"][-1]
 
-    if getattr(last_message, "name", None) == "send_email":
-        print("[ROUTER] after_tools -> 'end' (email already sent)")
+    if (
+        domain in APPROVAL_DOMAINS
+        and getattr(last_message, "name", None) in APPROVAL_TOOL_NAMES
+    ):
         return "end"
 
-    print("[ROUTER] after_tools -> 'agent'")
     return "agent"
+
+
+
+def thread_naming_node(state: AgentState):
+    messages = state["messages"]
+
+    if len(messages) <= 2:
+        return {}
+
+    thread = Thread.objects.get(id=state["thread_id"],user_id=state["user_id"])
+
+    if thread.name != "New Thread":
+        return {}
+
+    conversation = "\n".join(
+        f"{m.type}: {m.content}" for m in messages if isinstance(m.content, str)
+    )
+
+    response = llm.invoke(
+        f"""
+        Generate a name for this conversation.
+
+        Rules:
+        - 5 words or fewer
+        - Return ONLY the name
+        - No quotation marks
+        - If the conversation covers unrelated topics, use "General Discussion"
+
+        Conversation:
+        {conversation}
+        """
+            )
+
+    thread.name = response.content.strip()[:100]
+    thread.save(update_fields=["name"])
+
+    return {}

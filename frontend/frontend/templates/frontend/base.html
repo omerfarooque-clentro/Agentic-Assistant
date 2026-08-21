@@ -5,12 +5,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Personal Ops{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'frontend/app.css' %}?v=2">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+  <link rel="stylesheet" href="{% static 'frontend/app.css' %}">
 </head>
 <body>
   <div class="grain"></div>
   {% block content %}{% endblock %}
-  <script src="{% static 'frontend/app.js' %}?v=2"></script>
+  <script src="{% static 'frontend/app.js' %}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

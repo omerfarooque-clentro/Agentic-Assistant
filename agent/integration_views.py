@@ -21,7 +21,7 @@ GOOGLE_OPENID_SCOPES = "openid email profile"
 
 # Each Google product requests only its own scopes, not the full Workspace set.
 GOOGLE_SERVICE_SCOPES = {
-    "gmail": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.compose",
+    "gmail": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels",
     "calendar": "https://www.googleapis.com/auth/calendar",
     "docs": "https://www.googleapis.com/auth/documents",
     "sheets": "https://www.googleapis.com/auth/spreadsheets",
@@ -93,16 +93,76 @@ def integration_connect_view(request, service):
         return JsonResponse({"detail": str(error)}, status=503)
 
 
+
+def _refresh_google_access_token(integration):
+    if not integration.refresh_token:
+        return False
+    response = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "refresh_token": integration.refresh_token,
+            "grant_type": "refresh_token",
+        },
+        timeout=10,
+    )
+    if not response.ok:
+        return False
+    token_data = response.json()
+    integration.access_token = token_data["access_token"]
+    integration.expires_at = timezone.now() + timedelta(seconds=token_data.get("expires_in", 3600))
+    integration.save(update_fields=["access_token", "expires_at", "updated_at"])
+    return True
+
+
+def _is_google_token_live(integration):
+    response = requests.get(
+        "https://oauth2.googleapis.com/tokeninfo",
+        params={"access_token": integration.access_token},
+        timeout=10,
+    )
+    if response.ok:
+        return True
+    # Access token expired or revoked — try to mint a fresh one before giving up.
+    return _refresh_google_access_token(integration)
+
+
+def _is_slack_token_live(integration):
+    response = requests.post(
+        "https://slack.com/api/auth.test",
+        headers={"Authorization": f"Bearer {integration.access_token}"},
+        timeout=10,
+    )
+    return response.ok and response.json().get("ok", False)
+
+
+def _integration_is_live(integration):
+    try:
+        if integration.service in GOOGLE_SERVICES:
+            return _is_google_token_live(integration)
+        if integration.service == "slack":
+            return _is_slack_token_live(integration)
+        return integration.enabled
+    except requests.RequestException:
+        # Provider unreachable — fall back to the last known state rather than
+        # flipping a healthy integration to "disconnected".
+        return integration.enabled
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def integration_status_view(request):
     integrations = MCPIntegration.objects.filter(user=request.user)
-    return JsonResponse({
-        "integrations": [
-            {"service": item.service, "enabled": item.enabled}
-            for item in integrations
-        ]
-    })
+    payload = []
+    for item in integrations:
+        live = _integration_is_live(item) if item.enabled else False
+        if item.enabled and not live:
+            # MCP/provider access was revoked outside of our disconnect flow.
+            item.enabled = False
+            item.save(update_fields=["enabled", "updated_at"])
+        payload.append({"service": item.service, "enabled": live})
+    return JsonResponse({"integrations": payload})
 
 
 def _exchange_code(service, code, redirect_uri):
@@ -131,16 +191,12 @@ def _exchange_code(service, code, redirect_uri):
         )
     response.raise_for_status()
     token_data = response.json()
-
-    print("[OAUTH] Granted scopes:", token_data.get("scope"))
     
     token_info = requests.get(
         "https://oauth2.googleapis.com/tokeninfo",
         params={"access_token": token_data["access_token"]},
         timeout=10,
     )
-
-    print("[OAUTH] Token info:", token_info.json())
 
     if service == "slack" and not token_data.get("ok"):
         raise RuntimeError(token_data.get("error", "Slack OAuth failed"))
@@ -170,6 +226,7 @@ def integration_callback_view(request, service):
             defaults={
                 "access_token": access_token,
                 "refresh_token": token_data.get("refresh_token"),
+                "scopes": " ".join(token_data.get("scope", "").split()) if token_data.get("scope") else "",
                 "expires_at": timezone.now() + timedelta(seconds=token_data.get("expires_in", 3600)),
                 "enabled": True,
             },
@@ -183,5 +240,30 @@ def integration_callback_view(request, service):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def integration_disconnect_view(request, service):
-    deleted, _ = MCPIntegration.objects.filter(user=request.user, service=service).delete()
-    return JsonResponse({"service": service, "disconnected": bool(deleted)})
+    """
+    Disconnects the integration by revoking the OAuth token with Google/Slack
+    and removing the database record.
+    """
+    try:
+        integration = MCPIntegration.objects.get(user=request.user, service=service)
+
+        # 1. Revoke token with Google if service is a Google service
+        if service == "google" or service in GOOGLE_SERVICES:
+            token_to_revoke = integration.refresh_token or integration.access_token
+            if token_to_revoke:
+                try:
+                    requests.post(
+                        "https://oauth2.googleapis.com/revoke",
+                        params={"token": token_to_revoke},
+                        headers={"content-type": "application/x-www-form-encoding"},
+                        timeout=10,
+                    )
+                except requests.RequestException:
+                    pass  # Continue to delete DB row even if Google revoke call fails
+
+        # 2. Delete database record
+        integration.delete()
+        return JsonResponse({"service": service, "disconnected": True})
+
+    except MCPIntegration.DoesNotExist:
+        return JsonResponse({"service": service, "disconnected": False}, status=404)

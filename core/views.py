@@ -15,6 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from conversations.models import Thread, Message
 from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
+from agent.models import MCPIntegration
 
 User = get_user_model()
 
@@ -60,7 +61,8 @@ class LoginView(generics.GenericAPIView):
         user =  serializer.validated_data["user"]
         refersh = RefreshToken.for_user(user)
 
-
+        MCPIntegration.objects.get_or_create(user=user, service="tavily", defaults={"enabled": True})
+        
         return Response({
             "access" : str(refersh.access_token),
             "refresh" : str(refersh),
@@ -98,13 +100,13 @@ async def new_chat_view(request):
 
     result = await run_agent(
         message=message,
-        thread_id=str(thread.id),
+        thread_id=int(thread.id),
         user=user,
     )
 
     if result["status"] == "approval_required":
         return JsonResponse({
-                "thread_id": thread.id,
+                "thread_id": int(thread.id),
                 "status": "approval_required",
                 "approval": result["interrupt"],
                 "details" :  "go to /approve-email/ endpoint to approve or cancel the email, type:bool, fields: thread_id, approved",
@@ -117,7 +119,7 @@ async def new_chat_view(request):
     )
 
     return JsonResponse({
-            "thread_id": thread.id,
+            "thread_id": int(thread.id),
             "status": "completed",
             "response": result["result"]["messages"][-1].content,
         })
@@ -151,16 +153,16 @@ async def agent_chat_view(request, thread_id):
 
     result = await run_agent(
         message=message,
-        thread_id=str(thread.id),
+        thread_id=int(thread.id),
         user=user,
     )
 
     if result["status"] == "approval_required":
         return JsonResponse({
-                "thread_id": thread_id,
+                "thread_id": int(thread_id),
                 "status": "approval_required",
                 "approval": result["interrupt"],
-                "details" :  "go to /approve-email/ endpoint to approve or cancel the email, type:bool, fields: thread_id, approved",
+                "details" :  "approval required for the last action. Go to /thread/<int:thread_id>/action-email/ endpoint to approve or cancel the action, type:bool, fields: thread_id, approved",
             })
 
     await Message.objects.acreate(
@@ -170,7 +172,7 @@ async def agent_chat_view(request, thread_id):
     )
 
     return JsonResponse({
-            "thread_id": thread_id,
+            "thread_id": int(thread_id),
             "status": "completed",
             "response": result["result"]["messages"][-1].content,
         })
@@ -178,7 +180,7 @@ async def agent_chat_view(request, thread_id):
  
 
 from langgraph.types import Command
-
+from conversations.models import Approval, Message, Thread
 
 @csrf_exempt
 async def approve_email_view(request, thread_id):
@@ -199,16 +201,24 @@ async def approve_email_view(request, thread_id):
     except Thread.DoesNotExist:
         return JsonResponse({"detail": "Thread not found."}, status=404)
 
+    message = await Message.objects.filter(thread=thread, role="user").order_by("-created_at").afirst()
+    if not message:
+        return JsonResponse({"detail": "No user message found for this thread."}, status=404)
+
+    approval, created = await Approval.objects.aget_or_create(message=message, thread=thread, defaults={"approved": approved})
+    if not created:
+        return JsonResponse({"detail": "Approval decision already made for this thread."}, status=400)
+
     config = {
         "configurable": {
             "thread_id": str(thread.id)
         }
     }
-
+     
     await ensure_checkpointer()
     tools = await get_user_tools(user)
     app = create_graph(tools)
-
+   
     result = await app.ainvoke(
         Command(
             resume={
@@ -219,5 +229,6 @@ async def approve_email_view(request, thread_id):
     )
 
     return JsonResponse({
-        "result": result["messages"][-1].content
+        "result": result["messages"][-1].content,
+        "thread_id": int(thread.id),
     })

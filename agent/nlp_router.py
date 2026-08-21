@@ -18,16 +18,9 @@ def nlp_decider(message, available_domains=None):
     confidence = float(model.predict_proba([message]).max())
     available_domains = set(available_domains or ())
 
-    print(available_domains)
-
     if available_domains and prediction not in available_domains:
         prediction = "general"
         confidence = 0.0
-
-    print(
-        f"NLU Decider: message='{message}', intent='{prediction}', "
-        f"confidence={confidence:.2f}"
-    )
     return {
         "intent": prediction,
         "confidence": confidence,

@@ -1,60 +1,92 @@
 from langgraph.types import interrupt
+from langchain_core.messages import AIMessage
 
-# Tool names that must be gated behind human approval before execution.
-EMAIL_APPROVAL_TOOL_NAMES = {"send_email", "send_message", "create_draft"}
+
+# Tool names that must be gated behind human approval before execution, grouped by domain.
+EMAIL_APPROVAL_TOOL_NAMES = {"send_gmail_message", "draft_gmail_message"}
+CALENDAR_APPROVAL_TOOL_NAMES = {"manage_event", "manage_out_of_office", "manage_focus_time", "create_calendar"}
+DOCS_APPROVAL_TOOL_NAMES = {
+    "create_doc", "modify_doc_text", "find_and_replace_doc", "insert_doc_elements",
+    "insert_doc_image", "update_doc_headers_footers", "batch_update_doc",
+    "create_table_with_data", "update_paragraph_style", "manage_doc_tab",
+}
+SHEETS_APPROVAL_TOOL_NAMES = {"create_spreadsheet", "create_sheet", "modify_sheet_values", "append_table_rows"}
 SLACK_APPROVAL_TOOL_NAMES = {"send_slack_message", "send_slack_dm", "create_slack_draft"}
+
+TOOL_NAMES_BY_DOMAIN = {
+    "email": EMAIL_APPROVAL_TOOL_NAMES,
+    "calendar": CALENDAR_APPROVAL_TOOL_NAMES,
+    "docs": DOCS_APPROVAL_TOOL_NAMES,
+    "sheets": SHEETS_APPROVAL_TOOL_NAMES,
+    "slack": SLACK_APPROVAL_TOOL_NAMES,
+}
+
+# tool_name -> owning domain, used to route back to the right *_tools node after approval.
+DOMAIN_BY_TOOL_NAME = {
+    tool_name: domain
+    for domain, tool_names in TOOL_NAMES_BY_DOMAIN.items()
+    for tool_name in tool_names
+}
+
+APPROVAL_TOOL_NAMES = set(DOMAIN_BY_TOOL_NAME)
 
 # Thread-safe duplicate check using unique tool_call_id
 sent_tool_call_ids = set()
 
-def email_approval(state):
-    print("[NODE:email_approval] Pending email action, preparing HITL interrupt...")
+def approval_node(state):
     last_message = state["messages"][-1]
 
-    # 1. Extract pending tool call safely
+    # 1. Extract pending tool call safely, regardless of domain
     tool_calls = getattr(last_message, "tool_calls", [])
     tool_call = next(
-        (call for call in tool_calls if call["name"] in EMAIL_APPROVAL_TOOL_NAMES),
+        (call for call in tool_calls if call["name"] in APPROVAL_TOOL_NAMES),
         None,
     )
     if tool_call is None:
-        raise ValueError("No pending email approval tool call found.")
+        raise ValueError("No pending approval tool call found.")
 
     tool_id = tool_call["id"]
     tool_name = tool_call["name"]
     args = tool_call.get("args", {})
+    domain = DOMAIN_BY_TOOL_NAME[tool_name]
 
     # Check if this specific tool_call_id was already processed
     is_duplicate = tool_id in sent_tool_call_ids
 
     # 2. INTERRUPT (Pure read-only operation before this point)
-    print(f"[NODE:email_approval] Interrupting for user decision: to={args.get('to')} subject={args.get('subject')!r}")
     decision = interrupt({
-        "type": "email_approval",
+        "type": "approval",
+        "domain": domain,
         "tool_name": tool_name,
-        "to": args.get("to"),
-        "subject": args.get("subject"),
-        "body": args.get("body"),
+        "args": args,
         "is_duplicate": is_duplicate,
-        "message": "This email was already sent/drafted. Re-send/re-draft?" if is_duplicate else "Approve sending/saving this email/drafting?",
+        "message": "This action was already executed. Re-run it?" if is_duplicate else f"Approve this {domain} action ({tool_name})?",
     })
 
-    # 3. RESUME EXECUTIONS (Runs ONLY after user resumes)
+    # 3. RESUME EXECUTION (Runs ONLY after user resumes)
     is_approved = decision.get("approved", False) if isinstance(decision, dict) else bool(decision)
-    print(f"[NODE:email_approval] Resumed with approved={is_approved}")
 
     if is_approved:
-        print(is_approved)
         sent_tool_call_ids.add(tool_id)
 
+    approval_status = "approved" if is_approved else "rejected"
+    approval_message = AIMessage(
+        content=(
+            f"Human approval {approval_status} for {domain} action '{tool_name}'."
+        )
+    )
+
     return {
-        "email_approved": is_approved,
-        "details" : {**decision},
-        "is_re_send": is_duplicate and is_approved
+        "messages": [approval_message],
+        "approved": is_approved,
+        "details": {**decision, "domain": domain},
+        "is_re_send": is_duplicate and is_approved,
     }
 
 
 def approval_result(state):
-    decision = "send" if state["email_approved"] else "cancel"
-    print(f"[ROUTER:email_approval] approval_result -> '{decision}'")
-    return decision
+    if not state["approved"]:
+        return "cancel"
+
+    domain = state["details"]["domain"]
+    return domain

@@ -41,5 +41,4 @@ class LoginSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Both email and password are required.")
 
         data["user"] = user
-        print("Validated user:", user)
         return data
