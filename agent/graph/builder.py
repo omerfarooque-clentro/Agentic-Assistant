@@ -6,10 +6,10 @@ from langgraph.prebuilt import ToolNode
 from psycopg_pool import AsyncConnectionPool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-from agent.llm import llm
-from agent.hitl import approval_result, approval_node, TOOL_NAMES_BY_DOMAIN
-from agent.state import AgentState
-from agent.nodes import (
+from agent.llm import bind_tools_with_fallback, llm
+from agent.graph.approval import approval_result, approval_node, TOOL_NAMES_BY_DOMAIN
+from agent.graph.state import AgentState
+from agent.graph.nodes import (
     agent_node,
     nlp_node,
     supervisor_router,
@@ -17,6 +17,7 @@ from agent.nodes import (
     scoped_should_continue,
     thread_naming_node,
 )
+from agent.routing.intent_router import get_mcp_tool_names
 
 
 DB_URI = (
@@ -74,12 +75,9 @@ def create_graph(tools_groups):
 
     graph = StateGraph(AgentState)
 
-    available_domains = set(tools_groups)
+    available_domains = set(tools_groups) 
 
-    def user_nlp_node(state):
-        return nlp_node(state, available_domains)
-
-    graph.add_node("nlp", user_nlp_node)
+    graph.add_node("nlp", lambda state: nlp_node(state, available_domains))
 
     graph.add_edge(START, "nlp")
 
@@ -87,9 +85,7 @@ def create_graph(tools_groups):
         "nlp",
         supervisor_router,
                 {
-                        # Chit-chat/unrouted intent falls back to the research agent (web
-                        # search) when available, since that's a direct/no-approval domain.
-                        "general": "research_agent" if "research" in available_domains else "thread_naming",
+                        "general": "general_agent",
                         **{
                                 domain: f"{domain}_agent"
                                 for domain in DOMAINS
@@ -97,35 +93,54 @@ def create_graph(tools_groups):
                         },
                 },
     )
+    
+    def general_agent(state):
+        return agent_node(state, llm)
+
+    graph.add_node("general_agent", general_agent)
+    graph.add_edge("general_agent", "thread_naming")
 
     graph.add_node("thread_naming", thread_naming_node)
     graph.add_edge("thread_naming", END)
+
+    approval_domains = [
+        domain for domain in TOOL_NAMES_BY_DOMAIN if tools_groups.get(domain)
+    ]
    
     for domain in DOMAINS:
         domain_tools = tools_groups.get(domain, [])
         if not domain_tools:
             continue
-        llm_with_tools = llm.bind_tools(domain_tools)
 
-        def make_agent(llm_with_tools):
+        def make_agent(domain_tools):
             def scoped_agent(state):
-                return agent_node(state, llm_with_tools)
+                allowed_names = get_mcp_tool_names(state.get("intent", ""))
+                selected_tools = [
+                    tool for tool in domain_tools
+                    if tool.name in allowed_names
+                ]
+                if not selected_tools:
+                    return agent_node(state, llm)
+                return agent_node(
+                    state,
+                    bind_tools_with_fallback(selected_tools),
+                )
             return scoped_agent
         
         agent_name = f"{domain}_agent"
         tools_name = f"{domain}_tools"
-
-        graph.add_node(agent_name, make_agent(llm_with_tools))
+        graph.add_node(agent_name, make_agent(domain_tools))
         graph.add_node(tools_name, ToolNode(domain_tools, handle_tool_errors=True))
+
+        route_map = {"tools": tools_name, "end": "thread_naming"}
+        
+        if domain in approval_domains:
+            route_map["approval"] = "approval" 
 
         graph.add_conditional_edges(
             agent_name,
             lambda state, domain=domain: scoped_should_continue(state, domain),
-            {
-                "tools": tools_name,
-                "approval": "approval",
-                "end": "thread_naming",
-            },
+            route_map,
         )
         
         graph.add_conditional_edges(
@@ -137,10 +152,7 @@ def create_graph(tools_groups):
             },
 
         )
- 
-    approval_domains = [
-        domain for domain in TOOL_NAMES_BY_DOMAIN if tools_groups.get(domain)
-    ]
+
     if approval_domains:
         graph.add_node("approval", approval_node)
 

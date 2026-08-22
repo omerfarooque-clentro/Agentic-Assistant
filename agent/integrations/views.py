@@ -1,7 +1,6 @@
 import os
 from datetime import timedelta
 from urllib.parse import urlencode
-
 import requests
 from django.core import signing
 from django.http import JsonResponse
@@ -11,7 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
-from .models import MCPIntegration
+from agent.models import MCPIntegration
 
 
 STATE_SALT = "mcp-integration-oauth"
@@ -28,6 +27,7 @@ GOOGLE_SERVICE_SCOPES = {
 }
 GOOGLE_SERVICES = {"gmail", "calendar", "docs", "sheets"}
 
+SLACK_SCOPES = ["channels:read", "im:read", "mpim:read", "users:read", "chat:write", "reactions:read", "reactions:write"]
 
 def _google_scopes(service):
     service_scope = GOOGLE_SERVICE_SCOPES.get(service, "")
@@ -73,11 +73,10 @@ def _provider_config(request, service):
     client_id = os.getenv("SLACK_CLIENT_ID")
     if not client_id:
         raise RuntimeError("SLACK_CLIENT_ID is not configured")
-    return "https://slack.com/oauth/v2/authorize?" + urlencode({
+    return "https://slack.com/oauth/v2_user/authorize?" + urlencode({
         "client_id": client_id,
         "redirect_uri": redirect_uri,
-        "scope": os.getenv("SLACK_BOT_SCOPES", "chat:write,channels:history,channels:read"),
-        "user_scope": os.getenv("SLACK_USER_SCOPES", ""),
+        "scope": ",".join(SLACK_SCOPES),
         "state": state,
     })
 
@@ -180,7 +179,7 @@ def _exchange_code(service, code, redirect_uri):
         )
     else:
         response = requests.post(
-            "https://slack.com/api/oauth.v2.access",
+            "https://slack.com/api/oauth.v2.user.access",
             data={
                 "code": code,
                 "client_id": os.getenv("SLACK_CLIENT_ID"),
@@ -191,12 +190,6 @@ def _exchange_code(service, code, redirect_uri):
         )
     response.raise_for_status()
     token_data = response.json()
-    
-    token_info = requests.get(
-        "https://oauth2.googleapis.com/tokeninfo",
-        params={"access_token": token_data["access_token"]},
-        timeout=10,
-    )
 
     if service == "slack" and not token_data.get("ok"):
         raise RuntimeError(token_data.get("error", "Slack OAuth failed"))
@@ -217,16 +210,26 @@ def integration_callback_view(request, service):
             request.GET["code"],
             _redirect_uri(request, provider),
         )
-        access_token = token_data.get("access_token") or token_data.get("authed_user", {}).get("access_token")
+        authed_user = token_data.get("authed_user", {})
+        access_token = token_data.get("access_token") or authed_user.get("access_token")
         if not access_token:
             raise ValueError("OAuth provider returned no access token")
+
+        scopes = token_data.get("scope") or authed_user.get("scope", "")
+        existing = MCPIntegration.objects.filter(
+            user_id=state["user_id"],
+            service=requested_service,
+        ).first()
+        refresh_token = token_data.get("refresh_token") or (
+            existing.refresh_token if existing else None
+        )
         user_integration, _ = MCPIntegration.objects.update_or_create(
             user_id=state["user_id"],
             service=requested_service,
             defaults={
                 "access_token": access_token,
-                "refresh_token": token_data.get("refresh_token"),
-                "scopes": " ".join(token_data.get("scope", "").split()) if token_data.get("scope") else "",
+                "refresh_token": refresh_token,
+                "scopes": " ".join(scopes.split()) if scopes else "",
                 "expires_at": timezone.now() + timedelta(seconds=token_data.get("expires_in", 3600)),
                 "enabled": True,
             },
@@ -255,13 +258,24 @@ def integration_disconnect_view(request, service):
                     requests.post(
                         "https://oauth2.googleapis.com/revoke",
                         params={"token": token_to_revoke},
-                        headers={"content-type": "application/x-www-form-encoding"},
+                        headers={"content-type": "application/x-www-form-urlencoded"},
                         timeout=10,
                     )
                 except requests.RequestException:
                     pass  # Continue to delete DB row even if Google revoke call fails
 
-        # 2. Delete database record
+        # 2. Revoke the Slack user token.
+        elif service == "slack" and integration.access_token:
+            try:
+                requests.post(
+                    "https://slack.com/api/auth.revoke",
+                    headers={"Authorization": f"Bearer {integration.access_token}"},
+                    timeout=10,
+                )
+            except requests.RequestException:
+                pass
+
+        # 3. Delete database record
         integration.delete()
         return JsonResponse({"service": service, "disconnected": True})
 

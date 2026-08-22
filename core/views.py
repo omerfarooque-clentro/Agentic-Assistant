@@ -98,6 +98,8 @@ async def new_chat_view(request):
         content=message,
     )
 
+    print(f"i am new_chat_view creating thread {thread.id} for user {user.id} with message: {message!r}")
+
     result = await run_agent(
         message=message,
         thread_id=int(thread.id),
@@ -150,6 +152,8 @@ async def agent_chat_view(request, thread_id):
         role="user",
         content=message,
     )
+
+    print(f"i am agent_chat_view continuing thread {thread_id} for user {user.id} with message: {message!r}")
 
     result = await run_agent(
         message=message,
@@ -215,6 +219,8 @@ async def approve_email_view(request, thread_id):
         }
     }
      
+    print(f"i am approve_email_view resuming thread {thread.id} for user {user.id} with approved={approved}")
+
     await ensure_checkpointer()
     tools = await get_user_tools(user)
     app = create_graph(tools)
@@ -227,6 +233,8 @@ async def approve_email_view(request, thread_id):
         ),
         config=config,
     )
+
+    print(f"i am approve_email_view and i resumed thread {thread.id} with final response: {result['messages'][-1].content!r}")
 
     return JsonResponse({
         "result": result["messages"][-1].content,

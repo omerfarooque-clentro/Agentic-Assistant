@@ -1,4 +1,4 @@
-from agent.state import AgentState
+from agent.graph.state import AgentState
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from .prompts import SYSTEM_PROMPT
 

@@ -4,21 +4,9 @@ from datetime import timedelta
 import requests
 from asgiref.sync import sync_to_async
 from django.utils import timezone
-
-from .models import MCPIntegration
-
+ 
 
 GOOGLE_TOKEN_SERVICES = {"google", "gmail", "calendar", "docs", "sheets"}
-
-
-@sync_to_async
-def get_enabled_integrations(user):
-    return list(
-        MCPIntegration.objects.filter(
-            user=user,
-            enabled=True,
-        )
-    )
 
 
 @sync_to_async
@@ -30,6 +18,8 @@ def refresh_expired_google_token(integration):
         or integration.expires_at > timezone.now() + timedelta(minutes=2)
     ):
         return integration
+
+    print(f"i am refresh_expired_google_token and i am refreshing the token for service {integration.service} because it expired at {integration.expires_at}")
 
     response = requests.post(
         "https://oauth2.googleapis.com/token",
@@ -49,3 +39,35 @@ def refresh_expired_google_token(integration):
     )
     integration.save(update_fields=["access_token", "expires_at", "updated_at"])
     return integration
+
+
+def _is_slack_token_live(access_token):
+    if not access_token:
+        return False
+    response = requests.post(
+        "https://slack.com/api/auth.test",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=10,
+    )
+    return response.ok and response.json().get("ok", False)
+
+
+@sync_to_async
+def validate_slack_integration(integration):
+    if integration.service != "slack":
+        return integration
+
+    try:
+        is_live = _is_slack_token_live(integration.access_token)
+    except requests.RequestException:
+        # Do not disable an integration on transient network failures.
+        return integration
+
+    print(f"i am validate_slack_integration and the slack token is_live: {is_live}")
+
+    if is_live:
+        return integration
+
+    integration.enabled = False
+    integration.save(update_fields=["enabled", "updated_at"])
+    return None

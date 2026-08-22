@@ -1,8 +1,8 @@
 from agent.llm import llm
-from agent.messages_for_llm import messages_for_llm
-from agent.hitl import APPROVAL_TOOL_NAMES
-from agent.nlp_router import nlp_decider
-from agent.state import AgentState
+from agent.llm.messages import messages_for_llm
+from agent.graph.approval import APPROVAL_TOOL_NAMES
+from agent.routing.intent_router import route_intent
+from agent.graph.state import AgentState
 from conversations.models import Thread
  
 
@@ -10,20 +10,19 @@ from conversations.models import Thread
 APPROVAL_DOMAINS = {"email", "calendar", "docs", "sheets", "slack"}
 
 def nlp_node(state: AgentState, available_domains=()):
-    result = nlp_decider(
-        state["messages"][-1].content,
-        available_domains=state.get("available_domains", available_domains)
-    )
 
-    if result["confidence"] > 0.5:
-        routing_status = "high_confidence"
-    else:
-        routing_status = "low_confidence"
+    messages = state["messages"]
+    result = route_intent(
+        messages,
+        available_domains=available_domains
+    )
 
     return {
         "intent": result["intent"],
+        "domain": result["domain"],
         "confidence": result["confidence"],
-        "routing_status": routing_status,
+        "margin": result["margin"],
+        "routing_status": result["status"],
     }
 
 
@@ -37,13 +36,10 @@ def agent_node(state: AgentState, llm_with_tools):
 
 
 def supervisor_router(state: AgentState):
-    domain = state.get("intent")
-    allowed_domains = state.get("available_domains", set())
+    if state["routing_status"] == "unavailable":
+        return "general"
 
-    if domain in allowed_domains:
-        return domain
-
-    return "general"
+    return state["domain"]
     
 
 def scoped_should_continue(state, domain):

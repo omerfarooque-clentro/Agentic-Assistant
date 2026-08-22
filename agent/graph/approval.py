@@ -69,19 +69,23 @@ def approval_node(state):
     if is_approved:
         sent_tool_call_ids.add(tool_id)
 
-    approval_status = "approved" if is_approved else "rejected"
-    approval_message = AIMessage(
-        content=(
-            f"Human approval {approval_status} for {domain} action '{tool_name}'."
-        )
-    )
-
-    return {
-        "messages": [approval_message],
+    decision_details = decision if isinstance(decision, dict) else {}
+    state_update = {
         "approved": is_approved,
-        "details": {**decision, "domain": domain},
+        "details": {**decision_details, "domain": domain},
         "is_re_send": is_duplicate and is_approved,
     }
+
+    # Keep the original tool-call AI message as the latest message on approval,
+    # otherwise ToolNode has no pending tool call to execute.
+    if not is_approved:
+        state_update["messages"] = [
+            AIMessage(
+                content=f"Human approval rejected for {domain} action '{tool_name}'."
+            )
+        ]
+
+    return state_update
 
 
 def approval_result(state):

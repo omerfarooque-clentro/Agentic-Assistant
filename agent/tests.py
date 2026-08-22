@@ -1,7 +1,7 @@
 from django.test import TestCase
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from .nodes import MAX_TOOL_MESSAGE_CHARS, messages_for_llm
+from agent.llm.messages import MAX_TOOL_MESSAGE_CHARS, messages_for_llm
 
 
 class MessagesForLlmTests(TestCase):

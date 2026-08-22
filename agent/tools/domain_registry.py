@@ -50,11 +50,12 @@ TOOL_NAME_TO_DOMAIN = {
     for tool_name in tool_names
 }
 
-
+#fallback domain for tools that don't have a specific mapping
 def get_domain_for_service(service):
     return SERVICE_TO_DOMAIN.get(service, service)
 
 
 def resolve_tool_domain(service, tool_name):
     fallback_domain = get_domain_for_service(service)
-    return TOOL_NAME_TO_DOMAIN.get(tool_name, fallback_domain)
+    domain = TOOL_NAME_TO_DOMAIN.get(tool_name, fallback_domain)
+    return domain

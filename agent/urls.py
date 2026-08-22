@@ -1,7 +1,7 @@
 from django.urls import path
 
 from core import views
-from agent import integration_views
+from agent.integrations import views as integration_views
 
 urlpatterns = [
     path("thread/<int:thread_id>/chat/", views.agent_chat_view, name="chat-agent"),

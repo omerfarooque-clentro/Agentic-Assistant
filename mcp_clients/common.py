@@ -2,6 +2,7 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
+import httpx
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 
@@ -19,7 +20,12 @@ def create_client(name: str, config: Mapping[str, Any]) -> MultiServerMCPClient:
 
 async def get_tools(name: str, config: Mapping[str, Any]) -> list[Any]:
     """Connect to one MCP server and return its sanitized LangChain tools."""
-    tools = await create_client(name, config).get_tools()
+ 
+    try:
+        tools = await create_client(name, config).get_tools()
+    except httpx.HTTPStatusError as error:
+        raise
+   # print("MCP tools loaded:", {"service": name, "tools:": [tool.name for tool in tools]})
     return tools
 
 
@@ -76,6 +82,7 @@ def sheets_config(integration=None) -> dict[str, Any]:
 
 def slack_config(integration=None) -> dict[str, Any]:
     access_token = getattr(integration, "access_token", None)
+    
     return {
         "url": os.getenv("SLACK_MCP_URL", "https://mcp.slack.com/mcp"),
         "transport": "streamable_http",
@@ -92,6 +99,7 @@ def tavily_config(integration) -> dict[str, Any]:
     api_key = os.getenv("TAVILY_API_KEY")
     if api_key:
         config["url"] = f"{config['url']}?tavilyApiKey={api_key}"
+    
     return config
 
 

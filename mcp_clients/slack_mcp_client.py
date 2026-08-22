@@ -6,6 +6,7 @@ from mcp_clients.common import print_tools, slack_config
 
 async def get_tools():
 	"""Return Slack tools from the Slack MCP server."""
+	print("available slack config", slack_config())
 	return await load_tools("slack", slack_config())
 
 
