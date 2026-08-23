@@ -13,6 +13,10 @@ action (send an email, post to Slack, edit a doc/sheet, create a calendar
 event, etc.) actually executes.
 
 ---
+# snapshot
+<img width="1366" height="612" alt="image" src="https://github.com/user-attachments/assets/e7875f9b-f9bb-4de3-8bd5-2f78ec4db2fd" />
+
+---
 
 ## Table of contents
 
