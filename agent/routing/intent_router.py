@@ -19,21 +19,21 @@ DATA_FILE = os.path.join(os.path.dirname(__file__), "data", "intent_data.CSV")
 # Exact MCP tool names selected for each logical intent. These are intersected
 # with the tools actually returned by the user's enabled MCP integrations.
 ACTION_MCP_TOOL_NAMES = {
-    "email.search": {"search_gmail_messages"},
+    "email.search": {"search_gmail_messages", "get_gmail_message_content", "get_gmail_thread_content", "send_gmail_message"},
     "email.send": {"send_gmail_message"},
-    "email.read": {"get_gmail_message_content", "get_gmail_thread_content"},
+    "email.read": {"get_gmail_message_content", "get_gmail_thread_content", "search_gmail_messages", "send_gmail_message"},
     "email.draft": {"draft_gmail_message"},
     "email.forward": {"send_gmail_message"},
     "calendar.create": {"manage_event"},
-    "calendar.search": {"get_events"},
-    "calendar.update": {"manage_event"},
-    "calendar.delete": {"manage_event"},
+    "calendar.search": {"get_events", "manage_event"},
+    "calendar.update": {"manage_event", "get_events"},
+    "calendar.delete": {"manage_event", "get_events"},
     "calendar.availability": {"query_freebusy"},
     "docs.read": {"get_doc_content", "get_doc_as_markdown"},
     "docs.create": {"create_doc"},
     "docs.update": {"modify_doc_text", "find_and_replace_doc", "batch_update_doc"},
     "docs.summarize": {"get_doc_content", "get_doc_as_markdown"},
-    "sheets.read": {"read_sheet_values", "get_spreadsheet_info"},
+    "sheets.read": {"read_sheet_values", "get_spreadsheet_info", },
     "sheets.write": {"modify_sheet_values", "append_table_rows"},
     "sheets.update": {"modify_sheet_values", "append_table_rows"},
     "slack.send": {
@@ -43,6 +43,8 @@ ACTION_MCP_TOOL_NAMES = {
         "slack_add_reaction",
         "slack_create_canvas",
         "slack_update_canvas",
+        "slack_search_public_and_private",
+        "slack_search_users"
     },
     "slack.search": {
         "slack_search_public",
@@ -74,6 +76,9 @@ ACTION_MCP_TOOL_NAMES = {
             "read_sheet_values",
             "get_spreadsheet_info",
             "get_events",
+            "tavily_search",
+            "search_custom",
+            "draft_gmail_message",
     },
 }
 
@@ -140,6 +145,7 @@ def route_intent(message: str, available_domains: set[str]) -> RoutingResult:
         }
 
     message = query['query']
+    print(f"Routing message: {message}")
 
     candidates = get_candidate_intents(message, available_domains=available_domains, top_k=2)
 

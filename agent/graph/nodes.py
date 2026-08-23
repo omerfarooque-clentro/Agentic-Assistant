@@ -51,23 +51,8 @@ def scoped_should_continue(state, domain):
         for tool_call in last_message.tool_calls:
             if tool_call["name"] in APPROVAL_TOOL_NAMES:
                 return "approval"
-
+             
     return "tools"
-
-
-
-
-def scoped_after_tools(state, domain):
-    last_message = state["messages"][-1]
-
-    if (
-        domain in APPROVAL_DOMAINS
-        and getattr(last_message, "name", None) in APPROVAL_TOOL_NAMES
-    ):
-        return "end"
-
-    return "agent"
-
 
 
 def thread_naming_node(state: AgentState):
@@ -104,3 +89,6 @@ def thread_naming_node(state: AgentState):
     thread.save(update_fields=["name"])
 
     return {}
+
+
+

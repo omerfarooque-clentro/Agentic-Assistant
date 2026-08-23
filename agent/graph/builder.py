@@ -13,7 +13,6 @@ from agent.graph.nodes import (
     agent_node,
     nlp_node,
     supervisor_router,
-    scoped_after_tools,
     scoped_should_continue,
     thread_naming_node,
 )
@@ -68,7 +67,6 @@ async def close_checkpointer():
 
 
 DOMAINS = ["email", "calendar", "docs", "sheets", "slack", "research"]
-    
 def create_graph(tools_groups):
     if memory is None:
         raise RuntimeError("Checkpointer not set up. Call setup_checkpointer() first.")
@@ -78,7 +76,7 @@ def create_graph(tools_groups):
     available_domains = set(tools_groups) 
 
     graph.add_node("nlp", lambda state: nlp_node(state, available_domains))
-
+    
     graph.add_edge(START, "nlp")
 
     graph.add_conditional_edges(
@@ -103,6 +101,7 @@ def create_graph(tools_groups):
     graph.add_node("thread_naming", thread_naming_node)
     graph.add_edge("thread_naming", END)
 
+
     approval_domains = [
         domain for domain in TOOL_NAMES_BY_DOMAIN if tools_groups.get(domain)
     ]
@@ -120,7 +119,11 @@ def create_graph(tools_groups):
                     if tool.name in allowed_names
                 ]
                 if not selected_tools:
-                    return agent_node(state, llm)
+                    raise RuntimeError(
+                        f"No tools selected for intent={state.get('intent')!r} "
+                        f"in domain={domain!r}"
+                    )
+    
                 return agent_node(
                     state,
                     bind_tools_with_fallback(selected_tools),
@@ -129,13 +132,14 @@ def create_graph(tools_groups):
         
         agent_name = f"{domain}_agent"
         tools_name = f"{domain}_tools"
+
         graph.add_node(agent_name, make_agent(domain_tools))
         graph.add_node(tools_name, ToolNode(domain_tools, handle_tool_errors=True))
 
         route_map = {"tools": tools_name, "end": "thread_naming"}
         
         if domain in approval_domains:
-            route_map["approval"] = "approval" 
+            route_map["approval"] = "approval"
 
         graph.add_conditional_edges(
             agent_name,
@@ -143,16 +147,16 @@ def create_graph(tools_groups):
             route_map,
         )
         
-        graph.add_conditional_edges(
-            tools_name,
-            lambda state, domain=domain: scoped_after_tools(state, domain),
-            {
-                "agent": agent_name,
-                "end": "thread_naming",
-            },
+        graph.add_edge(tools_name, agent_name)
 
-        )
-
+    print("approval_domains:", approval_domains)
+    print(
+        "approval route map:",
+        {
+            **{domain: f"{domain}_tools" for domain in approval_domains},
+            "cancel": "thread_naming",
+        },
+    ) 
     if approval_domains:
         graph.add_node("approval", approval_node)
 
