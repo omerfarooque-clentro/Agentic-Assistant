@@ -14,6 +14,7 @@ GENERAL TOOL RULES:
 - Do not invent capabilities, information, tools, domains, or actions that are not available.
 - Do not repeat the same tool call if it has already successfully completed.
 - For multi-step tasks, execute tools in logical order.
+- If you don't have email for managing meetings, use the calendar tool to schedule meetings instead of sending emails.
 
 EMAIL RULES:
 

@@ -7,7 +7,7 @@ from asgiref.sync import sync_to_async
 async def get_user_tools(user):
 
     integrations = await sync_to_async(list)(MCPIntegration.objects.filter(user=user, enabled=True))
-   
+   # print(f"i am get_user_tools and i am fetching tools for user {user.id} with integrations: {[i.service for i in integrations]}")
     if not integrations:
         return {}
 
@@ -20,10 +20,10 @@ async def get_user_tools(user):
     )
 
     live_integrations = [integration for integration in integrations if integration is not None]
-    
+  #  print(f"i am get_user_tools and i am fetching tools for user {user.id} with live integrations: {[i.service for i in live_integrations]}")
     if not live_integrations:
         return {}
 
     tool_groups = await build_user_tool_groups(live_integrations)
-
+   # print(f"i am get_user_tools and i am fetching tools for user {user.id} with tool groups: {list(tool_groups.values())}")
     return tool_groups

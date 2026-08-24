@@ -1,36 +1,76 @@
 (() => {
+  // Decode a JWT's exp claim without a library — used to refresh ahead of
+  // expiry instead of waiting for a request to fail with 401 first.
+  const decodeJwtExpiryMs = token => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    } catch { return null; }
+  };
+  const isExpiringSoon = (token, bufferMs = 15000) => {
+    const expiry = token && decodeJwtExpiryMs(token);
+    return expiry ? expiry - Date.now() < bufferMs : false;
+  };
+
+  // Multiple in-flight requests (e.g. loading threads + integrations at once,
+  // or a background poll overlapping a send) can all see an expired/expiring
+  // token at the same moment. Without de-duping, each one fires its own
+  // refresh call; sharing a single in-flight promise means only one refresh
+  // ever happens at a time and everyone else just awaits its result.
+  let refreshInFlight = null;
+  const refreshAccessToken = () => {
+    if (refreshInFlight) return refreshInFlight;
+    const refreshToken = localStorage.getItem('ops_refresh');
+    if (!refreshToken) return Promise.resolve(false);
+    refreshInFlight = (async () => {
+      try {
+        const response = await fetch('/api/token/refresh/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh: refreshToken })
+        });
+        if (!response.ok) return false;
+        const data = await response.json();
+        localStorage.setItem('ops_access', data.access);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    return refreshInFlight.finally(() => { refreshInFlight = null; });
+  };
+
+  const forceSignOut = () => {
+    // Session can't be recovered — send the user back to sign in instead of
+    // leaving the workspace showing a stale/blank thread list and history.
+    // Preserve anything they were mid-typing so it isn't silently lost.
+    const draftInput = document.querySelector('#message-input');
+    if (draftInput && draftInput.value.trim()) sessionStorage.setItem('ops_draft', draftInput.value);
+    localStorage.removeItem('ops_access');
+    localStorage.removeItem('ops_refresh');
+    localStorage.removeItem('ops_user');
+    window.location = '/signin/';
+  };
+
   const api = async (path, options = {}) => {
     const request = async () => {
-      const token = localStorage.getItem('ops_access');
+      let token = localStorage.getItem('ops_access');
+      if (token && !options.public && isExpiringSoon(token)) {
+        // Refresh ahead of time so an action in progress (like sending a
+        // message) doesn't have to fail once before it can succeed.
+        await refreshAccessToken();
+        token = localStorage.getItem('ops_access');
+      }
       const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
       if (token && !options.public) headers.Authorization = `Bearer ${token}`;
       return fetch(path, { ...options, headers });
     };
     let response = await request();
     if (response.status === 401 && !options.skipRefresh) {
-      const refresh = localStorage.getItem('ops_refresh');
-      if (refresh) {
-        const refreshResponse = await fetch('/api/token/refresh/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh })
-        });
-        if (refreshResponse.ok) {
-          const refreshData = await refreshResponse.json();
-          localStorage.setItem('ops_access', refreshData.access);
-          response = await request();
-        } else {
-          localStorage.removeItem('ops_access');
-          localStorage.removeItem('ops_refresh');
-        }
-      }
+      const refreshed = await refreshAccessToken();
+      if (refreshed) response = await request();
       if (response.status === 401) {
-        // Session can't be recovered — send the user back to sign in instead of
-        // leaving the workspace showing a stale/blank thread list and history.
-        localStorage.removeItem('ops_access');
-        localStorage.removeItem('ops_refresh');
-        localStorage.removeItem('ops_user');
-        window.location = '/signin/';
+        forceSignOut();
         throw new Error('Session expired. Redirecting to sign in...');
       }
     }
@@ -40,6 +80,19 @@
   };
   const formData = form => Object.fromEntries(new FormData(form).entries());
   const showError = error => { const target = document.querySelector('#form-error'); if (target) target.textContent = error.message; };
+
+  const MAX_COMPOSER_HEIGHT = 200;
+  // Grows the textarea to fit its content (up to a cap, then scrolls
+  // internally) instead of staying a fixed one-line box with a scrollbar.
+  const autoGrowTextarea = el => {
+    if (!el) return;
+    el.style.height = 'auto';
+    const next = Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
+  };
+  const truncateText = (text, max) => (typeof text === 'string' && text.length > max ? `${text.slice(0, max)}…` : text);
+  const safeText = value => (value === null || value === undefined ? '' : String(value));
 
   const APPROVAL_FIELD_LABELS = { to: 'To', subject: 'Subject', body: 'Body', channel: 'Channel', message: 'Message' };
   const SKIPPED_APPROVAL_KEYS = new Set(['type', 'tool_name', 'is_duplicate', 'domain', 'message', 'args']);
@@ -111,6 +164,53 @@
     return { title: titleLine ? titleLine.replace(/\*\*/g, '').trim() : null, bullets, rest };
   };
 
+  // Multi-day replies (e.g. "7 day forecast") come back as a series of
+  // day headers ("Monday", "Day 3", "Sat 14 Jun", ...) each followed by its
+  // own stats. The single-reading card above assumes there's exactly one
+  // temperature in the whole message, so on a forecast it dumps every day's
+  // bullets into one flat list — that's the giant, broken-looking card.
+  // Detect that shape up front and render a compact horizontal day strip
+  // instead; if the shape isn't confidently multi-day, this returns null and
+  // the normal single-card / plain-markdown path is used, so nothing here
+  // can make an ordinary reply look worse.
+  const DAY_HEADER_RE = /^\s*#{0,3}\s*\*{0,2}\s*((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*|Day\s*\d+|Today|Tomorrow|[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?)\s*\*{0,2}\s*:?\s*$/;
+  const parseMultiDayForecast = text => {
+    const lines = text.split(/\r?\n/);
+    const sections = [];
+    let current = null;
+    lines.forEach(line => {
+      const headerMatch = line.match(DAY_HEADER_RE);
+      if (headerMatch) {
+        current = { day: headerMatch[1].replace(/\*/g, '').trim(), lines: [] };
+        sections.push(current);
+      } else if (current) {
+        current.lines.push(line);
+      }
+    });
+    if (sections.length < 2) return null;
+    const days = sections.map(section => {
+      const bodyText = section.lines.join('\n');
+      const tempMatch = bodyText.match(/(-?\d{1,3})\s?°\s?([CF])\b/);
+      if (!tempMatch) return null;
+      const lower = bodyText.toLowerCase();
+      const condition = WEATHER_CONDITIONS.find(word => lower.includes(word));
+      return { day: section.day, temp: tempMatch[1], unit: tempMatch[2], condition: condition ? titleCase(condition) : null };
+    });
+    if (days.some(day => !day)) return null; // heuristic wasn't confident for every section — fall back safely
+    return days;
+  };
+
+  const renderForecastStrip = days => `
+    <div class="forecast-strip">
+      ${days.map(d => `
+        <div class="forecast-day">
+          <span class="forecast-day-label">${escapeHtml(d.day)}</span>
+          <span class="forecast-icon">${weatherIcon(d.condition)}</span>
+          <span class="forecast-temp">${d.temp}°${d.unit}</span>
+          ${d.condition ? `<span class="forecast-condition">${escapeHtml(d.condition)}</span>` : ''}
+        </div>`).join('')}
+    </div>`;
+
   const formatEventTime = value => {
     if (!value) return '';
     const date = new Date(value);
@@ -137,14 +237,45 @@
       </div>`;
   };
 
+  const renderEmailApproval = args => {
+    const to = Array.isArray(args.to) ? args.to : (args.to ? [args.to] : []);
+    return `
+      <div class="email-approval">
+        <div class="email-approval-row">
+          <span class="email-approval-label">To</span>
+          <span class="email-approval-value">${to.length ? to.map(a => `<span class="chip">${escapeHtml(a)}</span>`).join('') : '<span class="empty-value">—</span>'}</span>
+        </div>
+        ${args.subject ? `<div class="email-approval-subject">${escapeHtml(args.subject)}</div>` : ''}
+        ${args.body ? `<div class="email-approval-body">${escapeHtml(truncateText(args.body, 800))}</div>` : ''}
+      </div>`;
+  };
+
+  const renderSlackApproval = args => `
+    <div class="slack-approval">
+      ${args.channel ? `<span class="chip chip-slack">#${escapeHtml(String(args.channel).replace(/^#/, ''))}</span>` : ''}
+      ${args.message ? `<div class="slack-approval-bubble">${escapeHtml(truncateText(args.message, 800))}</div>` : ''}
+    </div>`;
+
+  // Docs/Sheets and any tool we don't have a dedicated layout for fall back
+  // to a generic field list — but values can be objects/arrays (not just
+  // strings) or very long doc/cell content, so stringify and cap them
+  // instead of letting a giant or "[object Object]" value break the card.
+  const stringifyApprovalValue = value => {
+    if (Array.isArray(value)) return value.map(v => (v && typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
+    if (value && typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
   const renderApprovalBody = approval => {
     const args = approval.args || {};
     if (approval.domain === 'calendar' && (args.summary || args.start_time)) return renderCalendarApproval(args);
+    if (approval.domain === 'email' && (args.to || args.subject || args.body)) return renderEmailApproval(args);
+    if (approval.domain === 'slack' && (args.channel || args.message)) return renderSlackApproval(args);
     const fields = Object.entries(args)
       .filter(([key, value]) => value != null && value !== '' && !SKIPPED_APPROVAL_KEYS.has(key))
-      .map(([key, value]) => `<dt>${APPROVAL_FIELD_LABELS[key] || titleCase(key)}</dt><dd>${escapeHtml(Array.isArray(value) ? value.join(', ') : String(value))}</dd>`)
+      .map(([key, value]) => `<dt>${APPROVAL_FIELD_LABELS[key] || titleCase(key)}</dt><dd>${escapeHtml(truncateText(stringifyApprovalValue(value), 600))}</dd>`)
       .join('');
-    return `<dl class="approval-fields">${fields}</dl>`;
+    return fields ? `<dl class="approval-fields">${fields}</dl>` : '';
   };
 
   window.PersonalOps = {
@@ -192,7 +323,7 @@
     },
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
-      const state = { threadId: null, initialThreadPicked: false, connectedServices: new Set(), messageCount: 0 };
+      const state = { threadId: null, initialThreadPicked: false, connectedServices: new Set(), messageCount: 0, sending: false, pendingApproval: null };
       const transcript = document.querySelector('#transcript');
       const input = document.querySelector('#message-input');
       const title = document.querySelector('#thread-title');
@@ -216,11 +347,24 @@
       const hideBanner = () => banner.classList.add('hidden');
       bannerDismiss.onclick = hideBanner;
 
-      const updateComposerNote = () => {
-        const count = state.connectedServices.size;
-        composerNote.textContent = count
-          ? `Enter to send • ${count} tool${count === 1 ? '' : 's'} connected`
-          : 'Enter to send • No tools connected yet — try Gmail first';
+      // Single source of truth for whether the composer should accept input —
+      // it must stay locked while a message is sending, while an approval is
+      // still pending (a new chat message would race the paused, interrupted
+      // graph run), and while the browser is offline.
+      const refreshComposerState = () => {
+        const busy = state.sending || !!state.pendingApproval || !navigator.onLine;
+        input.disabled = busy;
+        sendButton.disabled = busy;
+        if (!navigator.onLine) {
+          composerNote.textContent = "You're offline — reconnect to send messages";
+        } else if (state.pendingApproval) {
+          composerNote.textContent = 'Review the action above before continuing';
+        } else {
+          const count = state.connectedServices.size;
+          composerNote.textContent = count
+            ? `Enter to send • ${count} tool${count === 1 ? '' : 's'} connected`
+            : 'Enter to send • No tools connected yet — try Gmail first';
+        }
       };
 
       const loadIntegrations = async () => {
@@ -234,7 +378,7 @@
             if (dot) dot.classList.toggle('dot-on', connected), dot.classList.toggle('dot-off', !connected);
             if (stateEl) { stateEl.textContent = connected ? 'Connected' : 'Connect'; stateEl.classList.toggle('off', !connected); }
           });
-          updateComposerNote();
+          refreshComposerState();
         } catch (error) { console.warn('Could not load integrations', error); }
       };
       document.querySelectorAll('[data-integration]').forEach(button => button.onclick = async () => { const service = button.dataset.integration; try { const data = await api(`/api/integrations/${service}/connect/`); window.location.href = data.authorization_url; } catch (error) { showBanner(error.message); } });
@@ -244,12 +388,22 @@
         item.className = `message ${role} ${pending ? 'pending' : ''}`;
         item.innerHTML = `<span class="message-label">${role === 'user' ? 'You' : 'Ops agent'}</span><div class="message-content"></div>`;
         const body = item.querySelector('.message-content');
+        const text = safeText(content); // tool/message payloads aren't guaranteed to be strings
         if (pending || role === 'user') {
-          body.textContent = content;
+          body.textContent = text;
         } else {
-          const report = parseWeatherReport(content);
-          const weather = !report ? detectWeather(content) : null;
-          if (report) {
+          const forecast = parseMultiDayForecast(text);
+          const report = !forecast ? parseWeatherReport(text) : null;
+          const weather = !forecast && !report ? detectWeather(text) : null;
+          if (forecast) {
+            const strip = document.createElement('div');
+            strip.innerHTML = renderForecastStrip(forecast);
+            body.appendChild(strip);
+            const textWrap = document.createElement('div');
+            textWrap.className = 'markdown-body';
+            textWrap.innerHTML = renderMarkdown(text);
+            body.appendChild(textWrap);
+          } else if (report) {
             const tempBullet = report.bullets.find(b => /temp/i.test(b.label));
             const conditionBullet = report.bullets.find(b => /condition/i.test(b.label));
             const tempMatch = tempBullet && tempBullet.value.match(/(-?\d{1,3})\s?°\s?([CF])/);
@@ -276,7 +430,7 @@
             }
             const textWrap = document.createElement('div');
             textWrap.className = 'markdown-body';
-            textWrap.innerHTML = renderMarkdown(content);
+            textWrap.innerHTML = renderMarkdown(text);
             body.appendChild(textWrap);
           }
         }
@@ -299,33 +453,43 @@
             <span class="eyebrow" style="color:#a1806f">${meta.icon} Waiting on you — ${meta.label}</span>
             <h3>${escapeHtml(heading)}</h3>
             ${renderApprovalBody(approval || {})}
+            <div class="approval-status hidden" aria-live="polite"></div>
           </div>
           <div class="approval-actions">
-            <button class="btn btn-primary">Approve</button>
-            <button class="btn btn-ghost">Cancel</button>
+            <button class="btn btn-primary" data-action="approve">Approve</button>
+            <button class="btn btn-ghost" data-action="cancel">Cancel</button>
           </div>`;
-        card.querySelector('.btn-primary').onclick = () => approve(true, card);
-        card.querySelector('.btn-ghost').onclick = () => approve(false, card);
+        card.querySelector('[data-action="approve"]').onclick = () => approve(true, card);
+        card.querySelector('[data-action="cancel"]').onclick = () => approve(false, card);
         transcript.appendChild(card);
         transcript.scrollTop = transcript.scrollHeight;
+        // Lock the composer: a new chat message would race the graph run,
+        // which is paused mid-execution waiting on this exact decision.
+        state.pendingApproval = card;
+        refreshComposerState();
         return card;
       };
-
-      const setComposerBusy = busy => { input.disabled = busy; sendButton.disabled = busy; };
 
       const renderThreadSkeleton = () => { threadList.innerHTML = '<div class="thread-skeleton"><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div></div>'; };
 
       const selectThread = async id => {
         state.threadId = id;
         state.messageCount = 0;
+        state.pendingApproval = null;
+        refreshComposerState();
         title.textContent = 'Thread ' + id;
         document.querySelectorAll('.thread-item').forEach(item => item.classList.toggle('active', item.dataset.id == id));
         transcript.innerHTML = '<div class="loading-line">Loading thread history...</div>';
         try {
-          const messages = await api(`/api/thread/${encodeURIComponent(id)}/messages/`);
+          const data = await api(`/api/thread/${encodeURIComponent(id)}/messages/`);
+          const messages = Array.isArray(data) ? data : data.results || [];
           transcript.innerHTML = '';
           state.messageCount = 0;
-          (Array.isArray(messages) ? messages : messages.results || []).forEach(message => addMessage(message.role === 'assistant' ? 'agent' : message.role, message.content));
+          if (!messages.length) {
+            transcript.innerHTML = '<div class="empty-state empty-state-thread"><div class="empty-orbit">+</div><h2>Nothing here yet</h2><p>Send a message below to get this thread started.</p></div>';
+          } else {
+            messages.forEach(message => addMessage(message.role === 'assistant' ? 'agent' : message.role, message.content));
+          }
         } catch (error) {
           transcript.innerHTML = '';
           showBanner("Couldn't load that thread.", () => selectThread(id));
@@ -374,7 +538,9 @@
       };
 
       const send = async message => {
-        setComposerBusy(true);
+        if (state.sending || state.pendingApproval) return; // ignore double-submits and racing an open approval
+        state.sending = true;
+        refreshComposerState();
         const pending = addMessage('agent', 'Thinking through that now...', true);
         try {
           const endpoint = state.threadId ? `/api/thread/${state.threadId}/chat/` : '/api/chat/';
@@ -388,31 +554,67 @@
           pending.remove();
           showBanner("Couldn't reach the server just now.", () => send(message));
         } finally {
-          setComposerBusy(false);
+          state.sending = false;
+          refreshComposerState();
           input.focus();
         }
       };
 
-      document.querySelector('#chat-form').addEventListener('submit', event => { event.preventDefault(); const message = input.value.trim(); if (!message) return; addMessage('user', message); input.value = ''; send(message); });
+      document.querySelector('#chat-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const message = input.value.trim();
+        if (!message || state.sending || state.pendingApproval) return;
+        addMessage('user', message);
+        input.value = '';
+        autoGrowTextarea(input);
+        send(message);
+      });
+      input.addEventListener('input', () => autoGrowTextarea(input));
       input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.querySelector('#chat-form').requestSubmit(); } });
-      document.querySelectorAll('[data-prompt]').forEach(button => button.onclick = () => { input.value = button.dataset.prompt; input.focus(); });
-      document.querySelector('#new-thread').onclick = () => { state.threadId = null; state.messageCount = 0; title.textContent = 'Good morning.'; transcript.innerHTML = ''; document.querySelectorAll('.thread-item').forEach(item => item.classList.remove('active')); input.focus(); };
+      document.querySelectorAll('[data-prompt]').forEach(button => button.onclick = () => { input.value = button.dataset.prompt; autoGrowTextarea(input); input.focus(); });
+      document.querySelector('#new-thread').onclick = () => {
+        if (state.pendingApproval) return; // don't abandon an open approval mid-decision
+        state.threadId = null;
+        state.messageCount = 0;
+        title.textContent = 'Good morning.';
+        transcript.innerHTML = '';
+        document.querySelectorAll('.thread-item').forEach(item => item.classList.remove('active'));
+        input.focus();
+      };
       document.querySelector('#logout').onclick = () => { localStorage.removeItem('ops_access'); localStorage.removeItem('ops_refresh'); localStorage.removeItem('ops_user'); window.location = '/signin/'; };
 
       async function approve(value, card) {
         const actions = card.querySelector('.approval-actions');
+        const status = card.querySelector('.approval-status');
         actions.querySelectorAll('button').forEach(button => button.disabled = true);
+        card.classList.add('is-busy');
+        status.classList.remove('hidden', 'status-error', 'status-success');
+        status.innerHTML = `<span class="spinner"></span> ${value ? 'Approving' : 'Cancelling'}…`;
         try {
           const data = await api(`/api/thread/${state.threadId}/action-email/`, { method: 'POST', body: JSON.stringify({ approved: value }) });
-          card.remove();
+          card.classList.remove('is-busy');
+          status.classList.add('status-success');
+          status.textContent = value ? '✓ Approved — sending now.' : '✓ Cancelled.';
+          state.pendingApproval = null;
+          refreshComposerState();
           addMessage('agent', data.result || (value ? 'Approved — sending now.' : 'Cancelled.'));
+          setTimeout(() => card.remove(), 600);
         } catch (error) {
+          card.classList.remove('is-busy');
           actions.querySelectorAll('button').forEach(button => button.disabled = false);
-          showBanner("Couldn't record your decision.", () => approve(value, card));
+          status.classList.add('status-error');
+          status.textContent = `Couldn't record your decision — ${error.message}`;
         }
       }
 
+      window.addEventListener('online', refreshComposerState);
+      window.addEventListener('offline', refreshComposerState);
+
       document.querySelector('#clock').textContent = new Intl.DateTimeFormat([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date());
+      autoGrowTextarea(input);
+      // Restore a message the user was mid-typing if a session refresh forced a redirect.
+      const savedDraft = sessionStorage.getItem('ops_draft');
+      if (savedDraft) { sessionStorage.removeItem('ops_draft'); input.value = savedDraft; autoGrowTextarea(input); }
       loadIntegrations();
       loadThreads({ selectFirst: true });
     }

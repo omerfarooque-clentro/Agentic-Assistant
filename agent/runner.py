@@ -33,14 +33,11 @@ async def run_agent(message: str, thread_id: int, user):
     state = await app.aget_state(config)
 
     if state.interrupts:
-        print(f"i am run_agent for thread {thread_id} and i am returning status approval_required: {state.interrupts[0].value}")
         return {
             "status": "approval_required",
             "thread_id": thread_id,
             "interrupt": state.interrupts[0].value,
         }
-
-    print(f"i am run_agent for thread {thread_id} and i am returning status completed with response: {result['messages'][-1].content!r}")
     return {
         "status": "completed",
         "result": result,

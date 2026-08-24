@@ -66,20 +66,6 @@ ACTION_MCP_TOOL_NAMES = {
     "research.search": {"tavily_search", "search_custom"},
     "general": {"tavily_search", "search_custom"},
     "out_of_scope": set(),
-    "multi": {
-         "tavily_search",
-            "search_gmail_messages",
-            "get_gmail_message_content",
-            "get_gmail_thread_content",
-            "get_doc_content",
-            "get_doc_as_markdown",
-            "read_sheet_values",
-            "get_spreadsheet_info",
-            "get_events",
-            "tavily_search",
-            "search_custom",
-            "draft_gmail_message",
-    },
 }
 
 training_data = pd.read_csv(DATA_FILE).dropna(subset=["text", "intent"])

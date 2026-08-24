@@ -19,6 +19,20 @@ from agent.models import MCPIntegration
 
 User = get_user_model()
 
+def extract_text_content(message_content):
+    """Extract string content regardless of provider format."""
+    if isinstance(message_content, str):
+        return message_content
+    elif isinstance(message_content, list):
+        # Extract text from block lists returned by Gemini/Claude
+        text_parts = [
+            block.get("text", "") 
+            for block in message_content 
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        return " ".join(text_parts)
+    return str(message_content)
+ 
 
 @sync_to_async
 def authenticate_api_request(request):
@@ -172,13 +186,13 @@ async def agent_chat_view(request, thread_id):
     await Message.objects.acreate(
         thread=thread,
         role="agent",
-        content=result["result"]["messages"][-1].content,
+        content=extract_text_content(result["result"]["messages"][-1].content),
     )
 
     return JsonResponse({
             "thread_id": int(thread_id),
             "status": "completed",
-            "response": result["result"]["messages"][-1].content,
+            "response": extract_text_content(result["result"]["messages"][-1].content),
         })
 
  
@@ -236,7 +250,8 @@ async def approve_email_view(request, thread_id):
 
     print(f"i am approve_email_view and i resumed thread {thread.id} with final response: {result['messages'][-1].content!r}")
 
+    message = extract_text_content(result["messages"][-1].content)
     return JsonResponse({
-        "result": result["messages"][-1].content,
+        "result": message,
         "thread_id": int(thread.id),
     })
