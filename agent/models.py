@@ -1,5 +1,6 @@
 from django.db import models
- 
+from encrypted_model_fields.fields import EncryptedTextField
+
 
 # Create your models here.
 class MCPIntegration(models.Model):
@@ -11,8 +12,8 @@ class MCPIntegration(models.Model):
 
     service = models.CharField(max_length=50)
 
-    access_token = models.TextField()
-    refresh_token = models.TextField(
+    access_token = EncryptedTextField()
+    refresh_token = EncryptedTextField(
         blank=True,
         null=True,
     )

@@ -155,7 +155,7 @@ async def agent_chat_view(request, thread_id):
         return JsonResponse(serializer.errors, status=400)
 
     message = serializer.validated_data["message"]
-
+    formatted_message = f"{user.username}: {message}"
     try:
         thread = await Thread.objects.aget(id=thread_id, user=user)
     except Thread.DoesNotExist:
@@ -164,13 +164,12 @@ async def agent_chat_view(request, thread_id):
     await Message.objects.acreate(
         thread=thread,
         role="user",
-        content=message,
+        content=formatted_message,
     )
 
-    print(f"i am agent_chat_view continuing thread {thread_id} for user {user.id} with message: {message!r}")
 
     result = await run_agent(
-        message=message,
+        message=formatted_message,
         thread_id=int(thread.id),
         user=user,
     )
