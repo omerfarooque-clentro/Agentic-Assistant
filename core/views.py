@@ -164,7 +164,7 @@ async def agent_chat_view(request, thread_id):
     await Message.objects.acreate(
         thread=thread,
         role="user",
-        content=formatted_message,
+        content=message,
     )
 
 
