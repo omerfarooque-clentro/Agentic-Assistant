@@ -17,6 +17,14 @@ class AuthURLTests(SimpleTestCase):
         match = resolve("/login/")
         self.assertEqual(match.func.view_class, LoginView)
 
+    def test_tool_approval_url_resolves(self):
+        match = resolve("/api/thread/123/tool-approval/")
+        self.assertEqual(match.view_name, "approve-email")
+
+    def test_delete_thread_url_resolves(self):
+        match = resolve("/api/thread/123/delete/")
+        self.assertEqual(match.view_name, "delete-thread")
+
 
 class AuthSerializerTests(TestCase):
     def test_login_serializer_accepts_valid_credentials(self):

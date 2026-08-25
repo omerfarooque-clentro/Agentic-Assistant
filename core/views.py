@@ -16,6 +16,7 @@ from conversations.models import Thread, Message
 from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
 from agent.models import MCPIntegration
+from django.http import StreamingHttpResponse
 
 User = get_user_model()
 
@@ -101,44 +102,47 @@ async def new_chat_view(request):
         return JsonResponse(serializer.errors, status=400)
 
     message = serializer.validated_data["message"]
+    formatted_message = f"{user.username}: {message}"
+    thread = await Thread.objects.acreate(user=user, name="New Thread")
+    await Message.objects.acreate(thread=thread, role="user", content=message)
+    
 
-    thread = await Thread.objects.acreate(
-        user=user,
-        name="New Thread",
-    )
-    await Message.objects.acreate(
-        thread=thread,
-        role="user",
-        content=message,
-    )
+    async def event_stream():
+        try:
+            async for chunk in run_agent(message=formatted_message, thread_id=thread.id, user=user):
+                chunk_type = chunk["type"]
+                
+                if chunk_type == "status":
+                    # Pass through status events from the backend with their message
+                    yield f"data: {json.dumps({'type': 'status', 'status': chunk.get('status'), 'message': chunk.get('message')})}\n\n"
+                    continue
+                if chunk_type == "token":
+                    yield f"data: {json.dumps({'type': 'token', 'token': chunk['token']})}\n\n"
+                    continue
+                if chunk_type == "approval_required":
+                    yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt']})}\n\n"
+                    return
+                if chunk_type == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'message': chunk['message']})}\n\n"
+                    return
+                if chunk_type != "completed":
+                    print(f"new_chat event_stream: ignoring unexpected chunk type={chunk_type} for thread {thread.id}")
+                    continue
 
-    print(f"i am new_chat_view creating thread {thread.id} for user {user.id} with message: {message!r}")
+                messages = chunk["result"].get("messages", [])
+                final_content = extract_text_content(messages[-1].content) if messages else ""
+                
+                await Message.objects.acreate(thread=thread, role="agent", content=final_content)
+                
+                yield f"data: {json.dumps({'type': 'completed', 'response': final_content})}\n\n"
+                return
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    result = await run_agent(
-        message=message,
-        thread_id=int(thread.id),
-        user=user,
-    )
-
-    if result["status"] == "approval_required":
-        return JsonResponse({
-                "thread_id": int(thread.id),
-                "status": "approval_required",
-                "approval": result["interrupt"],
-                "details" :  "go to /approve-email/ endpoint to approve or cancel the email, type:bool, fields: thread_id, approved",
-            })
-
-    await Message.objects.acreate(
-        thread=thread,
-        role="agent",
-        content=result["result"]["messages"][-1].content,
-    )
-
-    return JsonResponse({
-            "thread_id": int(thread.id),
-            "status": "completed",
-            "response": result["result"]["messages"][-1].content,
-        })
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 @csrf_exempt
@@ -161,46 +165,49 @@ async def agent_chat_view(request, thread_id):
     except Thread.DoesNotExist:
         return JsonResponse({"detail": "Thread not found."}, status=404)
 
-    await Message.objects.acreate(
-        thread=thread,
-        role="user",
-        content=message,
-    )
+    await Message.objects.acreate(thread=thread, role="user", content=message)
+   
 
+    async def event_stream():
+        try:
+            async for chunk in run_agent(message=formatted_message, thread_id=thread.id, user=user):
+                chunk_type = chunk["type"]
+    
+                if chunk_type == "status":
+                    # Pass through status events from the backend with their message
+                    yield f"data: {json.dumps({'type': 'status', 'status': chunk.get('status'), 'message': chunk.get('message')})}\n\n"
+                    continue
+                if chunk_type == "token":
+                    yield f"data: {json.dumps({'type': 'token', 'token': chunk['token']})}\n\n"
+                    continue
+                if chunk_type == "approval_required":
+                    yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt']})}\n\n"
+                    return
+                if chunk_type == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'message': chunk['message']})}\n\n"
+                    return
+                if chunk_type != "completed":
+                    continue
 
-    result = await run_agent(
-        message=formatted_message,
-        thread_id=int(thread.id),
-        user=user,
-    )
+                messages = chunk["result"].get("messages", [])
+                final_content = extract_text_content(messages[-1].content) if messages else ""
+                await Message.objects.acreate(thread=thread, role="agent", content=final_content)
+                yield f"data: {json.dumps({'type': 'completed', 'response': final_content})}\n\n"
+                return
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    if result["status"] == "approval_required":
-        return JsonResponse({
-                "thread_id": int(thread_id),
-                "status": "approval_required",
-                "approval": result["interrupt"],
-                "details" :  "approval required for the last action. Go to /thread/<int:thread_id>/action-email/ endpoint to approve or cancel the action, type:bool, fields: thread_id, approved",
-            })
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
-    await Message.objects.acreate(
-        thread=thread,
-        role="agent",
-        content=extract_text_content(result["result"]["messages"][-1].content),
-    )
-
-    return JsonResponse({
-            "thread_id": int(thread_id),
-            "status": "completed",
-            "response": extract_text_content(result["result"]["messages"][-1].content),
-        })
-
- 
 
 from langgraph.types import Command
 from conversations.models import Approval, Message, Thread
 
 @csrf_exempt
-async def approve_email_view(request, thread_id):
+async def tool_approval_view(request, thread_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed."}, status=405)
 
@@ -254,3 +261,21 @@ async def approve_email_view(request, thread_id):
         "result": message,
         "thread_id": int(thread.id),
     })
+
+
+@csrf_exempt
+async def delete_thread_view(request, thread_id):
+    if request.method != "DELETE":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    user, error = await authenticated_user(request)
+    if error:
+        return error
+
+    try:
+        thread = await Thread.objects.aget(id=thread_id, user=user)
+    except Thread.DoesNotExist:
+        return JsonResponse({"detail": "Thread not found."}, status=404)
+
+    await thread.adelete()
+    return JsonResponse({"detail": "Thread deleted successfully."}, status=200)

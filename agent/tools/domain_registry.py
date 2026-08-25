@@ -54,7 +54,6 @@ TOOL_NAME_TO_DOMAIN = {
 def get_domain_for_service(service):
     return SERVICE_TO_DOMAIN.get(service, service)
 
-
 def resolve_tool_domain(service, tool_name):
     fallback_domain = get_domain_for_service(service)
     domain = TOOL_NAME_TO_DOMAIN.get(tool_name, fallback_domain)
