@@ -114,4 +114,4 @@ async def run_agent(message: str, thread_id: int, user):
         exit_reason = "error yielded"
         return
     finally:
-    
+        print(f"run_agent: exiting for thread {thread_id} with reason: {exit_reason}")
