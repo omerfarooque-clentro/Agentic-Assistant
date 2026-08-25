@@ -1,5 +1,5 @@
+from datetime import timezone
 import json
-
 from asgiref.sync import sync_to_async
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -17,8 +17,14 @@ from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
 from agent.models import MCPIntegration
 from django.http import StreamingHttpResponse
+from django.utils import timezone  # This contains the .activate() method
+import zoneinfo
 
 User = get_user_model()
+
+user_tz = "Asia/Karachi" 
+timezone.activate(zoneinfo.ZoneInfo(user_tz))
+current_time = timezone.localtime(timezone.now()) 
 
 def extract_text_content(message_content):
     """Extract string content regardless of provider format."""
@@ -102,7 +108,7 @@ async def new_chat_view(request):
         return JsonResponse(serializer.errors, status=400)
 
     message = serializer.validated_data["message"]
-    formatted_message = f"{user.username}: {message}"
+    formatted_message = f"Date: {current_time}, {user.username}: {message}"
     thread = await Thread.objects.acreate(user=user, name="New Thread")
     await Message.objects.acreate(thread=thread, role="user", content=message)
     
@@ -159,14 +165,15 @@ async def agent_chat_view(request, thread_id):
         return JsonResponse(serializer.errors, status=400)
 
     message = serializer.validated_data["message"]
-    formatted_message = f"{user.username}: {message}"
+
+    formatted_message = f"Date: {current_time}, {user.username}: {message}"
     try:
         thread = await Thread.objects.aget(id=thread_id, user=user)
     except Thread.DoesNotExist:
         return JsonResponse({"detail": "Thread not found."}, status=404)
 
     await Message.objects.acreate(thread=thread, role="user", content=message)
-   
+    
 
     async def event_stream():
         try:
