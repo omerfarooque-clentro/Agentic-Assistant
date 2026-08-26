@@ -68,6 +68,7 @@ def _provider_config(request, service):
             "access_type": "offline",
             "prompt": "consent",
             "state": state,
+            "include_granted_scopes": "true",
         })
 
     client_id = os.getenv("SLACK_CLIENT_ID")
@@ -195,7 +196,6 @@ def _exchange_code(service, code, redirect_uri):
         raise RuntimeError(token_data.get("error", "Slack OAuth failed"))
     return token_data
 
-
 def integration_callback_view(request, service):
     if request.GET.get("error"):
         return JsonResponse({"detail": request.GET["error"]}, status=400)
@@ -211,15 +211,18 @@ def integration_callback_view(request, service):
             _redirect_uri(request, provider),
         )
         authed_user = token_data.get("authed_user", {})
+
         access_token = token_data.get("access_token") or authed_user.get("access_token")
         if not access_token:
             raise ValueError("OAuth provider returned no access token")
 
+
         scopes = token_data.get("scope") or authed_user.get("scope", "")
-        existing = MCPIntegration.objects.filter(
-            user_id=state["user_id"],
-            service=requested_service,
-        ).first()
+
+        if not refresh_token:
+            raise ValueError("OAuth provider returned no refresh token")
+        
+        existing = MCPIntegration.objects.filter(user_id=state["user_id"], service=requested_service).first()
         refresh_token = token_data.get("refresh_token") or (
             existing.refresh_token if existing else None
         )
@@ -234,6 +237,13 @@ def integration_callback_view(request, service):
                 "enabled": True,
             },
         )
+
+        if provider == "google" and refresh_token:
+            MCPIntegration.objects.filter(
+                user_id=state["user_id"],
+                service__in=GOOGLE_SERVICES
+            ).update(refresh_token=refresh_token)
+
     except (KeyError, signing.BadSignature, requests.RequestException, ValueError, RuntimeError) as error:
         return JsonResponse({"detail": str(error)}, status=400)
     return redirect(f"/?connected={user_integration.service}")
@@ -250,22 +260,8 @@ def integration_disconnect_view(request, service):
     try:
         integration = MCPIntegration.objects.get(user=request.user, service=service)
 
-        # 1. Revoke token with Google if service is a Google service
-        if service == "google" or service in GOOGLE_SERVICES:
-            token_to_revoke = integration.refresh_token or integration.access_token
-            if token_to_revoke:
-                try:
-                    requests.post(
-                        "https://oauth2.googleapis.com/revoke",
-                        params={"token": token_to_revoke},
-                        headers={"content-type": "application/x-www-form-urlencoded"},
-                        timeout=10,
-                    )
-                except requests.RequestException:
-                    pass  # Continue to delete DB row even if Google revoke call fails
-
         # 2. Revoke the Slack user token.
-        elif service == "slack" and integration.access_token:
+        if service == "slack" and integration.access_token:
             try:
                 requests.post(
                     "https://slack.com/api/auth.revoke",
