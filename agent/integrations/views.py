@@ -219,13 +219,15 @@ def integration_callback_view(request, service):
 
         scopes = token_data.get("scope") or authed_user.get("scope", "")
 
-        if not refresh_token:
-            raise ValueError("OAuth provider returned no refresh token")
-        
         existing = MCPIntegration.objects.filter(user_id=state["user_id"], service=requested_service).first()
         refresh_token = token_data.get("refresh_token") or (
             existing.refresh_token if existing else None
         )
+        
+        if not refresh_token:
+            raise ValueError("OAuth provider returned no refresh token")
+
+        
         user_integration, _ = MCPIntegration.objects.update_or_create(
             user_id=state["user_id"],
             service=requested_service,
