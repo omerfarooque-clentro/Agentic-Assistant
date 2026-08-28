@@ -28,8 +28,10 @@ event, etc.) actually executes.
   - [Tool discovery & domain grouping](#tool-discovery--domain-grouping)
   - [Intent routing (NLP node)](#intent-routing-nlp-node)
   - [LangGraph graph](#langgraph-graph)
+  - [Streaming](#streaming)
   - [Human-in-the-loop approval](#human-in-the-loop-approval)
   - [Conversations & threads](#conversations--threads)
+- [Frontend](#frontend)
 - [Project layout](#project-layout)
 - [Setup](#setup)
 - [Environment variables](#environment-variables)
@@ -59,7 +61,7 @@ Supervisor router
    │           or falls back to a general agent if that domain isn't
    │           enabled for this user.
    ▼
-Domain agent ── (LLM call #2: tool-calling)
+Domain agent ── (LLM call #2: tool-calling, streamed token-by-token)
    │           only the exact MCP tools allow-listed for the predicted
    │           intent are bound to the model — not the full tool
    │           catalog for the domain, and never tools from other
@@ -71,6 +73,14 @@ Tool call?
    └─ yes, write/send action → approval node (interrupt) → human
         approves/rejects → ToolNode executes (or the run is cancelled)
 ```
+
+The whole run above happens inside one Server-Sent Events response —
+`agent/runner.py: run_agent` is an async generator that yields `status`
+(which node is active), `token` (streamed model output), `approval_required`,
+`completed`, or `error` events as the graph executes, and
+`core/views.py: new_chat_view` / `agent_chat_view` stream those straight to
+the browser as they're produced instead of waiting for the whole run to
+finish and returning one JSON blob.
 
 ## Why two LLM calls per turn
 
@@ -95,11 +105,12 @@ at the last 3 messages of context plus the current one and:
    independent, and rewrites it into one self-contained instruction
    (e.g. *"Inform Ahmed on Slack about the weather forecast and that I will
    be working remotely."*).
-2. Flags whether the message actually contains **multiple distinct actions
-   across domains** (`TYPE: MULTI`) — in which case intent classification is
-   skipped and the message is routed straight to a general multi-domain
-   agent with a broader (but still curated) tool set, rather than forcing it
-   into one of the fine-grained single-intent buckets.
+2. Can flag a message as covering **multiple distinct actions across
+   domains** (`TYPE: MULTI`) — this path is **deprecated**: it never had a
+   working destination in the graph (see
+   [Known limitations](#known-limitations--open-items)), so it's no longer
+   the intended way to handle cross-domain requests. Each message is
+   expected to resolve to one single-domain intent going into the classifier.
 
 Only after that rewrite does the TF-IDF/Naive Bayes model (`intent_router.py`)
 classify intent. This costs one extra LLM round-trip per turn, but it keeps
@@ -130,10 +141,9 @@ for a service the user hasn't connected and enabled.
 Both run concurrently across all of a user's integrations
 (`agent/tools/service.py: get_user_tools`) before any tools are fetched.
 
-> ⚠️ **Tokens are currently stored in plaintext** (`access_token` /
-> `refresh_token` are plain `TextField`s). Encrypting these at rest is called
-> out as a pre-production requirement — see
-> [Known limitations](#known-limitations--open-items).
+> Tokens are encrypted at rest via `EncryptedTextField`
+> (`django-encrypted-model-fields`) — see migration
+> `0004_alter_mcpintegration_access_token_and_more`.
 
 ### MCP clients
 
@@ -146,6 +156,14 @@ server and a Tavily MCP server for web research. `get_tools(name, config)`
 opens a connection, fetches that server's tool list, and returns it —
 per-integration, not globally cached — so a disabled/disconnected service
 never contributes tools to a run.
+
+By default the Google Workspace URLs point at `http://127.0.0.1:8001/mcp` —
+that's the vendored `google_workspace_mcp/` directory (a copy of the
+open-source `taylorwilsdon/workspace-mcp` FastMCP server, covering Gmail,
+Calendar, Docs, Sheets, Drive, Slides, Tasks, Forms, Chat, Contacts, and
+search). It ships with its own `Dockerfile` and needs to be run separately
+(see [Setup](#setup)) — the Django app talks to it as just another MCP
+server over HTTP, it doesn't import or embed it directly.
 
 ### Tool discovery & domain grouping
 
@@ -227,15 +245,49 @@ per run (state schema in `agent/graph/state.py`, node functions in
   until the model stops calling tools, then flows to `thread_naming → END`.
 - The LLM used for both the general agent and each scoped domain agent is
   **Groq** (`openai/gpt-oss-120b`) with an automatic fallback to **Google
-  Gemini** (`gemini-2.0-flash`) via LangChain's `.with_fallbacks(...)`
+  Gemini** (`gemini-2.5-flash`) via LangChain's `.with_fallbacks(...)`
   (`agent/llm/client.py`). Tools are bound to both providers up front
   (`bind_tools_with_fallback`) so a mid-run provider failure doesn't drop
-  tool access.
+  tool access. Because Gemini and Groq can shape `message.content`
+  differently (a plain string vs. a list of content blocks), `core/views.py`
+  normalizes it through `extract_text_content()` before it's saved or
+  returned to the frontend.
 - Conversation state is checkpointed to **Postgres** via
   `langgraph-checkpoint-postgres` (`AsyncPostgresSaver` over an
   `AsyncConnectionPool`), which is what makes the human-approval interrupt
   durable across the request/response boundary — the graph can pause mid-run
   and resume later against the same `thread_id`.
+
+### Streaming
+
+`agent/runner.py: run_agent` doesn't return a single result — it's an async
+generator built on `app.astream_events(..., version="v2")` that yields
+structured events as the graph executes:
+
+- **`status`** — whenever a node with an entry in `agent/status.py:
+  NODE_STATUS_MAP` starts a chat-model call (e.g. `nlp` → "Understanding
+  your request…", `email_agent` → "Working with email…"), so the frontend
+  can show what the agent is currently doing rather than a generic spinner.
+- **`token`** — each streamed chunk of model output from one of the
+  `AGENT_NODES` (the general agent and each domain agent), so replies render
+  incrementally instead of appearing all at once.
+- **`approval_required`** — once the graph hits an interrupt, carrying the
+  pending tool call for the frontend to render as an approval card.
+- **`completed`** — the final state once the graph finishes with no pending
+  interrupt; this is also where the agent's turn is persisted to `Message`.
+- **`error`** — any exception raised during the run, including
+  `asyncio.CancelledError`/`GeneratorExit` handling so a client disconnecting
+  mid-stream doesn't leave the generator running.
+
+`core/views.py: new_chat_view` and `agent_chat_view` wrap this generator in a
+`StreamingHttpResponse` with `content_type="text/event-stream"`, serializing
+each event as an SSE `data: {...}` frame. The frontend (`app.js: send`)
+consumes this with `fetch` + `response.body.getReader()`, reassembling SSE
+blocks and rendering `status`/`token`/`completed`/`approval_required`/`error`
+as they arrive — each in-flight request is tagged with a `streamRequestId`
+so a stale stream (e.g. after switching threads or starting a new message)
+is discarded instead of overwriting newer output, and an `AbortController`
+lets the client cancel a stream in progress (e.g. on "New thread").
 
 ### Human-in-the-loop approval
 
@@ -273,6 +325,45 @@ shared `approval` node instead of the domain's `ToolNode`. That node:
 `accounts/models.py` extends Django's `AbstractUser` with `created_at` /
 `updated_at`; auth is JWT-based (`djangorestframework_simplejwt`).
 
+## Frontend
+
+The dashboard (`frontend/static/frontend/app.js`, server-rendered by
+`frontend/templates/frontend/`) is a single vanilla-JS file with no build
+step. A few things worth knowing if you're working on it:
+
+- **Streaming consumption.** `send()` reads the SSE response with
+  `fetch` + `response.body.getReader()` (no `EventSource`, since that can't
+  send an `Authorization` header), reassembling `\n\n`-delimited SSE blocks
+  and dispatching on each event's `type`. A live status line ("Understanding
+  your request…", "Working with email…", etc.) updates from `status` events
+  while tokens stream in, so the pending message bubble reflects what the
+  agent is actually doing.
+- **Auth.** `fetchWithAuth` decodes the JWT's `exp` claim and refreshes the
+  access token proactively (~15s before expiry) instead of waiting for a 401,
+  and de-dupes concurrent refresh attempts behind a single in-flight promise
+  so simultaneous requests (e.g. loading threads + integrations on page load)
+  don't each trigger their own refresh call.
+- **Markdown rendering.** `renderMarkdown` is a small hand-rolled renderer
+  (headings, bullet/numbered lists, code fences, blockquotes, tables,
+  horizontal rules, bold/italic/inline-code/links) — there's no external
+  markdown dependency.
+- **Weather cards.** `detectWeather`/`parseWeatherReport` recognize a single
+  weather reading and render it as a compact stat card instead of raw
+  bullets; `parseMultiDayForecast` separately detects a multi-day forecast
+  (day headers like "Monday", "Day 3", "Sat 14 Jun") and renders a
+  horizontally-scrollable day strip instead, so a 5/7/10-day forecast
+  doesn't get flattened into one oversized card.
+- **Approvals.** `addApprovalCard`/`approve()` render domain-specific
+  layouts for calendar (date badge, attendee chips), email (To chips,
+  subject, quoted body), and Slack (channel chip, message bubble); anything
+  else falls back to a generic, length-capped field list. Approving/
+  cancelling shows an inline spinner and status line, and the composer is
+  disabled while an approval is pending so a new message can't race the
+  graph's paused, interrupted run.
+- **Threads.** In addition to selecting a thread, each entry in the sidebar
+  has a delete (`×`) button wired to `DELETE /api/thread/<id>/delete/`, with
+  a confirm prompt before it fires.
+
 ---
 
 ## Project layout
@@ -286,20 +377,26 @@ agent/
   migrations/
   models.py       MCPIntegration (per-user OAuth credentials per service)
   routing/        NLP query rewriter + TF-IDF/NaiveBayes intent classifier
+  status.py       Node → status-message map used by the SSE stream
   tools/          Domain registry, per-user tool discovery/grouping
-  runner.py       Entry point that assembles tools + graph and invokes it
+  runner.py       Async-generator entry point that streams graph events
 config/           Django project settings, ASGI/WSGI, root URLconf
 conversations/    Thread / Message / Approval models, thread & message APIs
-core/             Registration/login views, chat + approval endpoint views
+core/             Registration/login views, streaming chat + approval +
+                  thread-delete endpoint views, `core/tests.py` test suite
 frontend/         Server-rendered dashboard/settings/login/register UI
+google_workspace_mcp/  Vendored Google Workspace MCP server (Gmail, Calendar,
+                  Docs, Sheets, Drive, Slides, Tasks, Forms, Chat, Contacts) —
+                  a separate service, run independently of the Django app
 mcp_clients/      Per-service MCP server configs and standalone test clients
 scripts/          Ad-hoc NLP router testing script
 ```
 
 ## Setup
 
-The project targets **async execution** (LangGraph + Postgres checkpointer),
-so it should be run under ASGI rather than the plain Django dev server.
+The project targets **async execution** (LangGraph + Postgres checkpointer +
+SSE streaming), so it should be run under ASGI rather than the plain Django
+dev server.
 
 ```bash
 python -m venv .venv
@@ -311,6 +408,13 @@ python manage.py migrate
 
 python -m uvicorn config.asgi:application --reload
 ```
+
+Gmail/Calendar/Docs/Sheets tools also require the vendored MCP server in
+`google_workspace_mcp/` to be running (its `Dockerfile`, or its own
+`pyproject.toml`/`uv.lock` for a local run) and reachable at whatever
+`GMAIL_MCP_URL` / `CALENDAR_MCP_URL` / `DOCS_MCP_URL` / `SHEETS_MCP_URL`
+point to (default `http://127.0.0.1:8001/mcp`) — it's a separate process
+from the Django app, not something `manage.py` starts for you.
 
 ## Environment variables
 
@@ -355,13 +459,14 @@ POST /registration/
 POST /api/token/refresh/
 
 # Threads & messages
-GET  /api/list_thread/
-GET  /api/thread/<thread_id>/messages/
-POST /api/thread/<thread_id>/messages/
+GET    /api/list_thread/
+GET    /api/thread/<thread_id>/messages/
+DELETE /api/thread/<thread_id>/delete/
 
-# Agent
-POST /api/thread/<thread_id>/chat/
-POST /api/thread/<thread_id>/action-email/     # resume an interrupted approval
+# Agent (both stream Server-Sent Events: status / token / approval_required / completed / error)
+POST /api/chat/                                   # start a new thread
+POST /api/thread/<thread_id>/chat/                # continue a thread
+POST /api/thread/<thread_id>/tool-approval/        # resume an interrupted approval
 
 # Connected accounts (per service: gmail | calendar | docs | sheets | slack)
 GET  /api/integrations/status/
@@ -379,22 +484,24 @@ connected-accounts page.
 These are called out directly in the codebase / team notes as things still
 to do, not yet-hidden bugs:
 
-- **OAuth tokens are stored in plaintext** in `MCPIntegration.access_token`
-  / `refresh_token`. Encrypting these at rest (and adding provider token
-  revocation on disconnect) is required before production use.
-- **No automated tests yet** for async chat, token refresh, thread
-  isolation, provider OAuth callbacks, MCP JSON-schema sanitization, or
-  approval resume — these are currently only manually/CI-checked via
-  `python manage.py check` and `compileall`.
-- **One tool call per turn per domain agent.** A single domain agent can
-  loop through multiple sequential tool calls, but there's no support for
-  invoking tools across genuinely different domains in a single model
-  turn — cross-domain requests are handled instead by the `MULTI` path in
-  the query generator, which routes to a broader (not domain-scoped)
-  tool set rather than true parallel multi-domain tool calls.
-- **Streaming is not yet implemented.** The frontend currently polls for a
-  pending response rather than consuming streamed agent events; this is a
-  planned change once the backend streaming contract is finalized.
+- **`TYPE: MULTI` is deprecated.** It never had a working destination in the
+  graph — `route_intent` could return `domain: "multi"`, but the graph's
+  conditional-edge map (`agent/graph/builder.py: create_graph`) only has
+  destinations for `general` and the six fixed domains, and
+  `ACTION_MCP_TOOL_NAMES` has no `"multi"` entry either. Rather than wiring
+  up a real multi-domain destination, this path is deprecated: each message
+  is expected to resolve to one single-domain intent.
+- **One tool call per turn per domain agent, and no cross-domain fan-out.**
+  A single domain agent can loop through multiple sequential tool calls, but
+  there's no support for invoking tools across genuinely different domains
+  in a single turn — a multi-domain request (e.g. "check my calendar and
+  email the summary to the team") has to be handled as separate turns, since
+  the `TYPE: MULTI` path meant to cover this is deprecated (see above).
+- **Test coverage is still thin.** `core/tests.py` now covers auth URL
+  resolution, the login serializer, and JWT-authenticated access — a real
+  start — but async chat streaming, token refresh, thread isolation,
+  provider OAuth callbacks, MCP JSON-schema sanitization, and approval
+  resume still have no automated coverage.
 - **`intent_data.CSV` quality determines routing quality.** The NB
   classifier is only as good as this dataset — expanding coverage per
   intent (especially near the `general`/`out_of_scope`/domain-specific
@@ -403,3 +510,8 @@ to do, not yet-hidden bugs:
 - **In-process duplicate-approval tracking** (`sent_tool_call_ids` in
   `agent/graph/approval.py`) is a plain Python `set`, so it does not persist
   across process restarts or scale across multiple worker processes.
+- **`google_workspace_mcp/` is vendored, not pinned as a dependency.** It's
+  a full copy of a third-party project living in-tree with its own
+  `Dockerfile`/`pyproject.toml`, rather than being pulled in as a package or
+  submodule — fine for now, but worth deciding deliberately before it drifts
+  from upstream.
