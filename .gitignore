@@ -63,6 +63,10 @@ staticfiles/
 .coverage
 htmlcov/
 .pytest_cache/
+clean_intent_data.csv
+clean_intent_data.py
+intent_data_clean.csv
+
 
 #Other files
 MAP.txt

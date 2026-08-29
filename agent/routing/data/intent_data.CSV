@@ -4212,406 +4212,6 @@ look for articles about async Python,research.search
 look for articles about current stock news,research.search
 look for articles about security standards,research.search
 look for articles about product management tools,research.search
-say hello today,general
-say hello please,general
-say hello right now,general
-say hello for a moment,general
-say hello friend,general
-say hello there,general
-say hello again,general
-say hello when you can,general
-say hello this morning,general
-say hello I have a question,general
-hi today,general
-hi please,general
-hi right now,general
-hi for a moment,general
-hi friend,general
-hi there,general
-hi again,general
-hi when you can,general
-hi this morning,general
-hi I have a question,general
-how are you today,general
-how are you please,general
-how are you right now,general
-how are you for a moment,general
-how are you friend,general
-how are you there,general
-how are you again,general
-how are you when you can,general
-how are you this morning,general
-how are you I have a question,general
-what can you do today,general
-what can you do please,general
-what can you do right now,general
-what can you do for a moment,general
-what can you do friend,general
-what can you do there,general
-what can you do again,general
-what can you do when you can,general
-what can you do this morning,general
-what can you do I have a question,general
-thanks for your help today,general
-thanks for your help please,general
-thanks for your help right now,general
-thanks for your help for a moment,general
-thanks for your help friend,general
-thanks for your help there,general
-thanks for your help again,general
-thanks for your help when you can,general
-thanks for your help this morning,general
-thanks for your help I have a question,general
-good morning today,general
-good morning please,general
-good morning right now,general
-good morning for a moment,general
-good morning friend,general
-good morning there,general
-good morning again,general
-good morning when you can,general
-good morning this morning,general
-good morning I have a question,general
-who are you today,general
-who are you please,general
-who are you right now,general
-who are you for a moment,general
-who are you friend,general
-who are you there,general
-who are you again,general
-who are you when you can,general
-who are you this morning,general
-who are you I have a question,general
-tell me a joke today,general
-tell me a joke please,general
-tell me a joke right now,general
-tell me a joke for a moment,general
-tell me a joke friend,general
-tell me a joke there,general
-tell me a joke again,general
-tell me a joke when you can,general
-tell me a joke this morning,general
-tell me a joke I have a question,general
-what is your name today,general
-what is your name please,general
-what is your name right now,general
-what is your name for a moment,general
-what is your name friend,general
-what is your name there,general
-what is your name again,general
-what is your name when you can,general
-what is your name this morning,general
-what is your name I have a question,general
-help me out today,general
-help me out please,general
-help me out right now,general
-help me out for a moment,general
-help me out friend,general
-help me out there,general
-help me out again,general
-help me out when you can,general
-help me out this morning,general
-help me out I have a question,general
-good evening today,general
-good evening please,general
-good evening right now,general
-good evening for a moment,general
-good evening friend,general
-good evening there,general
-good evening again,general
-good evening when you can,general
-good evening this morning,general
-good evening I have a question,general
-hey assistant today,general
-hey assistant please,general
-hey assistant right now,general
-hey assistant for a moment,general
-hey assistant friend,general
-hey assistant there,general
-hey assistant again,general
-hey assistant when you can,general
-hey assistant this morning,general
-hey assistant I have a question,general
-how is it going today,general
-how is it going please,general
-how is it going right now,general
-how is it going for a moment,general
-how is it going friend,general
-how is it going there,general
-how is it going again,general
-how is it going when you can,general
-how is it going this morning,general
-how is it going I have a question,general
-what is your purpose today,general
-what is your purpose please,general
-what is your purpose right now,general
-what is your purpose for a moment,general
-what is your purpose friend,general
-what is your purpose there,general
-what is your purpose again,general
-what is your purpose when you can,general
-what is your purpose this morning,general
-what is your purpose I have a question,general
-introduce yourself today,general
-introduce yourself please,general
-introduce yourself right now,general
-introduce yourself for a moment,general
-introduce yourself friend,general
-introduce yourself there,general
-introduce yourself again,general
-introduce yourself when you can,general
-introduce yourself this morning,general
-introduce yourself I have a question,general
-thank you today,general
-thank you please,general
-thank you right now,general
-thank you for a moment,general
-thank you friend,general
-thank you there,general
-thank you again,general
-thank you when you can,general
-thank you this morning,general
-thank you I have a question,general
-who made you today,general
-who made you please,general
-who made you right now,general
-who made you for a moment,general
-who made you friend,general
-who made you there,general
-who made you again,general
-who made you when you can,general
-who made you this morning,general
-who made you I have a question,general
-good night today,general
-good night please,general
-good night right now,general
-good night for a moment,general
-good night friend,general
-good night there,general
-good night again,general
-good night when you can,general
-good night this morning,general
-good night I have a question,general
-what features do you have today,general
-what features do you have please,general
-what features do you have right now,general
-what features do you have for a moment,general
-what features do you have friend,general
-what features do you have there,general
-what features do you have again,general
-what features do you have when you can,general
-what features do you have this morning,general
-what features do you have I have a question,general
-are you an AI today,general
-are you an AI please,general
-are you an AI right now,general
-are you an AI for a moment,general
-are you an AI friend,general
-are you an AI there,general
-are you an AI again,general
-are you an AI when you can,general
-are you an AI this morning,general
-are you an AI I have a question,general
-book a flight,out_of_scope
-book food delivery,out_of_scope
-book my GitHub,out_of_scope
-book Notion,out_of_scope
-book a WhatsApp message,out_of_scope
-book Ahmed,out_of_scope
-book something online,out_of_scope
-book some music,out_of_scope
-book this into Chinese,out_of_scope
-book my package,out_of_scope
-book the weather,out_of_scope
-book a hotel room,out_of_scope
-book an Instagram post,out_of_scope
-book an SMS,out_of_scope
-book my bank account,out_of_scope
-book a restaurant booking,out_of_scope
-book a video,out_of_scope
-book my tax return,out_of_scope
-book a recipe,out_of_scope
-book a phone call,out_of_scope
-order a flight,out_of_scope
-order food delivery,out_of_scope
-order my GitHub,out_of_scope
-order Notion,out_of_scope
-order a WhatsApp message,out_of_scope
-order Ahmed,out_of_scope
-order something online,out_of_scope
-order some music,out_of_scope
-order this into Chinese,out_of_scope
-order my package,out_of_scope
-order the weather,out_of_scope
-order a hotel room,out_of_scope
-order an Instagram post,out_of_scope
-order an SMS,out_of_scope
-order my bank account,out_of_scope
-order a restaurant booking,out_of_scope
-order a video,out_of_scope
-order my tax return,out_of_scope
-order a recipe,out_of_scope
-order a phone call,out_of_scope
-check a flight,out_of_scope
-check food delivery,out_of_scope
-check my GitHub,out_of_scope
-check Notion,out_of_scope
-check a WhatsApp message,out_of_scope
-check Ahmed,out_of_scope
-check something online,out_of_scope
-check some music,out_of_scope
-check this into Chinese,out_of_scope
-check my package,out_of_scope
-check the weather,out_of_scope
-check a hotel room,out_of_scope
-check an Instagram post,out_of_scope
-check an SMS,out_of_scope
-check my bank account,out_of_scope
-check a restaurant booking,out_of_scope
-check a video,out_of_scope
-check my tax return,out_of_scope
-check a recipe,out_of_scope
-check a phone call,out_of_scope
-open a flight,out_of_scope
-open food delivery,out_of_scope
-open my GitHub,out_of_scope
-open Notion,out_of_scope
-open a WhatsApp message,out_of_scope
-open Ahmed,out_of_scope
-open something online,out_of_scope
-open some music,out_of_scope
-open this into Chinese,out_of_scope
-open my package,out_of_scope
-open the weather,out_of_scope
-open a hotel room,out_of_scope
-open an Instagram post,out_of_scope
-open an SMS,out_of_scope
-open my bank account,out_of_scope
-open a restaurant booking,out_of_scope
-open a video,out_of_scope
-open my tax return,out_of_scope
-open a recipe,out_of_scope
-open a phone call,out_of_scope
-send a flight,out_of_scope
-send food delivery,out_of_scope
-send my GitHub,out_of_scope
-send Notion,out_of_scope
-send a WhatsApp message,out_of_scope
-send Ahmed,out_of_scope
-send something online,out_of_scope
-send some music,out_of_scope
-send this into Chinese,out_of_scope
-send my package,out_of_scope
-send the weather,out_of_scope
-send a hotel room,out_of_scope
-send an Instagram post,out_of_scope
-send an SMS,out_of_scope
-send my bank account,out_of_scope
-send a restaurant booking,out_of_scope
-send a video,out_of_scope
-send my tax return,out_of_scope
-send a recipe,out_of_scope
-send a phone call,out_of_scope
-call a flight,out_of_scope
-call food delivery,out_of_scope
-call my GitHub,out_of_scope
-call Notion,out_of_scope
-call a WhatsApp message,out_of_scope
-call Ahmed,out_of_scope
-call something online,out_of_scope
-call some music,out_of_scope
-call this into Chinese,out_of_scope
-call my package,out_of_scope
-call the weather,out_of_scope
-call a hotel room,out_of_scope
-call an Instagram post,out_of_scope
-call an SMS,out_of_scope
-call my bank account,out_of_scope
-call a restaurant booking,out_of_scope
-call a video,out_of_scope
-call my tax return,out_of_scope
-call a recipe,out_of_scope
-call a phone call,out_of_scope
-buy a flight,out_of_scope
-buy food delivery,out_of_scope
-buy my GitHub,out_of_scope
-buy Notion,out_of_scope
-buy a WhatsApp message,out_of_scope
-buy Ahmed,out_of_scope
-buy something online,out_of_scope
-buy some music,out_of_scope
-buy this into Chinese,out_of_scope
-buy my package,out_of_scope
-buy the weather,out_of_scope
-buy a hotel room,out_of_scope
-buy an Instagram post,out_of_scope
-buy an SMS,out_of_scope
-buy my bank account,out_of_scope
-buy a restaurant booking,out_of_scope
-buy a video,out_of_scope
-buy my tax return,out_of_scope
-buy a recipe,out_of_scope
-buy a phone call,out_of_scope
-play a flight,out_of_scope
-play food delivery,out_of_scope
-play my GitHub,out_of_scope
-play Notion,out_of_scope
-play a WhatsApp message,out_of_scope
-play Ahmed,out_of_scope
-play something online,out_of_scope
-play some music,out_of_scope
-play this into Chinese,out_of_scope
-play my package,out_of_scope
-play the weather,out_of_scope
-play a hotel room,out_of_scope
-play an Instagram post,out_of_scope
-play an SMS,out_of_scope
-play my bank account,out_of_scope
-play a restaurant booking,out_of_scope
-play a video,out_of_scope
-play my tax return,out_of_scope
-play a recipe,out_of_scope
-play a phone call,out_of_scope
-translate a flight,out_of_scope
-translate food delivery,out_of_scope
-translate my GitHub,out_of_scope
-translate Notion,out_of_scope
-translate a WhatsApp message,out_of_scope
-translate Ahmed,out_of_scope
-translate something online,out_of_scope
-translate some music,out_of_scope
-translate this into Chinese,out_of_scope
-translate my package,out_of_scope
-translate the weather,out_of_scope
-translate a hotel room,out_of_scope
-translate an Instagram post,out_of_scope
-translate an SMS,out_of_scope
-translate my bank account,out_of_scope
-translate a restaurant booking,out_of_scope
-translate a video,out_of_scope
-translate my tax return,out_of_scope
-translate a recipe,out_of_scope
-translate a phone call,out_of_scope
-track a flight,out_of_scope
-track food delivery,out_of_scope
-track my GitHub,out_of_scope
-track Notion,out_of_scope
-track a WhatsApp message,out_of_scope
-track Ahmed,out_of_scope
-track something online,out_of_scope
-track some music,out_of_scope
-track this into Chinese,out_of_scope
-track my package,out_of_scope
-track the weather,out_of_scope
-track a hotel room,out_of_scope
-track an Instagram post,out_of_scope
-track an SMS,out_of_scope
-track my bank account,out_of_scope
-track a restaurant booking,out_of_scope
-track a video,out_of_scope
-track my tax return,out_of_scope
-track a recipe,out_of_scope
-track a phone call,out_of_scope
 schedule a meeting with John tomorrow at 3 PM,calendar.create
 schedule John's meeting for tomorrow at three,calendar.create
 put a 3 PM meeting with John on my calendar,calendar.create
@@ -4847,78 +4447,70 @@ do I have a meeting on the calendar today,calendar.search
 list the meetings scheduled for today,calendar.search
 find today's calendar appointments,calendar.search
 what is scheduled on my calendar today,calendar.search
-
-
-
-"schedule a meeting with john tomorrow at 3 pm",calendar.create
-"add a calendar invite for team sync on monday",calendar.create
-"book a slot for dentist appointment at 10 am",calendar.create
-"set up a call with marketing on friday",calendar.create
-"create a new event for product launch next week",calendar.create
-"am i free this afternoon at 2 pm?",calendar.search
-"check my schedule for tomorrow",calendar.search
-"is there any meeting booked for today?",calendar.search
-"list my calendar events for next week",calendar.search
-"look up my availability on thursday",calendar.search
-"move my dentist appointment to friday at 10 am",calendar.update
-"reschedule the 4 pm call to 5 pm",calendar.update
-"push back the team sync by 30 minutes",calendar.update
-"change the venue of the board meeting to room b",calendar.update
-"update the attendee list for the quarterly review",calendar.update
-"cancel my 4 pm meeting with alex",calendar.delete
-"remove the product sync from my calendar",calendar.delete
-"delete the lunch appointment on wednesday",calendar.delete
-"drop the call with client from my schedule",calendar.delete
-"clear my calendar for this afternoon",calendar.delete
-"send an email to sarah regarding the invoice",email.send
-"email john the quarterly sales update",email.send
-"shoot a message to client@example.com about project status",email.send
-"send a follow-up email to the team regarding action items",email.send
-"dispatch an email notification to all attendees",email.send
-"draft an email to hiring manager about my application",email.draft
-"prepare a draft email for client onboard notification",email.draft
-"write an email draft to HR asking about benefits",email.draft
-"compose a rough draft email for vendor negotiations",email.draft
-"is there an email from john about the proposal?",email.search
-"find emails sent by HR last week",email.search
-"search my inbox for invoice attachments",email.search
-"look up emails with subject line project roadmap",email.search
-"check if I received an email from client today",email.search
-"draft a new document for the project pitch",docs.create
-"create a blank google doc named meeting notes",docs.create
-"generate a new document titled Q3 Strategy",docs.create
-"make a doc for onboarding guidelines",docs.create
-"append meeting notes to the Q3 design doc",docs.update
-"edit the project summary in the shared doc",docs.update
-"update section 2 in the project specification document",docs.update
-"add a new paragraph to the product launch draft",docs.update
-"read the contents of the project summary file",docs.read
-"fetch the text from Q2 review document",docs.read
-"open and display the onboarding doc",docs.read
-"get the summary paragraph from the specs document",docs.read
-"create a new spreadsheet titled 2026 Budget",sheets.write
-"make a google sheet named Q1 Expense Tracker",sheets.write
-"generate a new spreadsheet for inventory management",sheets.write
-"update column B in the financial sheet",sheets.update
-"append sales data to row 15 in revenue tracker",sheets.update
-"insert the new price list into the product sheet",sheets.update
-"calculate the total revenue in column B",sheets.read
-"read row 5 from the sales tracker spreadsheet",sheets.read
-"get total count from the attendance google sheet",sheets.read
-"pull figures from the expense sheet for march",sheets.read
-"send a message to john on slack",slack.send
-"post an update in the announcements channel",slack.send
-"dm sam on slack about the deployment bug",slack.send
-"notify the engineering channel on slack regarding outage",slack.send
-"react with heart to sarah's latest slack message",slack.send
-"add reaction smile to the message in dev channel",slack.send
-"search slack history for the deployment key",slack.search
-"find messages containing error logs in slack",slack.search
-"look up past conversation with mark on slack",slack.search
-"what is the weather like today in San Francisco?",general
-"look up the latest news on AI breakthroughs",general
-"search the web for competitor pricing analysis",general
-"hello how can you help me today?",general
+schedule a meeting with john tomorrow at 3 pm,calendar.create
+add a calendar invite for team sync on monday,calendar.create
+book a slot for dentist appointment at 10 am,calendar.create
+set up a call with marketing on friday,calendar.create
+create a new event for product launch next week,calendar.create
+am i free this afternoon at 2 pm?,calendar.search
+check my schedule for tomorrow,calendar.search
+is there any meeting booked for today?,calendar.search
+list my calendar events for next week,calendar.search
+look up my availability on thursday,calendar.search
+move my dentist appointment to friday at 10 am,calendar.update
+reschedule the 4 pm call to 5 pm,calendar.update
+push back the team sync by 30 minutes,calendar.update
+change the venue of the board meeting to room b,calendar.update
+update the attendee list for the quarterly review,calendar.update
+cancel my 4 pm meeting with alex,calendar.delete
+remove the product sync from my calendar,calendar.delete
+delete the lunch appointment on wednesday,calendar.delete
+drop the call with client from my schedule,calendar.delete
+clear my calendar for this afternoon,calendar.delete
+send an email to sarah regarding the invoice,email.send
+email john the quarterly sales update,email.send
+shoot a message to client@example.com about project status,email.send
+send a follow-up email to the team regarding action items,email.send
+dispatch an email notification to all attendees,email.send
+draft an email to hiring manager about my application,email.draft
+prepare a draft email for client onboard notification,email.draft
+write an email draft to HR asking about benefits,email.draft
+compose a rough draft email for vendor negotiations,email.draft
+is there an email from john about the proposal?,email.search
+find emails sent by HR last week,email.search
+search my inbox for invoice attachments,email.search
+look up emails with subject line project roadmap,email.search
+check if I received an email from client today,email.search
+draft a new document for the project pitch,docs.create
+create a blank google doc named meeting notes,docs.create
+generate a new document titled Q3 Strategy,docs.create
+make a doc for onboarding guidelines,docs.create
+append meeting notes to the Q3 design doc,docs.update
+edit the project summary in the shared doc,docs.update
+update section 2 in the project specification document,docs.update
+add a new paragraph to the product launch draft,docs.update
+read the contents of the project summary file,docs.read
+fetch the text from Q2 review document,docs.read
+open and display the onboarding doc,docs.read
+get the summary paragraph from the specs document,docs.read
+create a new spreadsheet titled 2026 Budget,sheets.write
+make a google sheet named Q1 Expense Tracker,sheets.write
+generate a new spreadsheet for inventory management,sheets.write
+update column B in the financial sheet,sheets.update
+append sales data to row 15 in revenue tracker,sheets.update
+insert the new price list into the product sheet,sheets.update
+calculate the total revenue in column B,sheets.read
+read row 5 from the sales tracker spreadsheet,sheets.read
+get total count from the attendance google sheet,sheets.read
+pull figures from the expense sheet for march,sheets.read
+send a message to john on slack,slack.send
+post an update in the announcements channel,slack.send
+dm sam on slack about the deployment bug,slack.send
+notify the engineering channel on slack regarding outage,slack.send
+react with heart to sarah's latest slack message,slack.send
+add reaction smile to the message in dev channel,slack.send
+find messages containing error logs in slack,slack.search
+look up past conversation with mark on slack,slack.search
 find emails from HR sent last week,email.search
 look for last week's HR emails,email.search
 search my inbox for messages from HR,email.search
@@ -4958,5 +4550,3 @@ are any meetings on my calendar today,calendar.search
 find the event scheduled for today,calendar.search
 tell me whether I have a meeting today,calendar.search
 display today's appointments,calendar.search
-"who won the world cup in 2022?",general
-"tell me a quick joke about programming",general

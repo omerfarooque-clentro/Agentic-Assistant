@@ -60,12 +60,13 @@ ACTION_MCP_TOOL_NAMES = {
         "slack_read_canvas",
         "slack_read_file",
         "slack_get_reactions",
+        "slack_search_public",
+        "slack_search_public_and_private",
     },
     # Tavily exposes tavily_search; search_custom is retained for the bundled
     # Google Custom Search MCP when that provider is configured as research.
     "research.search": {"tavily_search", "search_custom"},
-    "general": {"tavily_search", "search_custom"},
-    "out_of_scope": set(),
+
 }
 
 training_data = pd.read_csv(DATA_FILE).dropna(subset=["text", "intent"])
@@ -121,15 +122,6 @@ def route_intent(message: str, available_domains: set[str]) -> RoutingResult:
 
     query = generate_routing_query(message)
 
-    if query['type'] == 'MULTI':
-        return {
-            "intent": "multi",
-            "domain": "multi",
-            "confidence": 1.0,
-            "margin": 1.0,
-            "status": "confident",
-        }
-
     message = query['query']
     print(f"Routing message: {message}")
 
@@ -172,7 +164,5 @@ def route_intent(message: str, available_domains: set[str]) -> RoutingResult:
         "margin": margin,
         "status": status,
     }
-
- 
 
  
