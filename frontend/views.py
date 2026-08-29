@@ -15,3 +15,8 @@ def registration_view(request):
 
 def settings_view(request):
     return render(request, "frontend/settings.html")
+
+
+def reset_password_page_view(request):
+    return render(request, "frontend/reset_password.html")
+

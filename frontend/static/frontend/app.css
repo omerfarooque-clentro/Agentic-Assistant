@@ -2012,3 +2012,186 @@ body:has(.app-shell) {
     width: 100%
   }
 }
+
+/* ==========================================================================
+   Credential Download & Recovery OTP Flow
+   ========================================================================== */
+.dm-mono {
+  font-family: 'DM Mono', monospace !important;
+}
+
+.label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.text-action-link,
+.forgot-link {
+  font: 500 11px 'DM Mono', monospace;
+  color: var(--muted);
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+
+.text-action-link:hover,
+.forgot-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.password-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.password-input-wrap input {
+  padding-right: 42px;
+}
+
+.input-icon-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.6;
+  padding: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.input-icon-btn:hover {
+  opacity: 1;
+}
+
+.step-indicator {
+  display: inline-block;
+  font: 500 10px 'DM Mono', monospace;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: #edf3e7;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.step-indicator.success-step {
+  color: #1e6b37;
+  background: #e3f8e9;
+}
+
+.success-banner-badge {
+  display: inline-block;
+  font: 700 11px 'DM Mono', monospace;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #1e6b37;
+  background: #e3f8e9;
+  border: 1px solid #c2eccb;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+
+.credential-box {
+  background: #fbfbf8;
+  border: 1px solid var(--line);
+  padding: 16px;
+  margin: 20px 0;
+  display: grid;
+  gap: 12px;
+}
+
+.credential-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  gap: 8px;
+}
+
+.credential-row.highlight {
+  background: #f2f7ef;
+  border: 1px dashed #b8d4bb;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.credential-label {
+  font: 500 11px 'DM Mono', monospace;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.credential-val {
+  font-size: 13px;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.code-copy-wrap {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+}
+
+.recovery-code-val {
+  font: 700 16px 'DM Mono', monospace;
+  letter-spacing: 1px;
+  color: #1e6b37;
+  user-select: all;
+}
+
+.btn-sub-copy {
+  font: 600 11px 'DM Mono', monospace;
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-sub-copy:hover {
+  background: var(--ink);
+  color: #fff;
+}
+
+.btn-group-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.input-disabled {
+  background: #edf0eb !important;
+  color: #64736b !important;
+  cursor: not-allowed;
+}

@@ -1,7 +1,76 @@
 {% extends 'frontend/base.html' %}
 {% block title %}Create account | Personal Ops{% endblock %}
 {% block content %}
-<main class="auth-shell"><section class="auth-intro"><span class="eyebrow">PERSONAL OPS / 00</span><h1>Make room<br>for <em>momentum.</em></h1><p>Connect the quiet infrastructure behind your busy day.</p></section>
-<section class="auth-panel"><div class="brand-mark">PO<span>+</span></div><h2>Create your workspace</h2><p class="muted">A single account for your personal operations.</p><form id="register-form" class="stack-form"><label>Username<input name="username" required></label><label>Email<input name="email" type="email" required></label><label>Password<input name="password" type="password" minlength="8" required></label><button class="primary-button" type="submit">Start workspace <span>-></span></button><p id="form-error" class="form-error"></p></form><p class="switch-link">Already have an account? <a href="/signin/">Sign in</a></p></section></main>
+<main class="auth-shell">
+  <section class="auth-intro">
+    <span class="eyebrow">PERSONAL OPS / 00</span>
+    <h1>Make room<br>for <em>momentum.</em></h1>
+    <p>Connect the quiet infrastructure behind your busy day.</p>
+  </section>
+
+  <section class="auth-panel">
+    <div class="brand-mark">PO<span>+</span></div>
+    
+    <div id="register-step-form">
+      <h2>Create your workspace</h2>
+      <p class="muted">A single account for your personal operations.</p>
+      <form id="register-form" class="stack-form">
+        <label>Username
+          <input name="username" autocomplete="username" required>
+        </label>
+        <label>Email
+          <input name="email" type="email" autocomplete="email" required>
+        </label>
+        <label>
+          <div class="label-row">
+            <span>Password</span>
+            <button type="button" id="btn-generate-password" class="text-action-link">Generate Strong Password</button>
+          </div>
+          <div class="password-input-wrap">
+            <input name="password" id="register-password" type="password" minlength="8" required>
+            <button type="button" id="btn-toggle-password" class="input-icon-btn" title="Toggle password visibility">👁️</button>
+          </div>
+        </label>
+        <button class="primary-button" type="submit">Start workspace <span>-></span></button>
+        <p id="form-error" class="form-error"></p>
+      </form>
+      <p class="switch-link">Already have an account? <a href="/signin/">Sign in</a></p>
+    </div>
+
+    <div id="register-step-credentials" class="hidden">
+      <div class="success-banner-badge">Workspace Created</div>
+      <h2>Save your credentials</h2>
+      <p class="muted">Download your emergency recovery key now. You will need it if you ever forget your password.</p>
+
+      <div class="credential-box">
+        <div class="credential-row">
+          <span class="credential-label">Username:</span>
+          <span id="cred-username" class="credential-val dm-mono"></span>
+        </div>
+        <div class="credential-row">
+          <span class="credential-label">Email:</span>
+          <span id="cred-email" class="credential-val dm-mono"></span>
+        </div>
+        <div class="credential-row highlight">
+          <span class="credential-label">Recovery OTP / Key:</span>
+          <div class="code-copy-wrap">
+            <span id="cred-recovery-code" class="recovery-code-val dm-mono"></span>
+            <button type="button" id="btn-copy-code" class="btn-sub-copy">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="credential-actions">
+        <button id="btn-download-creds" class="primary-button full-width" type="button">
+          Download Credentials (.txt) <span>↓</span>
+        </button>
+        <a href="/signin/" id="btn-proceed-signin" class="secondary-button full-width text-center" style="display:block;margin-top:10px;text-align:center;text-decoration:none;">
+          Proceed to Sign In <span>-></span>
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
 {% endblock %}
 {% block scripts %}<script>window.PersonalOps.bindRegister();</script>{% endblock %}
+

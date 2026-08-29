@@ -105,6 +105,36 @@
   const formData = form => Object.fromEntries(new FormData(form).entries());
   const showError = error => { const target = document.querySelector('#form-error'); if (target) target.textContent = error.message; };
 
+  const downloadTextFile = (filename, content) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const generateClientPassword = (length = 16) => {
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const numbers = '23456789';
+    const symbols = '!@#$%^&*';
+    const all = lower + upper + numbers + symbols;
+    let pwd = '';
+    pwd += lower[Math.floor(Math.random() * lower.length)];
+    pwd += upper[Math.floor(Math.random() * upper.length)];
+    pwd += numbers[Math.floor(Math.random() * numbers.length)];
+    pwd += symbols[Math.floor(Math.random() * symbols.length)];
+    for (let i = 4; i < length; i++) {
+      pwd += all[Math.floor(Math.random() * all.length)];
+    }
+    return pwd.split('').sort(() => 0.5 - Math.random()).join('');
+  };
+
+
   const MAX_COMPOSER_HEIGHT = 200;
   // Grows the textarea to fit its content (up to a cap, then scrolls
   // internally) instead of staying a fixed one-line box with a scrollbar.
@@ -913,10 +943,246 @@
       });
     },
     bindRegister() {
-      document.querySelector('#register-form').addEventListener('submit', async event => {
+      const regForm = document.querySelector('#register-form');
+      if (!regForm) return;
+
+      const pwdInput = document.querySelector('#register-password');
+      const genBtn = document.querySelector('#btn-generate-password');
+      const toggleBtn = document.querySelector('#btn-toggle-password');
+
+      if (genBtn && pwdInput) {
+        genBtn.addEventListener('click', () => {
+          const generated = generateClientPassword();
+          pwdInput.value = generated;
+          pwdInput.type = 'text';
+          if (toggleBtn) toggleBtn.textContent = '🙈';
+        });
+      }
+
+      if (toggleBtn && pwdInput) {
+        toggleBtn.addEventListener('click', () => {
+          if (pwdInput.type === 'password') {
+            pwdInput.type = 'text';
+            toggleBtn.textContent = '🙈';
+          } else {
+            pwdInput.type = 'password';
+            toggleBtn.textContent = '👁️';
+          }
+        });
+      }
+
+      regForm.addEventListener('submit', async event => {
         event.preventDefault();
-        try { await api('/registration/', { method: 'POST', body: JSON.stringify(formData(event.currentTarget)), public: true, skipRefresh: true }); window.location = '/signin/'; } catch (error) { showError(error); }
+        const errTarget = document.querySelector('#form-error');
+        if (errTarget) errTarget.textContent = '';
+        try {
+          const data = await api('/registration/', {
+            method: 'POST',
+            body: JSON.stringify(formData(event.currentTarget)),
+            public: true,
+            skipRefresh: true
+          });
+
+          const stepForm = document.querySelector('#register-step-form');
+          const stepCreds = document.querySelector('#register-step-credentials');
+
+          if (stepCreds && stepForm) {
+            stepForm.classList.add('hidden');
+            stepCreds.classList.remove('hidden');
+
+            const usernameEl = document.querySelector('#cred-username');
+            const emailEl = document.querySelector('#cred-email');
+            const codeEl = document.querySelector('#cred-recovery-code');
+
+            if (usernameEl) usernameEl.textContent = data.username || '';
+            if (emailEl) emailEl.textContent = data.email || '';
+            if (codeEl) codeEl.textContent = data.recovery_code || 'PO-SAVED';
+
+            const copyBtn = document.querySelector('#btn-copy-code');
+            if (copyBtn) {
+              copyBtn.onclick = async () => {
+                if (data.recovery_code) {
+                  await navigator.clipboard.writeText(data.recovery_code).catch(() => {});
+                  copyBtn.textContent = 'Copied!';
+                  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+                }
+              };
+            }
+
+            const downloadBtn = document.querySelector('#btn-download-creds');
+            if (downloadBtn) {
+              downloadBtn.onclick = () => {
+                const now = new Date().toISOString();
+                const fileContent = `====================================================\nPERSONAL OPS - WORKSPACE RECOVERY CREDENTIALS\n====================================================\nUsername:               ${data.username || ''}\nEmail:                  ${data.email || ''}\nEmergency Recovery OTP: ${data.recovery_code || ''}\nGenerated At:           ${now}\n====================================================\nIMPORTANT: Keep this file secure. If you ever forget\nyour password, this recovery OTP is required to restore\naccess and force-generate new credentials.\n====================================================\n`;
+                downloadTextFile(`personal-ops-credentials-${data.username || 'user'}.txt`, fileContent);
+              };
+            }
+          } else {
+            window.location = '/signin/';
+          }
+        } catch (error) {
+          showError(error);
+        }
       });
+    },
+    bindResetPassword() {
+      let recoveryEmail = '';
+      let recoveryOtp = '';
+
+      // Stage 1: Email Form
+      const formEmail = document.querySelector('#form-forgot-email');
+      if (formEmail) {
+        formEmail.addEventListener('submit', async event => {
+          event.preventDefault();
+          const errEl = document.querySelector('#forgot-error');
+          if (errEl) errEl.textContent = '';
+
+          const emailInput = document.querySelector('#input-recovery-email');
+          recoveryEmail = emailInput ? emailInput.value.trim() : '';
+
+          try {
+            await api('/api/auth/forgot-password/', {
+              method: 'POST',
+              body: JSON.stringify({ email: recoveryEmail }),
+              public: true,
+              skipRefresh: true
+            });
+
+            document.querySelector('#stage-email').classList.add('hidden');
+            document.querySelector('#stage-otp').classList.remove('hidden');
+            const displayEmail = document.querySelector('#display-recovery-email');
+            if (displayEmail) displayEmail.value = recoveryEmail;
+          } catch (error) {
+            if (errEl) errEl.textContent = error.message;
+          }
+        });
+      }
+
+      // Back to Email button
+      const backBtn = document.querySelector('#btn-back-to-email');
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          document.querySelector('#stage-otp').classList.add('hidden');
+          document.querySelector('#stage-email').classList.remove('hidden');
+        });
+      }
+
+      // Stage 2: Verify OTP Form
+      const formOtp = document.querySelector('#form-verify-otp');
+      if (formOtp) {
+        formOtp.addEventListener('submit', async event => {
+          event.preventDefault();
+          const errEl = document.querySelector('#otp-error');
+          if (errEl) errEl.textContent = '';
+
+          const otpInput = document.querySelector('#input-recovery-otp');
+          recoveryOtp = otpInput ? otpInput.value.trim() : '';
+
+          try {
+            await api('/api/auth/verify-otp/', {
+              method: 'POST',
+              body: JSON.stringify({ email: recoveryEmail, otp: recoveryOtp }),
+              public: true,
+              skipRefresh: true
+            });
+
+            document.querySelector('#stage-otp').classList.add('hidden');
+            document.querySelector('#stage-password').classList.remove('hidden');
+          } catch (error) {
+            if (errEl) errEl.textContent = error.message;
+          }
+        });
+      }
+
+      // Stage 3: New Password Form
+      const formReset = document.querySelector('#form-reset-password');
+      if (formReset) {
+        const pwdInput = document.querySelector('#input-new-password');
+        const confirmInput = document.querySelector('#input-confirm-password');
+        const genBtn = document.querySelector('#btn-generate-reset-password');
+        const toggleBtn = document.querySelector('#btn-toggle-new-password');
+
+        if (genBtn && pwdInput && confirmInput) {
+          genBtn.addEventListener('click', () => {
+            const generated = generateClientPassword();
+            pwdInput.value = generated;
+            confirmInput.value = generated;
+            pwdInput.type = 'text';
+            if (toggleBtn) toggleBtn.textContent = '🙈';
+          });
+        }
+
+        if (toggleBtn && pwdInput) {
+          toggleBtn.addEventListener('click', () => {
+            if (pwdInput.type === 'password') {
+              pwdInput.type = 'text';
+              toggleBtn.textContent = '🙈';
+            } else {
+              pwdInput.type = 'password';
+              toggleBtn.textContent = '👁️';
+            }
+          });
+        }
+
+        formReset.addEventListener('submit', async event => {
+          event.preventDefault();
+          const errEl = document.querySelector('#reset-error');
+          if (errEl) errEl.textContent = '';
+
+          const newPassword = pwdInput ? pwdInput.value : '';
+          const confirmPassword = confirmInput ? confirmInput.value : '';
+
+          if (newPassword !== confirmPassword) {
+            if (errEl) errEl.textContent = 'Passwords do not match.';
+            return;
+          }
+
+          try {
+            const data = await api('/api/auth/reset-password/', {
+              method: 'POST',
+              body: JSON.stringify({
+                email: recoveryEmail,
+                otp: recoveryOtp,
+                new_password: newPassword,
+                confirm_password: confirmPassword
+              }),
+              public: true,
+              skipRefresh: true
+            });
+
+            document.querySelector('#stage-password').classList.add('hidden');
+            document.querySelector('#stage-success').classList.remove('hidden');
+
+            const newEmailEl = document.querySelector('#new-cred-email');
+            const newCodeEl = document.querySelector('#new-cred-recovery-code');
+
+            if (newEmailEl) newEmailEl.textContent = data.email || recoveryEmail;
+            if (newCodeEl) newCodeEl.textContent = data.recovery_code || '';
+
+            const copyNewBtn = document.querySelector('#btn-copy-new-code');
+            if (copyNewBtn) {
+              copyNewBtn.onclick = async () => {
+                if (data.recovery_code) {
+                  await navigator.clipboard.writeText(data.recovery_code).catch(() => {});
+                  copyNewBtn.textContent = 'Copied!';
+                  setTimeout(() => { copyNewBtn.textContent = 'Copy'; }, 2000);
+                }
+              };
+            }
+
+            const downloadNewBtn = document.querySelector('#btn-download-new-creds');
+            if (downloadNewBtn) {
+              downloadNewBtn.onclick = () => {
+                const now = new Date().toISOString();
+                const fileContent = `====================================================\nPERSONAL OPS - UPDATED RECOVERY CREDENTIALS\n====================================================\nUsername:            ${data.username || ''}\nEmail:               ${data.email || recoveryEmail}\nNEW Recovery OTP/Key: ${data.recovery_code || ''}\nReset At:            ${now}\n====================================================\nNOTICE: Your previous recovery credentials have been\ninvalidated. Please keep this file in a secure place.\n====================================================\n`;
+                downloadTextFile(`personal-ops-updated-credentials-${data.username || 'user'}.txt`, fileContent);
+              };
+            }
+          } catch (error) {
+            if (errEl) errEl.textContent = error.message;
+          }
+        });
+      }
     },
     initSettings() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }

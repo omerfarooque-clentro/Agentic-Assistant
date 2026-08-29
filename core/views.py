@@ -10,7 +10,21 @@ from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth import get_user_model
 from agent.runner import run_agent
-from core.serializers import AgentChatSerializer, RegisterationSerializer, LoginSerializer, ApproveEmailSerializer
+from core.serializers import (
+    AgentChatSerializer,
+    RegisterationSerializer,
+    LoginSerializer,
+    ApproveEmailSerializer,
+    ForgotPasswordSerializer,
+    VerifyOTPSerializer,
+    ResetPasswordSerializer,
+    OTPGenerateSerializer,
+)
+from accounts.utils import (
+    generate_recovery_otp,
+    hash_recovery_otp,
+    verify_recovery_otp,
+)
 from rest_framework_simplejwt.tokens import RefreshToken
 from conversations.models import Thread, Message
 from agent.tools import get_user_tools
@@ -65,6 +79,8 @@ class RegistrationView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterationSerializer
     permission_classes = [AllowAny]
+    
+
 
 from django.shortcuts import redirect
 
@@ -92,6 +108,89 @@ class LoginView(generics.GenericAPIView):
             "username": user.username,
             "email": user.email,
         })
+
+
+@csrf_exempt
+async def otp_generate(request):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    user, error = await authenticated_user(request)
+    if error:
+        return error
+
+    new_otp = generate_recovery_otp()
+    user.otp_secret = hash_recovery_otp(new_otp)
+    await user.asave(update_fields=["otp_secret"])
+
+    return JsonResponse({
+        "detail": "Recovery OTP generated successfully.",
+        "recovery_code": new_otp,
+    }, status=200)
+
+
+@csrf_exempt
+def forgot_password_view(request):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    payload = request_json(request) if request.body else request.POST.dict()
+    serializer = ForgotPasswordSerializer(data=payload)
+    if not serializer.is_valid():
+        return JsonResponse(serializer.errors, status=400)
+
+    email = serializer.validated_data["email"]
+    return JsonResponse({
+        "detail": "Email verified. Please enter your recovery OTP/credential.",
+        "email": email,
+    }, status=200)
+
+
+@csrf_exempt
+def verify_otp_view(request):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    payload = request_json(request) if request.body else request.POST.dict()
+    serializer = VerifyOTPSerializer(data=payload)
+    if not serializer.is_valid():
+        return JsonResponse(serializer.errors, status=400)
+
+    email = serializer.validated_data["email"]
+    return JsonResponse({
+        "detail": "Recovery OTP verified successfully.",
+        "email": email,
+    }, status=200)
+
+
+@csrf_exempt
+def reset_password_view(request):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    payload = request_json(request) if request.body else request.POST.dict()
+    serializer = ResetPasswordSerializer(data=payload)
+    if not serializer.is_valid():
+        return JsonResponse(serializer.errors, status=400)
+
+    user = serializer.validated_data["user"]
+    new_password = serializer.validated_data["new_password"]
+
+    # 1. Update password
+    user.set_password(new_password)
+
+    # 2. Force generation of a NEW recovery OTP and invalidate the previous one
+    new_recovery_otp = generate_recovery_otp()
+    user.otp_secret = hash_recovery_otp(new_recovery_otp)
+    user.save(update_fields=["password", "otp_secret"])
+
+    return JsonResponse({
+        "detail": "Password reset successfully. A new recovery OTP has been generated.",
+        "recovery_code": new_recovery_otp,
+        "email": user.email,
+        "username": user.username,
+    }, status=200)
+
 
 
 @csrf_exempt
