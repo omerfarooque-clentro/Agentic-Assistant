@@ -164,6 +164,7 @@ html:has(.app-shell),body:has(.app-shell){height:100dvh;overflow:hidden}
 /* ===== Atmospheric Weather Widget & Cards ===== */
 .weather-card{
   position:relative;
+  white-space:normal;
   border-radius:14px;
   padding:20px 22px;
   margin:14px 0 20px;
