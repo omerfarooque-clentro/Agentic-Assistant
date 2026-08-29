@@ -23,6 +23,7 @@ event, etc.) actually executes.
 - [High-level flow](#high-level-flow)
 - [Why two LLM calls per turn](#why-two-llm-calls-per-turn)
 - [Architecture](#architecture)
+  - [Authentication & account recovery](#authentication--account-recovery)
   - [Integrations layer](#integrations-layer)
   - [MCP clients](#mcp-clients)
   - [Tool discovery & domain grouping](#tool-discovery--domain-grouping)
@@ -105,12 +106,17 @@ at the last 3 messages of context plus the current one and:
    independent, and rewrites it into one self-contained instruction
    (e.g. *"Inform Ahmed on Slack about the weather forecast and that I will
    be working remotely."*).
-2. Can flag a message as covering **multiple distinct actions across
-   domains** (`TYPE: MULTI`) — this path is **deprecated**: it never had a
-   working destination in the graph (see
-   [Known limitations](#known-limitations--open-items)), so it's no longer
-   the intended way to handle cross-domain requests. Each message is
-   expected to resolve to one single-domain intent going into the classifier.
+2. Can still flag a message as covering **multiple distinct actions across
+   domains** by returning `TYPE: MULTI` — but this signal is no longer acted
+   on anywhere. `route_intent` (`intent_router.py`) used to short-circuit on
+   `TYPE: MULTI` and return a synthetic `domain: "multi"` result; that branch
+   never had a real destination in the graph and has since been **removed
+   entirely**, not just deprecated. `route_intent` now ignores `query['type']`
+   outright and always classifies `query['query']` as a single intent,
+   whether the rewriter tagged it MULTI or SINGLE. A genuinely
+   cross-domain request ("check my calendar and email the summary to the
+   team") still has to be handled as separate turns — see
+   [Known limitations](#known-limitations--open-items).
 
 Only after that rewrite does the TF-IDF/Naive Bayes model (`intent_router.py`)
 classify intent. This costs one extra LLM round-trip per turn, but it keeps
@@ -120,6 +126,50 @@ instead of the entire tool catalog across five+ MCP servers, which is the
 larger token cost.
 
 ## Architecture
+
+### Authentication & account recovery
+
+Login is JWT-based (`djangorestframework_simplejwt`); `accounts/models.py`'s
+`User` extends `AbstractUser` with `created_at`/`updated_at` and an
+`otp_secret` field. Password recovery does **not** use an emailed or SMS'd
+one-time code — it's a single, static, high-entropy **recovery
+credential** the user downloads once and must keep safe:
+
+- `accounts/utils.py` — `generate_recovery_otp()` produces a formatted
+  credential like `PO-8F2K-M3NP-X94W` (`secrets.choice` over a
+  36-character alphabet with visually-confusable characters like `0/O`,
+  `1/I/L` removed); `hash_recovery_otp`/`verify_recovery_otp` store and
+  check it via Django's password hasher (`make_password`/`check_password`),
+  with a normalized-plaintext comparison fallback via
+  `secrets.compare_digest`. `generate_secure_password` produces a 16-char
+  password (guaranteed upper/lower/digit/symbol) when a user opts to have
+  one auto-generated at registration instead of choosing their own.
+- **Registration** (`RegisterationSerializer.create`, `core/serializers.py`):
+  generates the initial recovery credential, hashes it into `otp_secret`,
+  and returns the raw credential (and the auto-generated password, if used)
+  to the client exactly once, in the registration response — it is never
+  stored or retrievable in plaintext again. `frontend/templates/frontend/register.html`
+  shows a two-step flow: the signup form, then a credential screen with a
+  "Download Credentials (.txt)" button before the user can enter the app.
+- **Forgot password** is a 3-step API sequence, each independently callable:
+  `forgot_password_view` (checks the email exists) → `verify_otp_view`
+  (checks the recovery credential against the hash) → `reset_password_view`
+  (sets the new password **and** immediately rotates to a brand-new recovery
+  credential, invalidating the old one, returned once in the response).
+  `frontend/templates/frontend/reset_password.html` drives this as an
+  Email → Verify OTP → Set Password → Download New OTP wizard.
+- **In-app password change** while already signed in
+  (`in_app_reset_password_view` / `InAppResetPasswordSerializer`) accepts
+  *either* the current password *or* a valid recovery credential as proof —
+  if the recovery credential was used to authorize the change, a new one is
+  generated and rotated in the same request, same as the forgot-password
+  flow. `otp_generate` lets a signed-in user manually rotate their recovery
+  credential on demand (re-verifying their current password first),
+  invalidating the previous one.
+- Every endpoint above is exposed twice — once at its short path
+  (`/forgot-password/`, `/verify-otp/`, `/reset-password-api/`,
+  `/otp-generate/`, `/change-password/`) and once under `/api/auth/...` —
+  see [API surface](#api-surface).
 
 ### Integrations layer
 
@@ -196,11 +246,16 @@ that run.
 `agent/routing/intent_router.py`:
 
 - Trains a `TfidfVectorizer` + `MultinomialNB` pipeline at import time on
-  `agent/routing/data/intent_data.CSV` (fine-grained intents such as
-  `email.send`, `email.read`, `email.draft`, `calendar.create`,
-  `calendar.availability`, `docs.update`, `sheets.write`, `slack.send`,
-  `slack.search`, `slack.history`, `research.search`, plus `general` /
-  `out_of_scope`).
+  `agent/routing/data/intent_data.CSV` — 21 fine-grained intents across the
+  six domains (`email.search/.send/.read/.draft/.forward`,
+  `calendar.create/.search/.update/.delete/.availability`,
+  `docs.read/.create/.update/.summarize`, `sheets.read/.write/.update`,
+  `slack.send/.search/.history`, `research.search`). The dataset previously
+  also carried `general`/`out_of_scope` catch-all labels; those have been
+  removed — the classifier no longer predicts them, and the routing-side
+  special-casing for them in `intent_router.py` (`get_candidate_intents`'s
+  domain filter, and `route_intent`'s remap-to-`research.search` step) is
+  now dead code left over from that change, not active behavior.
 - `get_candidate_intents` restricts predictions to domains the user actually
   has enabled (`available_domains`), so the classifier can never route to a
   domain with no tools behind it.
@@ -208,8 +263,10 @@ that run.
   probability) and **margin** (gap to the second candidate), and returns a
   `status` of `confident`, `ambiguous`, or `unavailable` against fixed
   thresholds (`CONFIDENCE_THRESHOLD = 0.65`, `MARGIN_THRESHOLD = 0.20`).
-  Low-confidence or unavailable-domain predictions fall back to the general
-  research agent rather than guessing.
+  Low-confidence, no-candidate, or unavailable-domain predictions fall back
+  to `general_agent` (`supervisor_router` sends any `routing_status ==
+  "unavailable"` there) — a plain, tool-less LLM call, not a
+  research-domain agent specifically.
 - `ACTION_MCP_TOOL_NAMES` maps each fine-grained intent to the **exact** set
   of MCP tool names that intent is allowed to call (e.g. `slack.send` maps
   to `slack_send_message`, `slack_schedule_message`,
@@ -277,7 +334,12 @@ structured events as the graph executes:
   interrupt; this is also where the agent's turn is persisted to `Message`.
 - **`error`** — any exception raised during the run, including
   `asyncio.CancelledError`/`GeneratorExit` handling so a client disconnecting
-  mid-stream doesn't leave the generator running.
+  mid-stream doesn't leave the generator running. On the backend, an
+  `error` chunk also persists a generic fallback agent message ("An
+  unexpected error occurred during processing, please try again.") to
+  `Message` rather than leaving the thread's transcript missing a reply —
+  the raw exception text is only sent to the frontend in the SSE payload,
+  never stored.
 
 `core/views.py: new_chat_view` and `agent_chat_view` wrap this generator in a
 `StreamingHttpResponse` with `content_type="text/event-stream"`, serializing
@@ -316,14 +378,25 @@ shared `approval` node instead of the domain's `ToolNode`. That node:
 
 - `Thread` — one per conversation, owned by a user, auto-named ("New
   Thread" until the graph's `thread_naming_node` generates a real name once
-  the conversation has more than one exchange).
+  the conversation has more than one exchange). `updated_at` uses Django's
+  `auto_now=True`, and `ThreadListView` (`conversations/views.py`) orders
+  the sidebar by `-updated_at, -id` — so a thread only actually sorts to
+  the top when something explicitly calls `.save()` on it after the
+  original creation. `core/views.py`'s `new_chat_view` and
+  `agent_chat_view` now call `await thread.asave(update_fields=["updated_at"])`
+  after **every** message append (user message, agent reply, and the
+  error-fallback message on a failed run) — previously this only happened
+  inconsistently, so a thread with new activity could sit stale in the list
+  instead of moving to the top.
 - `Message` — belongs to a thread, has a `role` (`user`/`assistant`/etc.)
   and `content`.
 - `Approval` — records the domain and outcome of a human-in-the-loop
   approval decision against a thread/message.
 
 `accounts/models.py` extends Django's `AbstractUser` with `created_at` /
-`updated_at`; auth is JWT-based (`djangorestframework_simplejwt`).
+`updated_at` and `otp_secret`; auth is JWT-based
+(`djangorestframework_simplejwt`) — see
+[Authentication & account recovery](#authentication--account-recovery).
 
 ## Frontend
 
@@ -349,10 +422,15 @@ step. A few things worth knowing if you're working on it:
   markdown dependency.
 - **Weather cards.** `detectWeather`/`parseWeatherReport` recognize a single
   weather reading and render it as a compact stat card instead of raw
-  bullets; `parseMultiDayForecast` separately detects a multi-day forecast
-  (day headers like "Monday", "Day 3", "Sat 14 Jun") and renders a
-  horizontally-scrollable day strip instead, so a 5/7/10-day forecast
-  doesn't get flattened into one oversized card.
+  bullets; `parseMultiDayForecast`/`parseMarkdownTableForecast` separately
+  detect a multi-day forecast (day headers like "Monday", "Day 3", "Sat 14
+  Jun", or a markdown table with day/date/condition/temp/rain columns) and
+  render a horizontally-scrollable day strip instead, so a 5/7/10-day
+  forecast doesn't get flattened into one oversized card. Cards are
+  condition-themed (`data-theme="sunny"|"rain"|"storm"|"cloudy"|"snow"|"fog"`,
+  each with its own gradient/border color) and include a hero
+  temperature, a metrics tile grid (feels-like, wind, humidity, etc.), and
+  an advisory banner line when the source text has one.
 - **Approvals.** `addApprovalCard`/`approve()` render domain-specific
   layouts for calendar (date badge, attendee chips), email (To chips,
   subject, quoted body), and Slack (channel chip, message bubble); anything
@@ -369,7 +447,8 @@ step. A few things worth knowing if you're working on it:
 ## Project layout
 
 ```
-accounts/         Custom Django User model, registration/login
+accounts/         Custom Django User model (incl. otp_secret), utils.py for
+                  recovery-credential generation/hashing/verification
 agent/
   graph/          LangGraph state, node functions, graph builder, approval
   integrations/   OAuth connect/callback/disconnect/status views, token refresh
@@ -458,6 +537,13 @@ POST /login/
 POST /registration/
 POST /api/token/refresh/
 
+# Password recovery / change (each exposed at its short path AND under /api/auth/...)
+POST /forgot-password/          POST /api/auth/forgot-password/    # check email exists
+POST /verify-otp/               POST /api/auth/verify-otp/         # check recovery credential
+POST /reset-password-api/       POST /api/auth/reset-password/     # set new password, rotate credential
+POST /otp-generate/             POST /api/auth/otp-generate/       # manually rotate credential (signed in)
+POST /change-password/          POST /api/auth/change-password/    # in-app change via current password OR credential
+
 # Threads & messages
 GET    /api/list_thread/
 GET    /api/thread/<thread_id>/messages/
@@ -475,38 +561,52 @@ GET  /api/integrations/<service>/callback/
 POST /api/integrations/<service>/disconnect/
 ```
 
-The server-rendered frontend (`/`, `/signin/`, `/register/`, `/settings/`)
-drives these same endpoints for sign-in, thread history, chat, and the
-connected-accounts page.
+The server-rendered frontend (`/`, `/signin/`, `/register/`,
+`/reset-password/`, `/settings/`) drives these same endpoints for sign-in,
+registration credential download, password recovery, thread history, chat,
+and the connected-accounts page.
 
 ## Known limitations / open items
 
 These are called out directly in the codebase / team notes as things still
 to do, not yet-hidden bugs:
 
-- **`TYPE: MULTI` is deprecated.** It never had a working destination in the
-  graph — `route_intent` could return `domain: "multi"`, but the graph's
+- **`route_intent`'s `TYPE: MULTI` handling has been removed, not just
+  deprecated.** It never had a working destination in the graph — the
   conditional-edge map (`agent/graph/builder.py: create_graph`) only has
   destinations for `general` and the six fixed domains, and
-  `ACTION_MCP_TOOL_NAMES` has no `"multi"` entry either. Rather than wiring
-  up a real multi-domain destination, this path is deprecated: each message
-  is expected to resolve to one single-domain intent.
+  `ACTION_MCP_TOOL_NAMES` has no `"multi"` entry either. `route_intent` no
+  longer reads `query['type']` at all; a message the rewriter tags `TYPE:
+  MULTI` is now classified as a single intent exactly like `TYPE: SINGLE`.
+  `agent/routing/query_generator.py`'s prompt still asks the LLM to choose
+  MULTI or SINGLE, so that half of the signal is generated but silently
+  discarded — worth either removing the MULTI option from the prompt or
+  wiring up a real destination for it.
 - **One tool call per turn per domain agent, and no cross-domain fan-out.**
   A single domain agent can loop through multiple sequential tool calls, but
   there's no support for invoking tools across genuinely different domains
   in a single turn — a multi-domain request (e.g. "check my calendar and
   email the summary to the team") has to be handled as separate turns, since
-  the `TYPE: MULTI` path meant to cover this is deprecated (see above).
-- **Test coverage is still thin.** `core/tests.py` now covers auth URL
-  resolution, the login serializer, and JWT-authenticated access — a real
-  start — but async chat streaming, token refresh, thread isolation,
-  provider OAuth callbacks, MCP JSON-schema sanitization, and approval
-  resume still have no automated coverage.
+  the `TYPE: MULTI` path meant to cover this was removed (see above).
+- **Test coverage is improving but still uneven.** `core/tests.py` covers
+  auth URL resolution, the login serializer, JWT-authenticated access, and
+  now the recovery-OTP utilities, registration, and password-reset
+  endpoints. `agent/routing/test.py` covers `ACTION_MCP_TOOL_NAMES`/
+  `get_mcp_tool_names` domain-and-tool mappings, `_domain_for_intent`, and
+  `get_candidate_intents`/`route_intent` decision logic (confident/
+  ambiguous/unavailable, thresholds, remapping) against a mocked classifier.
+  Still uncovered: async chat streaming end-to-end, token refresh, thread
+  isolation, provider OAuth callbacks, MCP JSON-schema sanitization,
+  approval resume, and the in-app password-change/OTP-rotation endpoints.
 - **`intent_data.CSV` quality determines routing quality.** The NB
   classifier is only as good as this dataset — expanding coverage per
-  intent (especially near the `general`/`out_of_scope`/domain-specific
-  boundary) is the main lever for reducing `ambiguous`/`unavailable`
-  fallbacks.
+  intent, and watching for near-duplicate phrasing that gets labeled
+  inconsistently across intents (e.g. a `slack.search`-worded row and a
+  `slack.history`-worded row for what's actually the same request), is the
+  main lever for reducing `ambiguous`/`unavailable` fallbacks. The dataset's
+  former `general`/`out_of_scope` catch-all labels have been removed (see
+  [Intent routing](#intent-routing-nlp-node)); the corresponding dead
+  special-casing in `intent_router.py` still needs cleaning up.
 - **In-process duplicate-approval tracking** (`sent_tool_call_ids` in
   `agent/graph/approval.py`) is a plain Python `set`, so it does not persist
   across process restarts or scale across multiple worker processes.
