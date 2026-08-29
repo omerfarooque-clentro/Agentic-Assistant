@@ -130,6 +130,7 @@ async def new_chat_view(request):
                     return
                 if chunk_type == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': chunk['message']})}\n\n"
+                    await Message.objects.acreate(thread=thread, role="agent", content="An unexpected error occurred during processing, please try again.")
                     return
                 if chunk_type != "completed":
                     print(f"new_chat event_stream: ignoring unexpected chunk type={chunk_type} for thread {thread.id}")
@@ -174,6 +175,7 @@ async def agent_chat_view(request, thread_id):
 
     await Message.objects.acreate(thread=thread, role="user", content=message)
     
+    
 
     async def event_stream():
         try:
@@ -191,6 +193,7 @@ async def agent_chat_view(request, thread_id):
                     yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt']})}\n\n"
                     return
                 if chunk_type == "error":
+                    await Message.objects.acreate(thread=thread, role="agent", content="An unexpected error occurred during processing, please try again.")
                     yield f"data: {json.dumps({'type': 'error', 'message': chunk['message']})}\n\n"
                     return
                 if chunk_type != "completed":
