@@ -27,12 +27,16 @@ def nlp_node(state: AgentState, available_domains=()):
 
 
 def agent_node(state: AgentState, llm_with_tools):
+    # Retrieve messages prepared for the LLM, preserving conversation context.
     messages = messages_for_llm(state)
+    # Invoke the LLM (with tool bindings) to get the assistant's response.
     response = llm_with_tools.invoke(messages)
 
-    return {
-        "messages": [response]
-    }
+    # Append the new response to the existing message history instead of overwriting it.
+    # This ensures that subsequent nodes, especially the NLP router, have access to the full
+    # conversation (including prior user messages and any tool outputs).
+    updated_messages = state["messages"] + [response]
+    return {"messages": updated_messages}
 
 
 def supervisor_router(state: AgentState):
