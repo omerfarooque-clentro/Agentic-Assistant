@@ -98,6 +98,14 @@ If required information is already available:
 "Send Ahmed a Slack message with the forecast."
 -> Send Ahmed a Slack message with the weather forecast.
 
+If channel/User/group ID is not in the available context:
+"Send X "message" on slack."
+-> search X ID info on slack so that we can send a message.
+
+If ID is already available in the context:
+"Send X "message" on slack."
+-> Send the "message" to X on slack.
+
 Return ONLY the rewritten query.
 
 "If general exchange is requested, do not rewrite, do nothing, return the original request.

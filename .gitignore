@@ -35,6 +35,7 @@ ENV/
 env.bak/
 venv.bak/
 graph_env/
+my_env
 
 # Environment Variables & Secrets
 .env

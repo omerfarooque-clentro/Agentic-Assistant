@@ -38,14 +38,12 @@ ACTION_MCP_TOOL_NAMES = {
     "sheets.update": {"modify_sheet_values", "append_table_rows"},
     "slack.send": {
         "slack_send_message",
-        "slack_schedule_message",
-        "slack_send_message_draft",
-        "slack_add_reaction",
         "slack_create_canvas",
         "slack_update_canvas",
-        "slack_search_public_and_private",
-        "slack_search_users"
     },
+    "slack.draft": {"slack_send_message_draft"},
+    "slack.reaction": {"slack_add_reaction"},
+    "slack.schedule": {"slack_schedule_message"},
     "slack.search": {
         "slack_search_public",
         "slack_search_public_and_private",
