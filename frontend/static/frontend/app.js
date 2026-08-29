@@ -140,13 +140,13 @@
       text = text.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
       return text;
     };
-    
+
     let html = '';
     let listType = null;
     let codeBlockOpen = false;
     let codeBlockLang = '';
     let codeBlockContent = '';
-    
+
     const closeList = () => { if (listType) { html += `</${listType}>`; listType = null; } };
     const closeCodeBlock = () => {
       if (codeBlockOpen) {
@@ -157,12 +157,12 @@
         codeBlockContent = '';
       }
     };
-    
+
     const lines = source.split('\n');
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
-      
+
       // Handle code fences
       if (line.match(/^```/)) {
         closeList();
@@ -183,7 +183,7 @@
         i++;
         continue;
       }
-      
+
       // Handle tables (pipe-separated)
       if (line.includes('|') && (i + 1 < lines.length) && lines[i + 1].match(/^\s*\|?\s*[-:| ]+\|[-:| ]*$/)) {
         closeList();
@@ -196,7 +196,7 @@
         };
         const headerRow = parseRow(line);
         const tableRows = [headerRow];
-        
+
         let j = i + 2;
         while (j < lines.length && lines[j].includes('|')) {
           const row = parseRow(lines[j]);
@@ -205,7 +205,7 @@
           }
           j++;
         }
-        
+
         if (tableRows.length > 1) {
           html += '<div class="table-wrapper"><table><thead><tr>';
           tableRows[0].forEach(cell => {
@@ -224,7 +224,7 @@
           continue;
         }
       }
-      
+
       // Handle headings
       const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
       if (headingMatch) {
@@ -235,7 +235,7 @@
         i++;
         continue;
       }
-      
+
       // Handle blockquotes
       if (line.match(/^>\s/)) {
         closeList();
@@ -249,7 +249,7 @@
         html += '</blockquote>';
         continue;
       }
-      
+
       // Handle horizontal rules
       if (line.match(/^\s*([-*_])\s*\1\s*\1[\s\1]*$/) || line.match(/^---+$/) || line.match(/^\*\*\*+$/)) {
         closeList();
@@ -258,7 +258,7 @@
         i++;
         continue;
       }
-      
+
       // Handle bullet lists
       const bullet = line.match(/^\s*[-*]\s+(.*)/);
       if (bullet) {
@@ -268,7 +268,7 @@
         i++;
         continue;
       }
-      
+
       // Handle numbered lists
       const numbered = line.match(/^\s*\d+\.\s+(.*)/);
       if (numbered) {
@@ -278,7 +278,7 @@
         i++;
         continue;
       }
-      
+
       // Handle paragraphs
       closeCodeBlock();
       if (!line.trim()) {
@@ -290,7 +290,7 @@
       }
       i++;
     }
-    
+
     closeList();
     closeCodeBlock();
     return html;
@@ -340,7 +340,7 @@
   const cleanMetricItem = (label, rawValue) => {
     const raw = String(rawValue || '').trim();
     const lowerLabel = label.toLowerCase();
-    
+
     let value = raw;
     let subtext = '';
     let icon = '📊';
@@ -442,7 +442,7 @@
 
     const tableLines = [];
     for (let i = 0; i < tableLineIdxs.length; i++) {
-      if (i > 0 && tableLineIdxs[i] !== tableLineIdxs[i-1] + 1) break;
+      if (i > 0 && tableLineIdxs[i] !== tableLineIdxs[i - 1] + 1) break;
       tableLines.push(lines[tableLineIdxs[i]]);
     }
     if (tableLines.length < 3) return null;
@@ -470,15 +470,15 @@
     for (let r = 2; r < tableLines.length; r++) {
       const row = cleanRow(tableLines[r]);
       if (row.length < 2) continue;
-      
+
       const rawDay = dayCol >= 0 ? row[dayCol] : (dateCol >= 0 ? row[dateCol] : row[0]);
       if (!rawDay) continue;
-      
+
       const dayShort = (rawDay.match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*/i) || [rawDay])[0].slice(0, 3).toUpperCase();
       const dateVal = dateCol >= 0 ? row[dateCol] : (rawDay.replace(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i, '').trim());
       const condVal = condCol >= 0 ? row[condCol] : 'Clear';
       const condInfo = resolveWeatherCondition(condVal);
-      
+
       let hi = '—', lo = '';
       if (tempCol >= 0 && row[tempCol]) {
         const rawTemp = row[tempCol];
@@ -491,7 +491,7 @@
           if (singleT) hi = `${singleT[1]}°`;
         }
       }
-      
+
       const rainVal = rainCol >= 0 ? row[rainCol] : '';
       const rainMatch = rainVal.match(/(\d{1,3}\s*%)/);
       const rainBadge = rainMatch ? rainMatch[1] : (rainVal && rainVal !== '-' ? rainVal : '');
@@ -562,7 +562,7 @@
     const raw = safeText(text);
     const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const titleLine = lines.find(l => /weather|forecast|outlook/i.test(l) && (l.startsWith('#') || l.startsWith('**') || l.length < 100)) || lines[0] || '';
-    
+
     let locationStr = '';
     let forecastLabel = 'Weather Outlook';
     let dateContext = '';
@@ -714,7 +714,7 @@
     const lines = raw.split(/\r?\n/);
     const tableForecast = parseMarkdownTableForecast(lines);
     const multiDayForecast = !tableForecast ? parseMultiDayForecast(raw) : null;
-    
+
     const parsedDays = tableForecast ? tableForecast.days : (multiDayForecast || []);
     const location = parseLocationMeta(raw);
     const hero = parseHeroWeather(raw, parsedDays);
@@ -745,7 +745,7 @@
 
   const renderWeatherCard = data => {
     const { location, hero, metrics, forecastDays, advisory } = data;
-    
+
     const regionHtml = location.region ? `<span class="weather-loc-region">${escapeHtml(location.region)}</span>` : '';
     const dateBadgeHtml = location.dateContext ? `<span class="weather-badge weather-date-badge">${escapeHtml(location.dateContext)}</span>` : '';
 
@@ -1177,211 +1177,211 @@
         } catch (error) { /* non-critical, next send will retry */ }
       };
 
-  const send = async message => {
-    if (state.sending || state.pendingApproval || !navigator.onLine) return;
-    const streamId = ++state.streamRequestId;
-    const requestController = new AbortController();
-    state.abortController = requestController;
-    state.sending = true;
-    refreshComposerState();
+      const send = async message => {
+        if (state.sending || state.pendingApproval || !navigator.onLine) return;
+        const streamId = ++state.streamRequestId;
+        const requestController = new AbortController();
+        state.abortController = requestController;
+        state.sending = true;
+        refreshComposerState();
 
-    const pending = addMessage('agent', '', true);
-    const body = pending.querySelector('.message-content');
-    const setPendingStatus = label => {
-      if (!body) return;
-      body.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>${escapeHtml(label)}</span></div>`;
-    };
-    const currentThreadId = state.threadId;
-    let assistantText = '';
-    let completedHandled = false;
-    let hasReceivedTokens = false;
+        const pending = addMessage('agent', '', true);
+        const body = pending.querySelector('.message-content');
+        const setPendingStatus = label => {
+          if (!body) return;
+          body.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>${escapeHtml(label)}</span></div>`;
+        };
+        const currentThreadId = state.threadId;
+        let assistantText = '';
+        let completedHandled = false;
+        let hasReceivedTokens = false;
 
-    const handlePayload = data => {
-      if (!data || typeof data !== 'object') return;
-      const status = data.status || data.type || '';
-      const token = data.token ?? data.delta ?? data.chunk ?? data.content ?? data.text ?? '';
-      const response = data.response ?? data.result ?? data.output ?? data.content ?? data.text ?? '';
-      const approval = data.approval ?? data.tool_approval ?? data.action ?? data.request ?? {};
-      const message = data.message ?? '';
+        const handlePayload = data => {
+          if (!data || typeof data !== 'object') return;
+          const status = data.status || data.type || '';
+          const token = data.token ?? data.delta ?? data.chunk ?? data.content ?? data.text ?? '';
+          const response = data.response ?? data.result ?? data.output ?? data.content ?? data.text ?? '';
+          const approval = data.approval ?? data.tool_approval ?? data.action ?? data.request ?? {};
+          const message = data.message ?? '';
 
-      // Handle new explicit status protocol from backend
-      if (data.type === 'status') {
-        if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-        // Display the backend-provided status message in the pending agent message
-        // Use the backend message as authoritative
-        if (message) {
-          setPendingStatus(message);
-        }
-        return;
-      }
-
-      // Handle token streaming - transition from status to actual response
-      if (data.type === 'token') {
-        if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-        // On first token, clear any pending status and start accumulating response
-        hasReceivedTokens = true;
-        assistantText += safeText(token);
-        pending.classList.remove('pending');
-        body.textContent = assistantText;
-        transcript.scrollTop = transcript.scrollHeight;
-        return;
-      }
-
-      // Fallback for older backend payloads that use status field for tokens
-      if (data.type === 'chunk' || data.type === 'delta' || status === 'in_progress') {
-        if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-        hasReceivedTokens = true;
-        assistantText += safeText(token);
-        pending.classList.remove('pending');
-        body.textContent = assistantText;
-        transcript.scrollTop = transcript.scrollHeight;
-        return;
-      }
-
-      // Fallback: if we see old status values without type field, display as status
-      if (!data.type && (status === 'thinking' || status === 'searching' || status === 'generating')) {
-        if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-        const label = status === 'thinking' ? 'Thinking…' : status === 'searching' ? 'Looking up information…' : status === 'generating' ? 'Generating response…' : 'Processing request…';
-        if (message) {
-          setPendingStatus(message);
-        } else {
-          setPendingStatus(label);
-        }
-        return;
-      }
-
-      if (data.type === 'approval_required' || status === 'approval_required') {
-        if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-        setPendingStatus('Waiting for approval…');
-        pending.remove();
-        addApprovalCard(approval || {});
-        return 'approval';
-      }
-
-      if (data.type === 'completed' || status === 'completed') {
-        if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-        completedHandled = true;
-        const finalText = safeText(typeof response === 'string' ? response : response && typeof response === 'object' ? (response.content || response.text || JSON.stringify(response)) : assistantText);
-        assistantText = finalText;
-        pending.remove();
-        addMessage('agent', assistantText);
-        if (state.messageCount >= 3) syncThreadName();
-        return 'completed';
-      }
-
-      if (data.type === 'error' || status === 'error') {
-        if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-        setPendingStatus('Something went wrong…');
-        throw new Error(message || data.message || 'Agent request failed.');
-      }
-
-      // Fallback: legacy message-only payloads
-      if (typeof message === 'string' && !data.type && !data.status) {
-        if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-        assistantText += message;
-        pending.classList.remove('pending');
-        body.textContent = assistantText;
-      }
-    };
-
-    const processSseBlock = block => {
-      if (!block || !block.trim()) return;
-      const lines = block.split(/\r?\n/);
-      let payload = '';
-      for (const line of lines) {
-        if (!line || line.startsWith(':')) continue;
-        if (line.toLowerCase().startsWith('data:')) {
-          payload += line.slice(5).trim();
-        } else if (line.toLowerCase().startsWith('event:')) {
-          continue;
-        }
-      }
-      if (!payload) return;
-      try {
-        const data = JSON.parse(payload);
-        return handlePayload(data);
-      } catch {
-        return;
-      }
-    };
-
-    setPendingStatus('Starting…');
-
-    try {
-      const endpoint = state.threadId ? `/api/thread/${state.threadId}/chat/` : '/api/chat/';
-      const response = await fetchWithAuth(endpoint, {
-        method: 'POST',
-        headers: { 'Accept': 'text/event-stream' },
-        body: JSON.stringify({ message }),
-        signal: requestController.signal,
-      });
-
-      if (!response.ok) {
-        let messageText = `Request failed with status ${response.status}`;
-        if (response.status === 400) messageText = 'The request could not be processed.';
-        else if (response.status === 401) messageText = 'Your session expired. Please sign in again.';
-        else if (response.status === 403) messageText = 'You do not have permission to do that.';
-        else if (response.status === 404) messageText = 'This chat endpoint was not found.';
-        else if (response.status === 409) messageText = 'This request conflicts with the current thread state.';
-        else if (response.status === 429) messageText = 'Too many requests. Please wait a moment and try again.';
-        else if (response.status >= 500) messageText = 'The server hit an error while processing your message.';
-        throw new Error(messageText);
-      }
-
-      if (!response.body) {
-        throw new Error('Streaming is not supported by this browser.');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (value) buffer += decoder.decode(value, { stream: true });
-        if (!done) {
-          const blocks = buffer.split(/\r?\n\r?\n/);
-          buffer = blocks.pop() || '';
-          for (const block of blocks) {
-            if (block.trim() === '') continue;
-            const result = processSseBlock(block);
-            if (result === 'approval') return;
+          // Handle new explicit status protocol from backend
+          if (data.type === 'status') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            // Display the backend-provided status message in the pending agent message
+            // Use the backend message as authoritative
+            if (message) {
+              setPendingStatus(message);
+            }
+            return;
           }
-          continue;
+
+          // Handle token streaming - transition from status to actual response
+          if (data.type === 'token') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            // On first token, clear any pending status and start accumulating response
+            hasReceivedTokens = true;
+            assistantText += safeText(token);
+            pending.classList.remove('pending');
+            body.textContent = assistantText;
+            transcript.scrollTop = transcript.scrollHeight;
+            return;
+          }
+
+          // Fallback for older backend payloads that use status field for tokens
+          if (data.type === 'chunk' || data.type === 'delta' || status === 'in_progress') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            hasReceivedTokens = true;
+            assistantText += safeText(token);
+            pending.classList.remove('pending');
+            body.textContent = assistantText;
+            transcript.scrollTop = transcript.scrollHeight;
+            return;
+          }
+
+          // Fallback: if we see old status values without type field, display as status
+          if (!data.type && (status === 'thinking' || status === 'searching' || status === 'generating')) {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            const label = status === 'thinking' ? 'Thinking…' : status === 'searching' ? 'Looking up information…' : status === 'generating' ? 'Generating response…' : 'Processing request…';
+            if (message) {
+              setPendingStatus(message);
+            } else {
+              setPendingStatus(label);
+            }
+            return;
+          }
+
+          if (data.type === 'approval_required' || status === 'approval_required') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            setPendingStatus('Waiting for approval…');
+            pending.remove();
+            addApprovalCard(approval || {});
+            return 'approval';
+          }
+
+          if (data.type === 'completed' || status === 'completed') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            completedHandled = true;
+            const finalText = safeText(typeof response === 'string' ? response : response && typeof response === 'object' ? (response.content || response.text || JSON.stringify(response)) : assistantText);
+            assistantText = finalText;
+            pending.remove();
+            addMessage('agent', assistantText);
+            if (state.messageCount >= 3) syncThreadName();
+            return 'completed';
+          }
+
+          if (data.type === 'error' || status === 'error') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            setPendingStatus('Something went wrong…');
+            throw new Error(message || data.message || 'Agent request failed.');
+          }
+
+          // Fallback: legacy message-only payloads
+          if (typeof message === 'string' && !data.type && !data.status) {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            assistantText += message;
+            pending.classList.remove('pending');
+            body.textContent = assistantText;
+          }
+        };
+
+        const processSseBlock = block => {
+          if (!block || !block.trim()) return;
+          const lines = block.split(/\r?\n/);
+          let payload = '';
+          for (const line of lines) {
+            if (!line || line.startsWith(':')) continue;
+            if (line.toLowerCase().startsWith('data:')) {
+              payload += line.slice(5).trim();
+            } else if (line.toLowerCase().startsWith('event:')) {
+              continue;
+            }
+          }
+          if (!payload) return;
+          try {
+            const data = JSON.parse(payload);
+            return handlePayload(data);
+          } catch {
+            return;
+          }
+        };
+
+        setPendingStatus('Starting…');
+
+        try {
+          const endpoint = state.threadId ? `/api/thread/${state.threadId}/chat/` : '/api/chat/';
+          const response = await fetchWithAuth(endpoint, {
+            method: 'POST',
+            headers: { 'Accept': 'text/event-stream' },
+            body: JSON.stringify({ message }),
+            signal: requestController.signal,
+          });
+
+          if (!response.ok) {
+            let messageText = `Request failed with status ${response.status}`;
+            if (response.status === 400) messageText = 'The request could not be processed.';
+            else if (response.status === 401) messageText = 'Your session expired. Please sign in again.';
+            else if (response.status === 403) messageText = 'You do not have permission to do that.';
+            else if (response.status === 404) messageText = 'This chat endpoint was not found.';
+            else if (response.status === 409) messageText = 'This request conflicts with the current thread state.';
+            else if (response.status === 429) messageText = 'Too many requests. Please wait a moment and try again.';
+            else if (response.status >= 500) messageText = 'The server hit an error while processing your message.';
+            throw new Error(messageText);
+          }
+
+          if (!response.body) {
+            throw new Error('Streaming is not supported by this browser.');
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (value) buffer += decoder.decode(value, { stream: true });
+            if (!done) {
+              const blocks = buffer.split(/\r?\n\r?\n/);
+              buffer = blocks.pop() || '';
+              for (const block of blocks) {
+                if (block.trim() === '') continue;
+                const result = processSseBlock(block);
+                if (result === 'approval') return;
+                if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+              }
+              continue;
+            }
+            buffer += decoder.decode();
+            const remaining = buffer.trim();
+            if (remaining) {
+              const result = processSseBlock(remaining);
+              if (result === 'approval') return;
+            }
+            // Handle stream ending: if we never got a completed event but have assistant text, save it
+            if (!completedHandled && assistantText) {
+              pending.remove();
+              addMessage('agent', assistantText);
+            }
+            break;
+          }
+        } catch (error) {
+          if (error && error.name === 'AbortError') return;
+          if (!completedHandled && assistantText) {
+            pending.remove();
+            addMessage('agent', assistantText);
+          } else {
+            pending.remove();
+          }
+          const messageText = error && error.message ? error.message : 'Something went wrong while sending the message.';
+          if (streamId === state.streamRequestId && currentThreadId === state.threadId) showBanner(messageText, () => send(message));
+        } finally {
+          if (state.abortController && state.abortController.signal.aborted) {
+            state.abortController = null;
+          }
+          state.sending = false;
+          refreshComposerState();
+          input.focus();
         }
-        buffer += decoder.decode();
-        const remaining = buffer.trim();
-        if (remaining) {
-          const result = processSseBlock(remaining);
-          if (result === 'approval') return;
-        }
-        // Handle stream ending: if we never got a completed event but have assistant text, save it
-        if (!completedHandled && assistantText) {
-          pending.remove();
-          addMessage('agent', assistantText);
-        }
-        break;
-      }
-    } catch (error) {
-      if (error && error.name === 'AbortError') return;
-      if (!completedHandled && assistantText) {
-        pending.remove();
-        addMessage('agent', assistantText);
-      } else {
-        pending.remove();
-      }
-      const messageText = error && error.message ? error.message : 'Something went wrong while sending the message.';
-      if (streamId === state.streamRequestId && currentThreadId === state.threadId) showBanner(messageText, () => send(message));
-    } finally {
-      if (state.abortController && state.abortController.signal.aborted) {
-        state.abortController = null;
-      }
-      state.sending = false;
-      refreshComposerState();
-      input.focus();
-    }
-  };
+      };
 
       document.querySelector('#chat-form').addEventListener('submit', event => {
         event.preventDefault();
