@@ -90,6 +90,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
+
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -159,3 +161,14 @@ SIMPLE_JWT = {
     'USER_ID_FIELD': 'id',  # <-- Must be a string, NOT User.id
     'USER_ID_CLAIM': 'user_id',
 }
+
+# settings.py (at the very bottom of the file)
+import sys
+
+if len(sys.argv) > 1 and "test" in sys.argv:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    }

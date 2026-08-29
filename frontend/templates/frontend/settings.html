@@ -6,15 +6,149 @@
     <div><a class="back-link" href="/">← Workspace</a><span class="eyebrow">Personal ops / settings</span><h1>Connected accounts</h1><p>Choose which services your agent can use. Access is managed through each provider's OAuth flow — nothing here changes without your sign-in.</p></div>
     <button id="settings-logout" class="btn btn-ghost" style="height:36px">Log out</button>
   </header>
-  <section id="integration-grid" class="integration-grid">
-    <article class="account-card" data-account="gmail"><div class="account-icon">G</div><div class="account-copy"><h2>Gmail</h2><p>Search, draft, and send email through Google Workspace.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="gmail">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="gmail">Revoke</button></div></article>
-    <article class="account-card" data-account="calendar"><div class="account-icon">C</div><div class="account-copy"><h2>Google Calendar</h2><p>Read your schedule and manage events.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="calendar">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="calendar">Revoke</button></div></article>
-    <article class="account-card" data-account="docs"><div class="account-icon">D</div><div class="account-copy"><h2>Google Docs</h2><p>Read and update documents with agent approval.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="docs">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="docs">Revoke</button></div></article>
-    <article class="account-card" data-account="sheets"><div class="account-icon">S</div><div class="account-copy"><h2>Google Sheets</h2><p>Read and update your connected spreadsheets.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="sheets">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="sheets">Revoke</button></div></article>
-    <article class="account-card" data-account="slack"><div class="account-icon">#</div><div class="account-copy"><h2>Slack</h2><p>Search channels and draft messages for approval.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="slack">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="slack">Revoke</button></div></article>
+  <section class="settings-section">
+    <div class="section-title-wrap">
+      <span class="eyebrow">Integrations</span>
+      <h2>Connected accounts</h2>
+      <p class="muted">Manage tools and integrations available to your assistant.</p>
+    </div>
+    <div id="integration-grid" class="integration-grid">
+      <article class="account-card" data-account="gmail"><div class="account-icon">G</div><div class="account-copy"><h3>Gmail</h3><p>Search, draft, and send email through Google Workspace.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="gmail">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="gmail">Revoke</button></div></article>
+      <article class="account-card" data-account="calendar"><div class="account-icon">C</div><div class="account-copy"><h3>Google Calendar</h3><p>Read your schedule and manage events.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="calendar">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="calendar">Revoke</button></div></article>
+      <article class="account-card" data-account="docs"><div class="account-icon">D</div><div class="account-copy"><h3>Google Docs</h3><p>Read and update documents with agent approval.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="docs">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="docs">Revoke</button></div></article>
+      <article class="account-card" data-account="sheets"><div class="account-icon">S</div><div class="account-copy"><h3>Google Sheets</h3><p>Read and update your connected spreadsheets.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="sheets">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="sheets">Revoke</button></div></article>
+      <article class="account-card" data-account="slack"><div class="account-icon">#</div><div class="account-copy"><h3>Slack</h3><p>Search channels and draft messages for approval.</p></div><div class="account-actions"><span class="account-state">Not connected</span><button class="btn btn-primary connect-account" data-service="slack">Connect</button><button class="btn btn-ghost revoke-account hidden" data-service="slack">Revoke</button></div></article>
+    </div>
+    <p class="scroll-note" style="margin-top:14px">Revoking a connection ends the agent's access immediately. It won't delete anything already sent or saved.</p>
   </section>
-  <p id="settings-error" class="form-error"></p>
-  <p class="scroll-note">Revoking a connection ends the agent's access immediately. It won't delete anything already sent or saved.</p>
+
+  <!-- Security & Recovery Section -->
+  <section class="settings-section" style="margin-top:48px; border-top: 1px solid var(--line); padding-top: 36px;">
+    <div class="section-title-wrap">
+      <span class="eyebrow">Security & Credentials</span>
+      <h2>Account Security</h2>
+      <p class="muted">Manage your password and emergency recovery credentials.</p>
+    </div>
+
+    <div class="security-grid">
+      
+      <!-- Card 1: Recovery Code Generation -->
+      <article class="security-card">
+        <div class="security-card-header">
+          <div class="security-card-icon">🔑</div>
+          <div>
+            <h3>Emergency Recovery Code</h3>
+            <p class="muted">Generate or rotate your emergency recovery key. Rotating makes your previous key invalid immediately.</p>
+          </div>
+        </div>
+
+        <form id="form-settings-rotate-otp" class="stack-form" style="margin-top:16px;">
+          <label>Verify Current Password
+            <input name="password" id="input-rotate-otp-password" type="password" required placeholder="Enter current password">
+          </label>
+          <button class="primary-button" type="submit" style="margin-top:6px;">
+            Generate New Recovery Code <span>-></span>
+          </button>
+          <p id="rotate-otp-error" class="form-error"></p>
+        </form>
+
+        <!-- Result Box when rotated -->
+        <div id="settings-otp-result" class="hidden" style="margin-top:16px;">
+          <div class="otp-rotation-banner">
+            <span class="badge-status-old">OLD CODE INVALID ❌</span>
+            <span class="badge-status-new">NEW CODE ACTIVE ✅</span>
+          </div>
+
+          <div class="credential-box" style="margin:12px 0;">
+            <div class="credential-row highlight">
+              <span class="credential-label">NEW RECOVERY CODE:</span>
+              <div class="code-copy-wrap">
+                <span id="settings-new-code" class="recovery-code-val dm-mono"></span>
+                <button type="button" id="btn-settings-copy-code" class="btn-sub-copy">Copy</button>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" id="btn-settings-download-code" class="primary-button full-width">
+            Download Credentials (.txt) <span>↓</span>
+          </button>
+        </div>
+      </article>
+
+      <!-- Card 2: In-App Password Change -->
+      <article class="security-card">
+        <div class="security-card-header">
+          <div class="security-card-icon">🛡️</div>
+          <div>
+            <h3>Change Password</h3>
+            <p class="muted">Update your workspace login password using your current password or emergency recovery OTP.</p>
+          </div>
+        </div>
+
+        <form id="form-settings-change-password" class="stack-form" style="margin-top:16px;">
+          <div class="auth-method-selector">
+            <label class="radio-label">
+              <input type="radio" name="auth_method" value="password" checked id="radio-method-pass"> Use Current Password
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="auth_method" value="otp" id="radio-method-otp"> Use Recovery OTP
+            </label>
+          </div>
+
+          <div id="field-current-password">
+            <label>Current Password
+              <input name="current_password" id="input-change-cur-pass" type="password" placeholder="Enter current password">
+            </label>
+          </div>
+
+          <div id="field-recovery-otp" class="hidden">
+            <label>Emergency Recovery OTP / Key
+              <input name="otp" id="input-change-cur-otp" type="text" placeholder="PO-XXXX-XXXX-XXXX" class="dm-mono">
+            </label>
+          </div>
+
+          <label>
+            <div class="label-row">
+              <span>New Password</span>
+              <button type="button" id="btn-gen-settings-pass" class="text-action-link">Generate</button>
+            </div>
+            <input name="new_password" id="input-change-new-pass" type="password" minlength="8" required placeholder="Min. 8 characters">
+          </label>
+
+          <label>Confirm New Password
+            <input name="confirm_password" id="input-change-confirm-pass" type="password" minlength="8" required placeholder="Re-type new password">
+          </label>
+
+          <button class="primary-button" type="submit" style="margin-top:6px;">
+            Update Password <span>-></span>
+          </button>
+          <p id="change-pass-error" class="form-error"></p>
+          <p id="change-pass-success" class="form-success hidden"></p>
+        </form>
+
+        <div id="settings-pass-rotated-otp" class="hidden" style="margin-top:16px;">
+          <div class="otp-rotation-banner">
+            <span class="badge-status-old">OLD CODE INVALID ❌</span>
+            <span class="badge-status-new">NEW CODE ACTIVE ✅</span>
+          </div>
+          <div class="credential-box" style="margin:12px 0;">
+            <div class="credential-row highlight">
+              <span class="credential-label">NEW RECOVERY CODE:</span>
+              <div class="code-copy-wrap">
+                <span id="settings-pass-new-code" class="recovery-code-val dm-mono"></span>
+                <button type="button" id="btn-settings-pass-copy-code" class="btn-sub-copy">Copy</button>
+              </div>
+            </div>
+          </div>
+          <button type="button" id="btn-settings-pass-download-code" class="primary-button full-width">
+            Download Updated Credentials (.txt) <span>↓</span>
+          </button>
+        </div>
+      </article>
+
+    </div>
+  </section>
+  <p id="settings-error" class="form-error" style="margin-top:16px"></p>
 </main>
 {% endblock %}
 {% block scripts %}<script>window.PersonalOps.initSettings();</script>{% endblock %}

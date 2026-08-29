@@ -19,6 +19,7 @@ from core.serializers import (
     VerifyOTPSerializer,
     ResetPasswordSerializer,
     OTPGenerateSerializer,
+    InAppResetPasswordSerializer,
 )
 from accounts.utils import (
     generate_recovery_otp,
@@ -119,14 +120,61 @@ async def otp_generate(request):
     if error:
         return error
 
+    payload = request_json(request) or {}
+    serializer = OTPGenerateSerializer(data=payload, context={"user": user})
+    if not serializer.is_valid():
+        return JsonResponse(serializer.errors, status=400)
+
+    # Invalidate old OTP and generate a NEW recovery OTP
     new_otp = generate_recovery_otp()
     user.otp_secret = hash_recovery_otp(new_otp)
     await user.asave(update_fields=["otp_secret"])
 
     return JsonResponse({
-        "detail": "Recovery OTP generated successfully.",
+        "detail": "New recovery code generated successfully.",
         "recovery_code": new_otp,
+        "username": user.username,
+        "email": user.email,
+        "message": "Old recovery code is now invalid. Your new recovery code is active.",
     }, status=200)
+
+
+@csrf_exempt
+async def in_app_reset_password_view(request):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    user, error = await authenticated_user(request)
+    if error:
+        return error
+
+    payload = request_json(request) or {}
+    serializer = InAppResetPasswordSerializer(data=payload, context={"user": user})
+    if not serializer.is_valid():
+        return JsonResponse(serializer.errors, status=400)
+
+    new_password = serializer.validated_data["new_password"]
+    used_otp = serializer.validated_data.get("used_otp", False)
+
+    user.set_password(new_password)
+
+    if used_otp:
+        # If user reset password using their recovery OTP, rotate to a new recovery OTP
+        new_otp = generate_recovery_otp()
+        user.otp_secret = hash_recovery_otp(new_otp)
+        await user.asave(update_fields=["password", "otp_secret"])
+        return JsonResponse({
+            "detail": "Password updated successfully. A new recovery code has been generated.",
+            "recovery_code": new_otp,
+            "rotated_otp": True,
+        }, status=200)
+    else:
+        await user.asave(update_fields=["password"])
+        return JsonResponse({
+            "detail": "Password updated successfully.",
+            "rotated_otp": False,
+        }, status=200)
+
 
 
 @csrf_exempt

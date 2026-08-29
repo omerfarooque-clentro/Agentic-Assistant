@@ -10,6 +10,7 @@ from core.views import (
     verify_otp_view,
     reset_password_view,
     otp_generate,
+    in_app_reset_password_view,
 )
 from frontend.views import (
     dashboard_view,
@@ -36,6 +37,8 @@ urlpatterns = [
     path('api/auth/verify-otp/', verify_otp_view, name='api-verify-otp'),
     path('api/auth/reset-password/', reset_password_view, name='api-reset-password'),
     path('api/auth/otp-generate/', otp_generate, name='api-otp-generate'),
+    path('api/auth/change-password/', in_app_reset_password_view, name='api-change-password'),
+    path('change-password/', in_app_reset_password_view, name='change-password'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('api/', include('agent.urls')),
     path('api/', include('conversations.urls')),

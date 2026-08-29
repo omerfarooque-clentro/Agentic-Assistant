@@ -224,6 +224,85 @@ class AuthViewTests(TestCase):
         self.assertTrue(verify_recovery_otp(new_otp, user.otp_secret))
         self.assertFalse(verify_recovery_otp(initial_raw_otp, user.otp_secret))
 
+    def test_in_app_reset_password_with_current_password(self):
+        user = User.objects.create_user(
+            username="helen",
+            email="helen@example.com",
+            password="OldPassword123!"
+        )
+        token = RefreshToken.for_user(user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+
+        res = self.client.post("/api/auth/change-password/", {
+            "current_password": "OldPassword123!",
+            "new_password": "NewSecretPassword456!",
+            "confirm_password": "NewSecretPassword456!"
+        }, format="json")
+
+        self.assertEqual(res.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("NewSecretPassword456!"))
+
+    def test_in_app_reset_password_with_recovery_otp_and_rotation(self):
+        initial_otp = generate_recovery_otp()
+        user = User.objects.create_user(
+            username="ian",
+            email="ian@example.com",
+            password="OldPassword123!",
+            otp_secret=hash_recovery_otp(initial_otp)
+        )
+        token = RefreshToken.for_user(user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+
+        res = self.client.post("/api/auth/change-password/", {
+            "otp": initial_otp,
+            "new_password": "NewPassword789!",
+            "confirm_password": "NewPassword789!"
+        }, format="json")
+
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get("rotated_otp"))
+        new_otp = data.get("recovery_code")
+        self.assertIsNotNone(new_otp)
+        self.assertNotEqual(new_otp, initial_otp)
+
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("NewPassword789!"))
+        self.assertTrue(verify_recovery_otp(new_otp, user.otp_secret))
+        self.assertFalse(verify_recovery_otp(initial_otp, user.otp_secret))
+
+    def test_otp_generate_requires_current_password(self):
+        old_otp = generate_recovery_otp()
+        user = User.objects.create_user(
+            username="julia",
+            email="julia@example.com",
+            password="MySecretPassword123!",
+            otp_secret=hash_recovery_otp(old_otp)
+        )
+        token = RefreshToken.for_user(user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+
+        # Wrong password
+        res_bad = self.client.post("/api/auth/otp-generate/", {
+            "password": "WrongPassword!"
+        }, format="json")
+        self.assertEqual(res_bad.status_code, 400)
+
+        # Correct password
+        res_ok = self.client.post("/api/auth/otp-generate/", {
+            "password": "MySecretPassword123!"
+        }, format="json")
+        self.assertEqual(res_ok.status_code, 200)
+        data = res_ok.json()
+        new_otp = data.get("recovery_code")
+        self.assertIsNotNone(new_otp)
+        self.assertNotEqual(new_otp, old_otp)
+
+        user.refresh_from_db()
+        self.assertTrue(verify_recovery_otp(new_otp, user.otp_secret))
+        self.assertFalse(verify_recovery_otp(old_otp, user.otp_secret))
+
 
 class JWTAuthTests(TestCase):
     def setUp(self):
@@ -240,4 +319,5 @@ class JWTAuthTests(TestCase):
 
         response = self.client.get("/api/list_thread/")
         self.assertEqual(response.status_code, 200)
+
 

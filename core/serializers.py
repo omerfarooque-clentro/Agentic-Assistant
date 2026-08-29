@@ -152,5 +152,52 @@ class ResetPasswordSerializer(serializers.Serializer):
         return data
 
 
+class InAppResetPasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    otp = serializers.CharField(required=False, allow_blank=True, max_length=64, write_only=True)
+    new_password = serializers.CharField(required=True, min_length=8, write_only=True)
+    confirm_password = serializers.CharField(required=False, min_length=8, write_only=True)
+
+    def validate(self, data):
+        user = self.context.get("user")
+        if not user:
+            raise serializers.ValidationError("Authentication required.")
+
+        current_password = data.get("current_password")
+        otp = data.get("otp")
+        new_password = data.get("new_password")
+        confirm_password = data.get("confirm_password")
+
+        if confirm_password and new_password != confirm_password:
+            raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
+
+        # Verify either current_password or otp
+        verified = False
+        used_otp = False
+        if current_password and user.check_password(current_password):
+            verified = True
+        elif otp and user.otp_secret and verify_recovery_otp(otp, user.otp_secret):
+            verified = True
+            used_otp = True
+
+        if not verified:
+            raise serializers.ValidationError({
+                "non_field_errors": ["Please provide a valid current password or recovery OTP."]
+            })
+
+        data["used_otp"] = used_otp
+        return data
+
+
 class OTPGenerateSerializer(serializers.Serializer):
-    pass
+    password = serializers.CharField(required=True, write_only=True)
+
+    def validate(self, data):
+        user = self.context.get("user")
+        if not user:
+            raise serializers.ValidationError("Authentication required.")
+
+        password = data.get("password")
+        if not user.check_password(password):
+            raise serializers.ValidationError({"password": "Incorrect password."})
+        return data

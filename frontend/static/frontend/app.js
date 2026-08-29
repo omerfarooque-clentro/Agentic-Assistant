@@ -1210,6 +1210,157 @@
       });
       document.querySelector('#settings-logout').onclick = () => { localStorage.clear(); window.location = '/signin/'; };
       loadStatus().catch(setError);
+
+      // --- Security: Rotate Recovery OTP ---
+      const formRotateOtp = document.querySelector('#form-settings-rotate-otp');
+      if (formRotateOtp) {
+        formRotateOtp.addEventListener('submit', async event => {
+          event.preventDefault();
+          const errEl = document.querySelector('#rotate-otp-error');
+          if (errEl) errEl.textContent = '';
+          const pwdInput = document.querySelector('#input-rotate-otp-password');
+          const password = pwdInput ? pwdInput.value : '';
+
+          try {
+            const data = await api('/api/auth/otp-generate/', {
+              method: 'POST',
+              body: JSON.stringify({ password })
+            });
+
+            if (pwdInput) pwdInput.value = '';
+            const resultBox = document.querySelector('#settings-otp-result');
+            if (resultBox) resultBox.classList.remove('hidden');
+
+            const codeEl = document.querySelector('#settings-new-code');
+            if (codeEl) codeEl.textContent = data.recovery_code || '';
+
+            const copyBtn = document.querySelector('#btn-settings-copy-code');
+            if (copyBtn) {
+              copyBtn.onclick = async () => {
+                if (data.recovery_code) {
+                  await navigator.clipboard.writeText(data.recovery_code).catch(() => {});
+                  copyBtn.textContent = 'Copied!';
+                  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+                }
+              };
+            }
+
+            const downloadBtn = document.querySelector('#btn-settings-download-code');
+            if (downloadBtn) {
+              downloadBtn.onclick = () => {
+                const now = new Date().toISOString();
+                const content = `====================================================\nPERSONAL OPS - UPDATED EMERGENCY RECOVERY CODE\n====================================================\nUsername:               ${data.username || localStorage.getItem('ops_user') || ''}\nEmail:                  ${data.email || ''}\nNEW Emergency Recovery: ${data.recovery_code || ''}\nRotated At:             ${now}\nStatus:                 ACTIVE ✅ (Previous code is INVALID ❌)\n====================================================\nIMPORTANT: Keep this recovery key in a safe place.\n====================================================\n`;
+                downloadTextFile(`personal-ops-recovery-key-${data.username || 'user'}.txt`, content);
+              };
+            }
+          } catch (error) {
+            if (errEl) errEl.textContent = error.message;
+          }
+        });
+      }
+
+      // --- Security: Change Password ---
+      const formChangePass = document.querySelector('#form-settings-change-password');
+      if (formChangePass) {
+        const radioPass = document.querySelector('#radio-method-pass');
+        const radioOtp = document.querySelector('#radio-method-otp');
+        const fieldPass = document.querySelector('#field-current-password');
+        const fieldOtp = document.querySelector('#field-recovery-otp');
+        const curPassInput = document.querySelector('#input-change-cur-pass');
+        const curOtpInput = document.querySelector('#input-change-cur-otp');
+        const newPassInput = document.querySelector('#input-change-new-pass');
+        const confirmPassInput = document.querySelector('#input-change-confirm-pass');
+        const genBtn = document.querySelector('#btn-gen-settings-pass');
+        const successEl = document.querySelector('#change-pass-success');
+        const errEl = document.querySelector('#change-pass-error');
+
+        if (radioPass && radioOtp) {
+          radioPass.addEventListener('change', () => {
+            fieldPass.classList.remove('hidden');
+            fieldOtp.classList.add('hidden');
+          });
+          radioOtp.addEventListener('change', () => {
+            fieldPass.classList.add('hidden');
+            fieldOtp.classList.remove('hidden');
+          });
+        }
+
+        if (genBtn && newPassInput && confirmPassInput) {
+          genBtn.addEventListener('click', () => {
+            const generated = generateClientPassword();
+            newPassInput.value = generated;
+            confirmPassInput.value = generated;
+            newPassInput.type = 'text';
+            confirmPassInput.type = 'text';
+          });
+        }
+
+        formChangePass.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (errEl) errEl.textContent = '';
+          if (successEl) { successEl.textContent = ''; successEl.classList.add('hidden'); }
+
+          const isUsingOtp = radioOtp && radioOtp.checked;
+          const currentPassword = curPassInput ? curPassInput.value : '';
+          const otp = curOtpInput ? curOtpInput.value.trim() : '';
+          const newPassword = newPassInput ? newPassInput.value : '';
+          const confirmPassword = confirmPassInput ? confirmPassInput.value : '';
+
+          if (newPassword !== confirmPassword) {
+            if (errEl) errEl.textContent = 'Passwords do not match.';
+            return;
+          }
+
+          try {
+            const data = await api('/api/auth/change-password/', {
+              method: 'POST',
+              body: JSON.stringify({
+                current_password: isUsingOtp ? '' : currentPassword,
+                otp: isUsingOtp ? otp : '',
+                new_password: newPassword,
+                confirm_password: confirmPassword
+              })
+            });
+
+            if (curPassInput) curPassInput.value = '';
+            if (curOtpInput) curOtpInput.value = '';
+            if (newPassInput) newPassInput.value = '';
+            if (confirmPassInput) confirmPassInput.value = '';
+
+            if (successEl) {
+              successEl.textContent = data.detail || 'Password updated successfully.';
+              successEl.classList.remove('hidden');
+            }
+
+            if (data.rotated_otp && data.recovery_code) {
+              const rotatedBox = document.querySelector('#settings-pass-rotated-otp');
+              if (rotatedBox) rotatedBox.classList.remove('hidden');
+              const codeEl = document.querySelector('#settings-pass-new-code');
+              if (codeEl) codeEl.textContent = data.recovery_code;
+
+              const copyBtn = document.querySelector('#btn-settings-pass-copy-code');
+              if (copyBtn) {
+                copyBtn.onclick = async () => {
+                  await navigator.clipboard.writeText(data.recovery_code).catch(() => {});
+                  copyBtn.textContent = 'Copied!';
+                  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+                };
+              }
+
+              const downloadBtn = document.querySelector('#btn-settings-pass-download-code');
+              if (downloadBtn) {
+                downloadBtn.onclick = () => {
+                  const now = new Date().toISOString();
+                  const content = `====================================================\nPERSONAL OPS - UPDATED EMERGENCY RECOVERY CODE\n====================================================\nUsername:               ${localStorage.getItem('ops_user') || ''}\nNEW Emergency Recovery: ${data.recovery_code}\nRotated At:             ${now}\nStatus:                 ACTIVE ✅ (Previous code is INVALID ❌)\n====================================================\n`;
+                  downloadTextFile(`personal-ops-recovery-key-updated.txt`, content);
+                };
+              }
+            }
+          } catch (error) {
+            if (errEl) errEl.textContent = error.message;
+          }
+        });
+      }
     },
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
