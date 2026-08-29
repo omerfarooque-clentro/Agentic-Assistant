@@ -99,4 +99,11 @@ If required information is already available:
 -> Send Ahmed a Slack message with the weather forecast.
 
 Return ONLY the rewritten query.
+
+"If general exchange is requested, do not rewrite, do nothing, return the original request.
+"how are you?"
+-> how are you?
+
+Tools:
+Currently available tools include: Gmail, Slack, Calendar, Spreadsheets, and Documents.
 """
