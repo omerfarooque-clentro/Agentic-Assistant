@@ -45,7 +45,6 @@ ACTION_MCP_TOOL_NAMES = {
     "slack.reaction": {"slack_add_reaction"},
     "slack.schedule": {"slack_schedule_message"},
     "slack.search": {
-        "slack_search_public",
         "slack_search_public_and_private",
         "slack_search_channels",
         "slack_search_users",
@@ -58,12 +57,9 @@ ACTION_MCP_TOOL_NAMES = {
         "slack_read_canvas",
         "slack_read_file",
         "slack_get_reactions",
-        "slack_search_public",
         "slack_search_public_and_private",
     },
-    # Tavily exposes tavily_search; search_custom is retained for the bundled
-    # Google Custom Search MCP when that provider is configured as research.
-    "research.search": {"tavily_search", "search_custom"},
+    "research.search": {"tavily_search"},
 
 }
 
