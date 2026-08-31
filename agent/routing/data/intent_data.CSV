@@ -62,7 +62,7 @@ look for the shipping update in my mail,email.search
 Find an email about the deployment,email.search
 Find an email about the omer,email.search
 Find an email about the work,email.search
-Find an email about the arsalan,email.search
+Find an email about the hassan,email.search
 did I get an email about the deployment,email.search
 did I get an email about the invoice,email.search
 did I get an email about the contract,email.search
@@ -4230,28 +4230,28 @@ book a meeting slot with John tomorrow,calendar.create
 add the John call to my calendar for 3 PM,calendar.create
 make a new calendar appointment with John,calendar.create
 get the John meeting onto my schedule,calendar.create
-send a calendar invite to John for tomorrow,calendar.create
+send a calendar invite to Arsalan for tomorrow,calendar.create
 arrange John's meeting in the calendar,calendar.create
-is there any massage from Arsalan in Slack,slack.search
-is there any message from Arsalan in Slack,slack.search
-did Arsalan say anything in Slack,slack.search
-look for messages from Arsalan on Slack,slack.search
-check Slack for a note from Arsalan,slack.search
-has Arsalan posted anything in Slack,slack.search
-find what Arsalan wrote in Slack,slack.search
-search Slack messages sent by Arsalan,slack.search
-did anyone mention Arsalan in Slack,slack.search
-look up Arsalan's Slack messages,slack.search
-was there a Slack message from Arsalan,slack.search
-find Arsalan in the Slack conversation,slack.search
-check whether Arsalan replied in Slack,slack.search
-search the team chat for Arsalan,slack.search
-what did Arsalan say on Slack,slack.search
-look through Slack for anything from Arsalan,slack.search
-find a message by Arsalan in the dev channel,slack.search
-search the engineering channel for Arsalan,slack.search
-has Arsalan mentioned the deployment in Slack,slack.search
-find the Slack note Arsalan sent me,slack.search
+is there any massage from Fareeha in Slack,slack.search
+is there any message from Nahal in Slack,slack.search
+did tayyab say anything in Slack,slack.search
+look for messages from Omer on Slack,slack.search
+check Slack for a note from Rimsha,slack.search
+has Haris posted anything in Slack,slack.search
+find what saif wrote in Slack,slack.search
+search Slack messages sent by Danish,slack.search
+did anyone mention Raafeh in Slack,slack.search
+look up aneeza's Slack messages,slack.search
+was there a Slack message from Aeyaan,slack.search
+find kaif in the Slack conversation,slack.search
+check whether hasnain replied in Slack,slack.search
+search the team chat for jawad,slack.search
+what did anas say on Slack,slack.search
+look through Slack for anything from pawan,slack.search
+find a message by khizar in the dev channel,slack.search
+search the engineering channel for ahmed,slack.search
+has kizra mentioned the deployment in Slack,slack.search
+find the Slack note noor sent me,slack.search
 draft an email to Ahmed,email.draft
 compose an unsent email for Ahmed,email.draft
 write but do not send a message to Ahmed,email.draft
@@ -4593,7 +4593,7 @@ save a draft on Slack for the security channel regarding the release notes,slack
 draft a Slack message to Ahmed about the deployment status,slack.draft
 save a draft on Slack for the operations channel regarding the client feedback,slack.draft
 create a draft in Slack for Kevin regarding the incident summary,slack.draft
-start a Slack draft to Arsalan about the bug fix,slack.draft
+start a Slack draft to heer about the bug fix,slack.draft
 draft a message on Slack for the #design channel about the architecture changes,slack.draft
 write a Slack draft to James concerning the onboarding guide,slack.draft
 prepare a Slack draft post for #support concerning the standup notes,slack.draft
@@ -4618,7 +4618,7 @@ prepare a Slack draft post for #operations concerning the feature launch,slack.d
 write a Slack draft for the sales team about the API documentation,slack.draft
 start drafting an update in Slack for customer-success,slack.draft
 prepare a Slack draft post for #infra concerning the API documentation,slack.draft
-draft a Slack message to Arsalan about the design review,slack.draft
+draft a Slack message to aysha about the design review,slack.draft
 create a draft message in Slack for frontend about the architecture changes,slack.draft
 start a Slack draft to Sarah about the bug fix,slack.draft
 start a Slack draft to Ahmed about the deployment status,slack.draft
@@ -4679,7 +4679,7 @@ draft a Slack message to Hassan about the bug fix,slack.draft
 write a Slack draft for the product team about the quarterly goals,slack.draft
 prepare a Slack draft post for #engineering concerning the architecture changes,slack.draft
 create a draft message in Slack for infra about the client feedback,slack.draft
-prepare an unsent Slack message to Arsalan about the bug fix,slack.draft
+prepare an unsent Slack message to inshoo about the bug fix,slack.draft
 draft a message on Slack for the #engineering channel about the release notes,slack.draft
 write a Slack draft for the random team about the quarterly goals,slack.draft
 draft a Slack message to Chris about the design review,slack.draft
@@ -4838,7 +4838,7 @@ queue a Slack message to James at 3:30 PM,slack.schedule
 send the Slack message about the release notes tonight at 8pm,slack.schedule
 schedule a Slack message to Ayesha in 2 hours,slack.schedule
 send a message on Slack to Emily at 3:30 PM,slack.schedule
-set a scheduled Slack message to Arsalan in 30 minutes,slack.schedule
+set a scheduled Slack message to iqra in 30 minutes,slack.schedule
 queue a Slack message to Sarah in 2 hours,slack.schedule
 schedule a message to be sent on Slack,slack.schedule
 schedule a Slack post in #general in 30 minutes,slack.schedule
@@ -4868,7 +4868,7 @@ send a message on Slack to Ahmed at 5pm today,slack.schedule
 set a scheduled message in Slack for the random channel for Monday morning,slack.schedule
 schedule a message on Slack to the random channel for Friday afternoon at 3pm,slack.schedule
 queue an update on Slack to #dev in 30 minutes,slack.schedule
-schedule a DM on Slack to Arsalan in 30 minutes,slack.schedule
+schedule a DM on Slack to wafa in 30 minutes,slack.schedule
 set a scheduled Slack message to Emily for 3:30 PM,slack.schedule
 schedule a Slack message to Jessica for tonight at 8pm,slack.schedule
 set a scheduled Slack message to Zain in 2 hours,slack.schedule
@@ -5115,14 +5115,14 @@ give Chloe's message in Slack a checkmark reaction,slack.reaction
 give the announcement in #releases a thinking face reaction,slack.reaction
 give the announcement in #security a celebration reaction,slack.reaction
 add a eyes reaction to the Slack update regarding the onboarding guide,slack.reaction
-react to Arsalan's comment on Slack with celebration,slack.reaction
+react to dania's comment on Slack with celebration,slack.reaction
 put a party popper emoji on James's latest Slack post,slack.reaction
 add a heart reaction to the Slack update regarding the product roadmap,slack.reaction
 react with eyes to Fatima's message in Slack,slack.reaction
 give David's message in Slack a eyes reaction,slack.reaction
 react with eyes in the support Slack channel,slack.reaction
 add a folded hands reaction to the frontend channel post on Slack,slack.reaction
-react to Arsalan's comment on Slack with party popper,slack.reaction
+react to daniyal's comment on Slack with party popper,slack.reaction
 put a star emoji on the last post in support on Slack,slack.reaction
 put a smile emoji on Olivia's latest Slack post,slack.reaction
 put a eyes emoji on Sam's latest Slack post,slack.reaction
@@ -5158,7 +5158,7 @@ react to Sarah's comment on Slack with eyes,slack.reaction
 give the announcement in #frontend a eyes reaction,slack.reaction
 react to Chloe's comment on Slack with 100,slack.reaction
 add a fire reaction to the operations channel post on Slack,slack.reaction
-give Arsalan's message in Slack a celebration reaction,slack.reaction
+give muhammad's message in Slack a celebration reaction,slack.reaction
 put a heart emoji on David's latest Slack post,slack.reaction
 give Chris's message in Slack a party popper reaction,slack.reaction
 react with clap in the infra Slack channel,slack.reaction
@@ -5188,7 +5188,7 @@ put a clap emoji on the last post in qa on Slack,slack.reaction
 put a eyes emoji on the Slack message concerning the sprint kickoff,slack.reaction
 react to the Slack thread about the quarterly goals with fire,slack.reaction
 add a eyes reaction to David's Slack message,slack.reaction
-put a rocket emoji on Arsalan's latest Slack post,slack.reaction
+put a rocket emoji on Ali's latest Slack post,slack.reaction
 react to Jessica's comment on Slack with party popper,slack.reaction
 give the announcement in #operations a thumbs down reaction,slack.reaction
 react to Rachel's comment on Slack with fire,slack.reaction
