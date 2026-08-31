@@ -83,7 +83,6 @@ RULES:
 * Do not name tools.
 * Do not answer, explain, or add reasoning.
 * Keep the query concise.
-* DO not generate fake Slack channel/user IDs. If the user doesn't provide a valid Slack channel/user ID or conversation context doesn't have it, you must query for it first.
 
 
 Examples:
@@ -100,10 +99,6 @@ Examples:
 If required information is already available:
 "Send Ahmed a Slack message with the forecast."
 -> Send Ahmed a Slack message with the weather forecast.
-
-If the conversation doesn't have Slack channel/user IDs, you must query for ID first.
-"send a slack message to dev-learning/Ahmed about the weather forecast"
--> search slack for dev-learning/Ahmed's Slack user ID first.
 
 Return ONLY the rewritten query.
 

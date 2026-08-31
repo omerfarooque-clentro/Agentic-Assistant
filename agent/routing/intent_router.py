@@ -40,10 +40,11 @@ ACTION_MCP_TOOL_NAMES = {
         "slack_send_message",
         "slack_create_canvas",
         "slack_update_canvas",
+        "resolve_slack_id"
     },
-    "slack.draft": {"slack_send_message_draft"},
-    "slack.reaction": {"slack_add_reaction"},
-    "slack.schedule": {"slack_schedule_message"},
+    "slack.draft": {"slack_send_message_draft", "resolve_slack_id"},
+    "slack.reaction": {"slack_add_reaction", "resolve_slack_id"},
+    "slack.schedule": {"slack_schedule_message", "resolve_slack_id"},
     "slack.search": {
         "slack_search_public_and_private",
         "slack_search_channels",

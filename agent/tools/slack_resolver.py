@@ -224,6 +224,7 @@ def create_slack_resolver_tool(user: Any):
         Returns:
             The resolved Slack ID (e.g. 'C12345678') or an error message if not found.
         """
+        print(f"slack resolver called with name {name}, resource: {resource_type}")
         slack_id = resolve_slack_resource(user, name, resource_type)
         if slack_id:
             return slack_id
