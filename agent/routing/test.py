@@ -151,10 +151,11 @@ class TestDomainAndToolDefinitions(unittest.TestCase):
                 "slack_send_message",
                 "slack_create_canvas",
                 "slack_update_canvas",
+                "resolve_slack_id"
             },
-            "slack.draft": {"slack_send_message_draft"},
-            "slack.reaction": {"slack_add_reaction"},
-            "slack.schedule": {"slack_schedule_message"},
+            "slack.draft": {"slack_send_message_draft", "resolve_slack_id"},
+            "slack.reaction": {"slack_add_reaction", "resolve_slack_id"},
+            "slack.schedule": {"slack_schedule_message", "resolve_slack_id"},
             "slack.search": {
                 "slack_search_public_and_private",
                 "slack_search_channels",
@@ -216,15 +217,15 @@ class TestDomainAndToolDefinitions(unittest.TestCase):
     def test_specific_intent_tool_isolation(self):
         """Verifies isolation between specialized tools like draft, reaction, schedule, and send."""
         # Slack draft vs send vs schedule vs reaction
-        self.assertEqual(get_mcp_tool_names("slack.draft"), {"slack_send_message_draft"})
+        self.assertEqual(get_mcp_tool_names("slack.draft"), {"slack_send_message_draft", "resolve_slack_id"})
         self.assertNotIn("slack_send_message", get_mcp_tool_names("slack.draft"))
         self.assertNotIn("slack_schedule_message", get_mcp_tool_names("slack.draft"))
 
-        self.assertEqual(get_mcp_tool_names("slack.schedule"), {"slack_schedule_message"})
+        self.assertEqual(get_mcp_tool_names("slack.schedule"), {"slack_schedule_message", "resolve_slack_id"})
         self.assertNotIn("slack_send_message", get_mcp_tool_names("slack.schedule"))
         self.assertNotIn("slack_send_message_draft", get_mcp_tool_names("slack.schedule"))
 
-        self.assertEqual(get_mcp_tool_names("slack.reaction"), {"slack_add_reaction"})
+        self.assertEqual(get_mcp_tool_names("slack.reaction"), {"slack_add_reaction", "resolve_slack_id"})
         self.assertNotIn("slack_send_message", get_mcp_tool_names("slack.reaction"))
 
         # Email draft vs send
