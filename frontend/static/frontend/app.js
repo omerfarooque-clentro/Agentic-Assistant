@@ -1362,6 +1362,8 @@
         });
       }
     },
+
+    
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
       const state = { threadId: null, initialThreadPicked: false, connectedServices: new Set(), messageCount: 0, sending: false, pendingApproval: null, streamRequestId: 0, abortController: null };
@@ -1531,12 +1533,23 @@
         const confirmed = window.confirm('Delete this thread?');
         if (!confirmed) return;
 
+        const getDynamicGreeting = () => {
+        const currentHour = new Date().getHours();
+          if (currentHour < 12) {
+            return 'Good morning.';
+          } else if (currentHour < 18) {
+            return 'Good afternoon.';
+          } else {
+            return 'Good evening.';
+          }
+        };
+
         try {
           await api(`/api/thread/${encodeURIComponent(threadId)}/delete/`, { method: 'DELETE' });
           if (state.threadId === threadId) {
             state.threadId = null;
             state.pendingApproval = null;
-            title.textContent = 'Good morning.';
+            title.textContent = getDynamicGreeting();
             transcript.innerHTML = '';
             document.querySelectorAll('.thread-item').forEach(item => item.classList.remove('active'));
           }
@@ -1818,7 +1831,7 @@
         state.threadId = null;
         state.messageCount = 0;
         state.sending = false;
-        title.textContent = 'Good morning.';
+        title.textContent = getDynamicGreeting();
         transcript.innerHTML = '';
         document.querySelectorAll('.thread-item').forEach(item => item.classList.remove('active'));
         refreshComposerState();
