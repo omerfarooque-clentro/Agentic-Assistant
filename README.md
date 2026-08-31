@@ -27,6 +27,7 @@ event, etc.) actually executes.
   - [Integrations layer](#integrations-layer)
   - [MCP clients](#mcp-clients)
   - [Tool discovery & domain grouping](#tool-discovery--domain-grouping)
+  - [Slack ID resolution](#slack-id-resolution)
   - [Intent routing (NLP node)](#intent-routing-nlp-node)
   - [LangGraph graph](#langgraph-graph)
   - [Streaming](#streaming)
@@ -240,6 +241,72 @@ The result, `tools_groups`, is a `dict[domain] -> list[tool]` and is exactly
 what's fed into graph construction (`available_domains = set(tools_groups)`),
 so a domain the user hasn't connected literally has no node in the graph for
 that run.
+
+### Slack ID resolution
+
+Slack's write tools (`slack_send_message`, etc.) take a channel/user **ID**
+(`C0123456`, `U0123456`), not a human name — but users say "send it to
+#dev-learning" or "message @alice". This went through a few iterations:
+
+1. **Original state** — `slack.send`'s allow-list in `ACTION_MCP_TOOL_NAMES`
+   bound Slack's search tools (`slack_search_public_and_private`,
+   `slack_search_users`, etc.) directly alongside the send tool, so the
+   model could look names up itself. Correctness-wise this worked, but it
+   pushes every Slack turn back to the thing intent-scoped tool binding
+   exists to avoid: a bigger, mixed-purpose tool list for what should be a
+   single-tool intent (`3c4a13c`, `539836d`). This commit also split the
+   one `slack.send` intent into `slack.send` / `slack.draft` /
+   `slack.reaction` / `slack.schedule`, each with its own narrow tool set,
+   and cleaned up an allow-list entry referencing a tool name
+   (`slack_search_public`) that doesn't actually exist on the Slack MCP
+   server.
+2. **Prompt-only attempt** — before building a real resolver,
+   `agent/llm/prompts.py`'s query-rewriter prompt was tightened with an
+   explicit "do not fabricate Slack IDs, query for one first" instruction
+   (`b259554`), to stop the LLM from hallucinating plausible-looking IDs
+   when it didn't actually have one in context.
+3. **The DB-cache resolver (`cdb2e96`)** — the approach that stuck. Two
+   other options were considered and rejected first: keep binding Slack's
+   search tool (rejected for the tool-list-bloat reason above), or resolve
+   eagerly at Slack connect-time by syncing every channel/user into the DB
+   up front (rejected as a much bigger refactor — a full sync step in the
+   OAuth callback, pagination/rate-limit handling moved into the connect
+   flow, staleness invalidation — for what's still a small correctness
+   problem). What was actually built:
+   - **`agent/models.py: SlackResource`** — one row per
+     `(user, resource_type, name) -> slack_id`, unique per user.
+   - **`agent/tools/slack_resolver.py: resolve_slack_resource`** — checks
+     `SlackResource` first; on a cache miss, calls the Slack Web API
+     (`conversations.list` / `users.list`, paginated) to find the ID and
+     **saves it to `SlackResource` before returning**, so a given name is
+     looked up at most once per user. If the input's already a valid
+     Slack ID (`SLACK_ID_PATTERN`), it's returned as-is with no lookup.
+   - Exposed to the model as its own tool, `resolve_slack_id`
+     (`create_slack_resolver_tool`), rather than folded into the send
+     tool's schema — `agent/tools/service.py: get_user_tools` appends it
+     to the `"slack"` tool group whenever that domain is present
+     (`if "slack" in tool_groups: tool_groups["slack"].append(...)`).
+4. **Fix: the resolver wasn't actually reachable (`6342a1d`)** — step 3
+   added `resolve_slack_id` to the `"slack"` domain's tool list, but the
+   *per-intent* filter that narrows which tools the model actually sees
+   (`agent/graph/builder.py: make_agent` → `get_mcp_tool_names(intent)` →
+   `ACTION_MCP_TOOL_NAMES[intent]`) still only listed the send/draft/
+   reaction/schedule tools themselves for `slack.send` / `slack.draft` /
+   `slack.reaction` / `slack.schedule` — not `resolve_slack_id`. So the
+   tool existed and was bound to the domain, but any turn classified into
+   one of those four intents would never have it available, meaning the
+   model had no way to turn "#dev-learning" into an ID before calling
+   send. This commit adds `resolve_slack_id` to all four intents' entries
+   in `ACTION_MCP_TOOL_NAMES`, which is what actually makes resolution
+   reachable at request time. It also removes the "don't fabricate Slack
+   IDs" prompt instructions added in step 2 — now that the tool is
+   properly wired in, the model has a real way to get an ID instead of
+   needing to be told not to guess one.
+
+Net effect: the Slack domain agent still only ever sees a small, exact tool
+set per turn (send tool + resolver, not send tool + full search), and repeat
+sends to the same channel/person skip the Slack API entirely after the first
+lookup.
 
 ### Intent routing (NLP node)
 
@@ -607,6 +674,12 @@ to do, not yet-hidden bugs:
   former `general`/`out_of_scope` catch-all labels have been removed (see
   [Intent routing](#intent-routing-nlp-node)); the corresponding dead
   special-casing in `intent_router.py` still needs cleaning up.
+- **`SlackResource` cache has no invalidation.** Once a channel/user name is
+  resolved and cached (`agent/tools/slack_resolver.py`), it's never
+  refreshed — if a channel is renamed, deleted, or a user leaves the
+  workspace, the cached row still gets returned and the write tool will
+  fail (or hit the wrong target) instead of re-resolving. There's no TTL or
+  "recheck on failure" path yet.
 - **In-process duplicate-approval tracking** (`sent_tool_call_ids` in
   `agent/graph/approval.py`) is a plain Python `set`, so it does not persist
   across process restarts or scale across multiple worker processes.
