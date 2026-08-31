@@ -2,6 +2,7 @@ import asyncio
 from agent.integrations.access import (refresh_expired_google_token, validate_slack_integration)
 from agent.models import MCPIntegration
 from .grouping import build_user_tool_groups
+from .slack_resolver import create_slack_resolver_tool
 from asgiref.sync import sync_to_async
 
 async def get_user_tools(user):
@@ -25,5 +26,7 @@ async def get_user_tools(user):
         return {}
 
     tool_groups = await build_user_tool_groups(live_integrations)
+    if "slack" in tool_groups:
+        tool_groups["slack"].append(create_slack_resolver_tool(user))
    # print(f"i am get_user_tools and i am fetching tools for user {user.id} with tool groups: {list(tool_groups.values())}")
     return tool_groups

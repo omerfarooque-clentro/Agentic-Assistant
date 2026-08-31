@@ -67,7 +67,7 @@ htmlcov/
 clean_intent_data.csv
 clean_intent_data.py
 intent_data_clean.csv
-
+generate_slack_data.py
 
 #Other files
 MAP.txt

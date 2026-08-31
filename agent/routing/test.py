@@ -56,7 +56,14 @@ DOMAIN_INTENTS = {
     "calendar": ["calendar.create", "calendar.search", "calendar.update", "calendar.delete", "calendar.availability"],
     "docs": ["docs.read", "docs.create", "docs.update", "docs.summarize"],
     "sheets": ["sheets.read", "sheets.write", "sheets.update"],
-    "slack": ["slack.send", "slack.search", "slack.history"],
+    "slack": [
+        "slack.send",
+        "slack.draft",
+        "slack.reaction",
+        "slack.schedule",
+        "slack.search",
+        "slack.history",
+    ],
     "research": ["research.search"],
 }
 ALL_ACTIVE_DOMAINS = set(DOMAIN_INTENTS.keys())
@@ -141,17 +148,27 @@ class TestDomainAndToolDefinitions(unittest.TestCase):
     def test_slack_domain_intents_and_tools(self):
         slack_intents = {
             "slack.send": {
-                "slack_send_message", "slack_schedule_message", "slack_send_message_draft",
-                "slack_add_reaction", "slack_create_canvas", "slack_update_canvas",
-                "slack_search_public_and_private", "slack_search_users",
+                "slack_send_message",
+                "slack_create_canvas",
+                "slack_update_canvas",
             },
+            "slack.draft": {"slack_send_message_draft"},
+            "slack.reaction": {"slack_add_reaction"},
+            "slack.schedule": {"slack_schedule_message"},
             "slack.search": {
-                "slack_search_public", "slack_search_public_and_private", "slack_search_channels",
-                "slack_search_users", "slack_read_user_profile", "slack_list_channel_members",
+                "slack_search_public_and_private",
+                "slack_search_channels",
+                "slack_search_users",
+                "slack_read_user_profile",
+                "slack_list_channel_members",
             },
             "slack.history": {
-                "slack_read_channel", "slack_read_thread", "slack_read_canvas", "slack_read_file",
-                "slack_get_reactions", "slack_search_public", "slack_search_public_and_private",
+                "slack_read_channel",
+                "slack_read_thread",
+                "slack_read_canvas",
+                "slack_read_file",
+                "slack_get_reactions",
+                "slack_search_public_and_private",
             },
         }
         for intent, expected_tools in slack_intents.items():
@@ -160,17 +177,15 @@ class TestDomainAndToolDefinitions(unittest.TestCase):
                 self.assertEqual(get_mcp_tool_names(intent), expected_tools)
 
     def test_research_domain_intents_and_tools(self):
-        expected_tools = {"tavily_search", "search_custom"}
+        expected_tools = {"tavily_search"}
         self.assertIn("research.search", ACTION_MCP_TOOL_NAMES)
         self.assertEqual(get_mcp_tool_names("research.search"), expected_tools)
-
-    #def test_general_and_out_of_scope_tools(self):
-        #self.assertEqual(get_mcp_tool_names("general"), {"tavily_search", "search_custom"})
-        #self.assertEqual(get_mcp_tool_names("out_of_scope"), set())
 
     def test_unknown_or_empty_intent_returns_empty_set(self):
         self.assertEqual(get_mcp_tool_names("unknown_intent"), set())
         self.assertEqual(get_mcp_tool_names("email.unknown"), set())
+        self.assertEqual(get_mcp_tool_names("general"), set())
+        self.assertEqual(get_mcp_tool_names("out_of_scope"), set())
         self.assertEqual(get_mcp_tool_names(""), set())
         self.assertEqual(get_mcp_tool_names("   "), set())
 
@@ -197,6 +212,24 @@ class TestDomainAndToolDefinitions(unittest.TestCase):
                         tool, DOMAIN_TOOL_NAMES[domain],
                         f"Tool '{tool}' in intent '{intent}' not found in domain_registry for '{domain}'",
                     )
+
+    def test_specific_intent_tool_isolation(self):
+        """Verifies isolation between specialized tools like draft, reaction, schedule, and send."""
+        # Slack draft vs send vs schedule vs reaction
+        self.assertEqual(get_mcp_tool_names("slack.draft"), {"slack_send_message_draft"})
+        self.assertNotIn("slack_send_message", get_mcp_tool_names("slack.draft"))
+        self.assertNotIn("slack_schedule_message", get_mcp_tool_names("slack.draft"))
+
+        self.assertEqual(get_mcp_tool_names("slack.schedule"), {"slack_schedule_message"})
+        self.assertNotIn("slack_send_message", get_mcp_tool_names("slack.schedule"))
+        self.assertNotIn("slack_send_message_draft", get_mcp_tool_names("slack.schedule"))
+
+        self.assertEqual(get_mcp_tool_names("slack.reaction"), {"slack_add_reaction"})
+        self.assertNotIn("slack_send_message", get_mcp_tool_names("slack.reaction"))
+
+        # Email draft vs send
+        self.assertEqual(get_mcp_tool_names("email.draft"), {"draft_gmail_message"})
+        self.assertNotIn("send_gmail_message", get_mcp_tool_names("email.draft"))
 
 
 # ==============================================================================
@@ -302,6 +335,35 @@ class TestCandidateExtraction(unittest.TestCase):
         for i in range(len(candidates) - 1):
             self.assertGreaterEqual(candidates[i]["probability"], candidates[i + 1]["probability"])
             self.assertIsInstance(candidates[i]["probability"], float)
+
+    @patch("agent.routing.intent_router.model")
+    def test_get_candidate_intents_slack_and_draft_domain_filtering(self, mock_model):
+        mock_model.classes_ = np.array([
+            "email.draft", "slack.draft", "slack.schedule", "slack.reaction", "slack.send", "email.send", "general"
+        ])
+        mock_model.predict_proba.return_value = np.array([[0.25, 0.20, 0.18, 0.15, 0.10, 0.08, 0.04]])
+
+        # When only 'slack' is available
+        slack_cands = get_candidate_intents("Query", available_domains={"slack"}, top_k=10)
+        slack_intents = {c["intent"] for c in slack_cands}
+        self.assertIn("slack.draft", slack_intents)
+        self.assertIn("slack.schedule", slack_intents)
+        self.assertIn("slack.reaction", slack_intents)
+        self.assertIn("slack.send", slack_intents)
+        self.assertIn("general", slack_intents)
+        self.assertNotIn("email.draft", slack_intents)
+        self.assertNotIn("email.send", slack_intents)
+
+        # When only 'email' is available
+        email_cands = get_candidate_intents("Query", available_domains={"email"}, top_k=10)
+        email_intents = {c["intent"] for c in email_cands}
+        self.assertIn("email.draft", email_intents)
+        self.assertIn("email.send", email_intents)
+        self.assertIn("general", email_intents)
+        self.assertNotIn("slack.draft", email_intents)
+        self.assertNotIn("slack.schedule", email_intents)
+        self.assertNotIn("slack.reaction", email_intents)
+        self.assertNotIn("slack.send", email_intents)
 
 
 # ==============================================================================
@@ -595,6 +657,149 @@ class TestRouterDecisionLogicAllIntents(unittest.TestCase):
         self.assertEqual(result["domain"], "slack")
         self.assertEqual(result["status"], "confident")
 
+    @patch("agent.routing.intent_router.get_candidate_intents")
+    @patch("agent.routing.intent_router.generate_routing_query")
+    def test_slack_schedule_routing_confident_and_unavailable(self, mock_query_gen, mock_get_candidates):
+        mock_query_gen.return_value = _query("Schedule a Slack message to the team tomorrow at 9am")
+        mock_get_candidates.return_value = [
+            {"intent": "slack.schedule", "probability": 0.88},
+            {"intent": "slack.send", "probability": 0.08},
+        ]
+        res = route_intent("Schedule a Slack message to the team tomorrow at 9am", available_domains={"slack"})
+        self.assertEqual(res["intent"], "slack.schedule")
+        self.assertEqual(res["domain"], "slack")
+        self.assertEqual(res["status"], "confident")
+
+        # Test with message list input
+        messages = [MagicMock(content="Schedule message on Slack for Friday")]
+        mock_query_gen.return_value = _query("Schedule message on Slack for Friday")
+        res_list = route_intent(messages, available_domains={"slack"})
+        self.assertEqual(res_list["intent"], "slack.schedule")
+        self.assertEqual(res_list["status"], "confident")
+
+        # Test unavailable when slack domain disabled
+        res_unavail = route_intent("Schedule a Slack message to the team tomorrow at 9am", available_domains={"email"})
+        self.assertEqual(res_unavail["intent"], "slack.schedule")
+        self.assertEqual(res_unavail["status"], "unavailable")
+
+    @patch("agent.routing.intent_router.get_candidate_intents")
+    @patch("agent.routing.intent_router.generate_routing_query")
+    def test_slack_reaction_routing_confident_and_unavailable(self, mock_query_gen, mock_get_candidates):
+        mock_query_gen.return_value = _query("Add a thumbs up reaction to that message on Slack")
+        mock_get_candidates.return_value = [
+            {"intent": "slack.reaction", "probability": 0.92},
+            {"intent": "slack.send", "probability": 0.05},
+        ]
+        res = route_intent("Add a thumbs up reaction to that message on Slack", available_domains={"slack"})
+        self.assertEqual(res["intent"], "slack.reaction")
+        self.assertEqual(res["domain"], "slack")
+        self.assertEqual(res["status"], "confident")
+
+        # Test with dict input
+        dict_msg = {"text": "React with eyes emoji to the announcement on Slack"}
+        mock_query_gen.return_value = _query("React with eyes emoji to the announcement on Slack")
+        res_dict = route_intent(dict_msg, available_domains={"slack"})
+        self.assertEqual(res_dict["intent"], "slack.reaction")
+        self.assertEqual(res_dict["status"], "confident")
+
+        # Test unavailable
+        res_unavail = route_intent("Add a thumbs up reaction to that message on Slack", available_domains={"calendar"})
+        self.assertEqual(res_unavail["intent"], "slack.reaction")
+        self.assertEqual(res_unavail["status"], "unavailable")
+
+    @patch("agent.routing.intent_router.get_candidate_intents")
+    @patch("agent.routing.intent_router.generate_routing_query")
+    def test_slack_draft_routing_confident_and_unavailable(self, mock_query_gen, mock_get_candidates):
+        mock_query_gen.return_value = _query("Draft a Slack message to Sarah about the bug report")
+        mock_get_candidates.return_value = [
+            {"intent": "slack.draft", "probability": 0.85},
+            {"intent": "slack.send", "probability": 0.10},
+        ]
+        res = route_intent("Draft a Slack message to Sarah about the bug report", available_domains={"slack"})
+        self.assertEqual(res["intent"], "slack.draft")
+        self.assertEqual(res["domain"], "slack")
+        self.assertEqual(res["status"], "confident")
+
+        # Test with message list input
+        messages = [MagicMock(content="Save a draft on Slack for announcements channel")]
+        mock_query_gen.return_value = _query("Save a draft on Slack for announcements channel")
+        res_list = route_intent(messages, available_domains={"slack"})
+        self.assertEqual(res_list["intent"], "slack.draft")
+        self.assertEqual(res_list["status"], "confident")
+
+        # Test unavailable
+        res_unavail = route_intent("Draft a Slack message to Sarah about the bug report", available_domains={"email"})
+        self.assertEqual(res_unavail["intent"], "slack.draft")
+        self.assertEqual(res_unavail["status"], "unavailable")
+
+    @patch("agent.routing.intent_router.get_candidate_intents")
+    @patch("agent.routing.intent_router.generate_routing_query")
+    def test_email_draft_routing_confident_and_unavailable(self, mock_query_gen, mock_get_candidates):
+        mock_query_gen.return_value = _query("Draft an email to Bob regarding project roadmap")
+        mock_get_candidates.return_value = [
+            {"intent": "email.draft", "probability": 0.86},
+            {"intent": "email.send", "probability": 0.08},
+        ]
+        res = route_intent("Draft an email to Bob regarding project roadmap", available_domains={"email"})
+        self.assertEqual(res["intent"], "email.draft")
+        self.assertEqual(res["domain"], "email")
+        self.assertEqual(res["status"], "confident")
+
+        # Test with message list input
+        messages = [MagicMock(content="Compose a draft email to Alice about meeting")]
+        mock_query_gen.return_value = _query("Compose a draft email to Alice about meeting")
+        res_list = route_intent(messages, available_domains={"email"})
+        self.assertEqual(res_list["intent"], "email.draft")
+        self.assertEqual(res_list["status"], "confident")
+
+        # Test unavailable
+        res_unavail = route_intent("Draft an email to Bob regarding project roadmap", available_domains={"slack"})
+        self.assertEqual(res_unavail["intent"], "email.draft")
+        self.assertEqual(res_unavail["status"], "unavailable")
+
+    @patch("agent.routing.intent_router.get_candidate_intents")
+    @patch("agent.routing.intent_router.generate_routing_query")
+    def test_slack_and_email_action_ambiguity_decisions(self, mock_query_gen, mock_get_candidates):
+        # Slack draft vs send close margin
+        mock_query_gen.return_value = _query("Prepare a note for dev channel")
+        mock_get_candidates.return_value = [
+            {"intent": "slack.draft", "probability": 0.50},
+            {"intent": "slack.send", "probability": 0.45},
+        ]
+        res_slack_draft = route_intent("Prepare a note for dev channel", available_domains={"slack"})
+        self.assertEqual(res_slack_draft["intent"], "slack.draft")
+        self.assertEqual(res_slack_draft["status"], "ambiguous")
+
+        # Slack schedule vs send close margin
+        mock_query_gen.return_value = _query("Send later to team channel")
+        mock_get_candidates.return_value = [
+            {"intent": "slack.schedule", "probability": 0.52},
+            {"intent": "slack.send", "probability": 0.46},
+        ]
+        res_slack_sched = route_intent("Send later to team channel", available_domains={"slack"})
+        self.assertEqual(res_slack_sched["intent"], "slack.schedule")
+        self.assertEqual(res_slack_sched["status"], "ambiguous")
+
+        # Slack reaction vs history close margin
+        mock_query_gen.return_value = _query("Check emoji response on announcement")
+        mock_get_candidates.return_value = [
+            {"intent": "slack.reaction", "probability": 0.48},
+            {"intent": "slack.history", "probability": 0.44},
+        ]
+        res_slack_react = route_intent("Check emoji response on announcement", available_domains={"slack"})
+        self.assertEqual(res_slack_react["intent"], "slack.reaction")
+        self.assertEqual(res_slack_react["status"], "ambiguous")
+
+        # Email draft vs send close margin
+        mock_query_gen.return_value = _query("Write a message to Alice about the budget")
+        mock_get_candidates.return_value = [
+            {"intent": "email.draft", "probability": 0.51},
+            {"intent": "email.send", "probability": 0.47},
+        ]
+        res_email_draft = route_intent("Write a message to Alice about the budget", available_domains={"email"})
+        self.assertEqual(res_email_draft["intent"], "email.draft")
+        self.assertEqual(res_email_draft["status"], "ambiguous")
+
 
 # ==============================================================================
 # 5. Live Trained Pipeline Integration Tests (Real CSV & ML Model)
@@ -632,6 +837,83 @@ class TestLiveModelIntegration(unittest.TestCase):
                     f"Expected domain '{domain}' for query '{query_text}', got '{predicted_domain}' ({predicted_intent})"
                 )
                 self.assertEqual(predicted_intent, expected_top_intent)
+
+    def test_live_candidate_extraction_all_slack_intents(self):
+        """Tests that live classifier correctly predicts all individual Slack sub-intents."""
+        slack_queries = [
+            ("Send a message to the general channel on Slack", "slack.send"),
+            ("Draft a Slack message to Sarah about the bug report", "slack.draft"),
+            ("Schedule a Slack message to the team for tomorrow at 9am", "slack.schedule"),
+            ("React with thumbs up to the message on Slack", "slack.reaction"),
+            ("search Slack for the deployment", "slack.search"),
+            ("review Slack history for the deployment key", "slack.history"),
+        ]
+
+        for query_text, expected_intent in slack_queries:
+            with self.subTest(query=query_text, expected=expected_intent):
+                candidates = get_candidate_intents(query_text, available_domains=ALL_ACTIVE_DOMAINS, top_k=3)
+                self.assertGreater(len(candidates), 0)
+                predicted_intent = candidates[0]["intent"]
+                predicted_domain = _domain_for_intent(predicted_intent)
+
+                self.assertEqual(predicted_domain, "slack")
+                self.assertEqual(predicted_intent, expected_intent)
+
+    def test_live_candidate_extraction_draft_intents(self):
+        """Tests that live classifier accurately extracts draft intents across domains."""
+        draft_queries = [
+            ("email", "Compose a draft email to Alice about the meeting", "email.draft"),
+            ("email", "Draft the architecture review", "email.draft"),
+            ("email", "Write a draft for the quarterly review", "email.draft"),
+            ("slack", "Draft a Slack message to Sarah about the bug report", "slack.draft"),
+            ("slack", "Save a draft on Slack for the announcements channel", "slack.draft"),
+            ("slack", "Prepare an unsent Slack message to Alex about standup", "slack.draft"),
+            ("slack", "Create a draft message in Slack for the general channel regarding release plan", "slack.draft"),
+            ("slack", "Write a Slack draft to John concerning the roadmap", "slack.draft"),
+        ]
+
+        for domain, query_text, expected_top_intent in draft_queries:
+            with self.subTest(domain=domain, query=query_text):
+                candidates = get_candidate_intents(query_text, available_domains=ALL_ACTIVE_DOMAINS, top_k=3)
+                self.assertGreater(len(candidates), 0)
+                predicted_intent = candidates[0]["intent"]
+                predicted_domain = _domain_for_intent(predicted_intent)
+
+                self.assertEqual(
+                    predicted_domain, domain,
+                    f"Expected domain '{domain}' for query '{query_text}', got '{predicted_domain}' ({predicted_intent})"
+                )
+                self.assertEqual(predicted_intent, expected_top_intent)
+
+    def test_live_slack_actions_discrimination(self):
+        """Tests pairwise discrimination among all Slack intents."""
+        slack_discrimination = [
+            ("Send a message to the general channel on Slack", "slack.send"),
+            ("Draft a message on Slack for the general channel", "slack.draft"),
+            ("Schedule a Slack message to the team for tomorrow at 9am", "slack.schedule"),
+            ("React with thumbs up to the message on Slack", "slack.reaction"),
+            ("search Slack for the deployment", "slack.search"),
+            ("review Slack history for the deployment key", "slack.history"),
+        ]
+
+        for query_text, expected_intent in slack_discrimination:
+            with self.subTest(query=query_text, expected=expected_intent):
+                candidates = get_candidate_intents(query_text, available_domains=ALL_ACTIVE_DOMAINS, top_k=2)
+                self.assertGreater(len(candidates), 0)
+                self.assertEqual(candidates[0]["intent"], expected_intent)
+
+    def test_live_email_draft_vs_send_discrimination(self):
+        """Tests paired discrimination between email send and email draft."""
+        paired_queries = [
+            ("Send an email to Alice regarding our weekly meeting", "email.send"),
+            ("Compose a draft email to Alice regarding our weekly meeting", "email.draft"),
+        ]
+
+        for query_text, expected_intent in paired_queries:
+            with self.subTest(query=query_text, expected=expected_intent):
+                candidates = get_candidate_intents(query_text, available_domains=ALL_ACTIVE_DOMAINS, top_k=2)
+                self.assertGreater(len(candidates), 0)
+                self.assertEqual(candidates[0]["intent"], expected_intent)
 
 
 # ==============================================================================

@@ -33,4 +33,26 @@ class MCPIntegration(models.Model):
         ]
 
 
+class SlackResource(models.Model):
+    user = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="slack_resources",
+    )
+    resource_type = models.CharField(max_length=20)  # e.g., "channel", "user", "team"
+    name = models.CharField(max_length=255)
+    slack_id = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "resource_type", "name"],
+                name="unique_slack_resource",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.resource_type}:{self.name} -> {self.slack_id}"
         

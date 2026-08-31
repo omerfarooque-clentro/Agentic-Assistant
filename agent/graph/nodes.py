@@ -43,13 +43,14 @@ def supervisor_router(state: AgentState):
 
 def scoped_should_continue(state, domain):
     last_message = state["messages"][-1]
-
+    
     if not last_message.tool_calls:
         return "end"
     if domain in APPROVAL_DOMAINS:
         for tool_call in last_message.tool_calls:
             if tool_call["name"] in APPROVAL_TOOL_NAMES:
                 return "approval"
+    
              
     return "tools"
 
