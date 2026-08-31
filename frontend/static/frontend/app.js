@@ -1533,17 +1533,6 @@
         const confirmed = window.confirm('Delete this thread?');
         if (!confirmed) return;
 
-        const getDynamicGreeting = () => {
-        const currentHour = new Date().getHours();
-          if (currentHour < 12) {
-            return 'Good morning.';
-          } else if (currentHour < 18) {
-            return 'Good afternoon.';
-          } else {
-            return 'Good evening.';
-          }
-        };
-
         try {
           await api(`/api/thread/${encodeURIComponent(threadId)}/delete/`, { method: 'DELETE' });
           if (state.threadId === threadId) {
@@ -1556,8 +1545,22 @@
           await loadThreads({ selectFirst: !state.threadId });
         } catch (error) {
           showBanner(error.message || "Couldn't delete that thread.", () => deleteThread(threadId));
-        }
+        }s
       };
+
+      const getDynamicGreeting = () => {
+        const currentHour = new Date().getHours();
+         if (currentHour < 4) {
+            return 'Working Late?';
+          } else if (currentHour < 12) {
+            return 'Good morning.';
+          } else if (currentHour < 18) {
+            return 'Good afternoon.';
+          } else {
+            return 'Good evening.';
+          }
+      };
+
 
       const loadThreads = async ({ selectFirst = false } = {}) => {
         renderThreadSkeleton();
