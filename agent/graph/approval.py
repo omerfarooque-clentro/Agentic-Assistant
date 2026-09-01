@@ -11,7 +11,7 @@ DOCS_APPROVAL_TOOL_NAMES = {
     "create_table_with_data", "update_paragraph_style", "manage_doc_tab",
 }
 SHEETS_APPROVAL_TOOL_NAMES = {"create_spreadsheet", "create_sheet", "modify_sheet_values", "append_table_rows"}
-SLACK_APPROVAL_TOOL_NAMES = {"slack_send_message", "send_slack_dm", "create_slack_draft"}
+SLACK_APPROVAL_TOOL_NAMES = {"slack_send_message", "send_slack_dm", "create_slack_draft", "slack_add_reaction", "slack_schedule_message"}
 
 TOOL_NAMES_BY_DOMAIN = {
     "email": EMAIL_APPROVAL_TOOL_NAMES,
