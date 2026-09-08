@@ -1366,7 +1366,7 @@
     
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
-      const state = { threadId: null, initialThreadPicked: false, connectedServices: new Set(), messageCount: 0, sending: false, pendingApproval: null, streamRequestId: 0, abortController: null };
+      const state = { threadId: null, threads: [], initialThreadPicked: false, connectedServices: new Set(), messageCount: 0, sending: false, pendingApproval: null, streamRequestId: 0, abortController: null };
       const transcript = document.querySelector('#transcript');
       const input = document.querySelector('#message-input');
       const title = document.querySelector('#thread-title');
@@ -1377,9 +1377,10 @@
       const bannerMsg = document.querySelector('#error-banner-msg');
       const bannerRetry = document.querySelector('#error-banner-retry');
       const bannerDismiss = document.querySelector('#error-banner-dismiss');
-      document.querySelector('#user-label').textContent = localStorage.getItem('ops_user') || 'Workspace online';
+      const currentUser = localStorage.getItem('ops_user') || 'Workspace online';
+      document.querySelector('#user-label').textContent = currentUser;
       const avatar = document.querySelector('#user-avatar');
-      if (avatar) avatar.textContent = (localStorage.getItem('ops_user') || '?').charAt(0).toUpperCase();
+      if (avatar) avatar.textContent = currentUser.charAt(0).toUpperCase();
 
       const showBanner = (message, retry) => {
         bannerMsg.textContent = message;
@@ -1502,6 +1503,88 @@
         }
       };
 
+      const getDynamicGreeting = (username = '') => {
+        const user = username || localStorage.getItem('ops_user') || '';
+        const suffix = user ? `, ${user}` : '';
+        const currentHour = new Date().getHours();
+        if (currentHour < 5) {
+          return `Working late${suffix}?`;
+        } else if (currentHour < 12) {
+          return `Good morning${suffix}.`;
+        } else if (currentHour < 18) {
+          return `Good afternoon${suffix}.`;
+        } else {
+          return `Good evening${suffix}.`;
+        }
+      };
+
+      const bindPromptButtons = () => {
+        transcript.querySelectorAll('[data-prompt]').forEach(button => {
+          button.onclick = () => {
+            input.value = button.dataset.prompt;
+            autoGrowTextarea(input);
+            input.focus();
+          };
+        });
+      };
+
+      const renderWelcomeState = () => {
+        const user = localStorage.getItem('ops_user') || '';
+        const greeting = getDynamicGreeting(user);
+        transcript.innerHTML = `
+          <div class="welcome-hub">
+            <div class="welcome-badge"><i class="status-dot"></i>Personal Ops Assistant</div>
+            <h2 class="welcome-heading">${escapeHtml(greeting)}</h2>
+            <p class="welcome-sub">Ask your operations agent to organize your day, search emails, manage meetings, or draft documents.</p>
+            <div class="starter-grid">
+              <button type="button" class="starter-card" data-prompt="Give me a quick overview of my unread emails">
+                <span class="starter-icon">✉️</span>
+                <span class="starter-info">
+                  <span class="starter-title">Inbox Overview</span>
+                  <span class="starter-desc">Summarize latest unread messages and urgent threads</span>
+                </span>
+              </button>
+              <button type="button" class="starter-card" data-prompt="What meetings and events do I have scheduled today?">
+                <span class="starter-icon">📅</span>
+                <span class="starter-info">
+                  <span class="starter-title">Today's Schedule</span>
+                  <span class="starter-desc">Review your calendar events and upcoming meetings</span>
+                </span>
+              </button>
+              <button type="button" class="starter-card" data-prompt="Draft an operations summary note in Google Docs">
+                <span class="starter-icon">📝</span>
+                <span class="starter-info">
+                  <span class="starter-title">Capture a Note</span>
+                  <span class="starter-desc">Draft or append meeting notes to your Google Docs</span>
+                </span>
+              </button>
+              <button type="button" class="starter-card" data-prompt="Search the web for the latest updates on ">
+                <span class="starter-icon">🔍</span>
+                <span class="starter-info">
+                  <span class="starter-title">Web Research</span>
+                  <span class="starter-desc">Pull live facts, industry updates, and research</span>
+                </span>
+              </button>
+              <button type="button" class="starter-card" data-prompt="Check my recent Slack messages and mentions">
+                <span class="starter-icon">💬</span>
+                <span class="starter-info">
+                  <span class="starter-title">Slack Catchup</span>
+                  <span class="starter-desc">Scan unread workspace channels and mentions</span>
+                </span>
+              </button>
+              <button type="button" class="starter-card" data-prompt="What operations tasks can you assist me with?">
+                <span class="starter-icon">⚡</span>
+                <span class="starter-info">
+                  <span class="starter-title">Explore Capabilities</span>
+                  <span class="starter-desc">Discover available tools, workflows, and integrations</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        `;
+        bindPromptButtons();
+      };
+
       const selectThread = async id => {
         cancelActiveStream();
         state.threadId = id;
@@ -1509,7 +1592,13 @@
         state.pendingApproval = null;
         state.sending = false;
         refreshComposerState();
-        title.textContent = 'Thread ' + id;
+
+        const currentThread = (state.threads || []).find(t => String(t.id) === String(id));
+        const threadName = currentThread && currentThread.name && currentThread.name !== 'New Thread'
+          ? currentThread.name
+          : (currentThread && currentThread.name === 'New Thread' ? 'New Conversation' : 'Workspace Chat');
+        title.textContent = threadName;
+
         document.querySelectorAll('.thread-item').forEach(item => item.classList.toggle('active', item.dataset.id == id));
         transcript.innerHTML = '<div class="loading-line">Loading thread history...</div>';
         try {
@@ -1518,7 +1607,7 @@
           transcript.innerHTML = '';
           state.messageCount = 0;
           if (!messages.length) {
-            transcript.innerHTML = '<div class="empty-state empty-state-thread"><div class="empty-orbit">+</div><h2>Nothing here yet</h2><p>Send a message below to get this thread started.</p></div>';
+            renderWelcomeState();
           } else {
             messages.forEach(message => addMessage(message.role === 'assistant' ? 'agent' : message.role, message.content));
           }
@@ -1539,34 +1628,21 @@
             state.threadId = null;
             state.pendingApproval = null;
             title.textContent = getDynamicGreeting();
-            transcript.innerHTML = '';
+            renderWelcomeState();
             document.querySelectorAll('.thread-item').forEach(item => item.classList.remove('active'));
           }
           await loadThreads({ selectFirst: !state.threadId });
         } catch (error) {
           showBanner(error.message || "Couldn't delete that thread.", () => deleteThread(threadId));
-        }s
+        }
       };
-
-      const getDynamicGreeting = () => {
-        const currentHour = new Date().getHours();
-         if (currentHour < 4) {
-            return 'Working Late?';
-          } else if (currentHour < 12) {
-            return 'Good morning.';
-          } else if (currentHour < 18) {
-            return 'Good afternoon.';
-          } else {
-            return 'Good evening.';
-          }
-      };
-
 
       const loadThreads = async ({ selectFirst = false } = {}) => {
         renderThreadSkeleton();
         try {
           const data = await api('/api/list_thread/');
           const threads = Array.isArray(data) ? data : data.results || [];
+          state.threads = threads;
           threadList.innerHTML = threads.length ? '' : '<div class="rail-empty">No threads yet.<br>Start with a question.</div>';
           threads.forEach(thread => {
             const item = document.createElement('button');
@@ -1574,7 +1650,7 @@
             item.dataset.id = thread.id;
             item.type = 'button';
             item.innerHTML = `<span class="thread-item-title"></span><span class="thread-item-meta"><span class="thread-item-time"></span><span class="thread-delete" aria-label="Delete thread" title="Delete thread">×</span></span>`;
-            item.querySelector('.thread-item-title').textContent = thread.name || `Thread ${thread.id}`;
+            item.querySelector('.thread-item-title').textContent = thread.name || 'New Thread';
             item.querySelector('.thread-item-time').textContent = thread.updated_at ? new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }).format(new Date(thread.updated_at)) : '';
             const deleteButton = item.querySelector('.thread-delete');
             deleteButton.onclick = event => {
@@ -1585,7 +1661,15 @@
             item.onclick = () => selectThread(thread.id);
             threadList.appendChild(item);
           });
-          if (selectFirst && !state.initialThreadPicked && threads[0]) { state.initialThreadPicked = true; selectThread(threads[0].id); }
+          if (selectFirst && !state.initialThreadPicked) {
+            state.initialThreadPicked = true;
+            if (threads[0]) {
+              selectThread(threads[0].id);
+            } else {
+              title.textContent = getDynamicGreeting();
+              renderWelcomeState();
+            }
+          }
           return threads;
         } catch (error) {
           threadList.innerHTML = '';
@@ -1601,6 +1685,7 @@
         try {
           const data = await api('/api/list_thread/');
           const threads = Array.isArray(data) ? data : data.results || [];
+          state.threads = threads;
           const current = threads.find(thread => thread.id == state.threadId);
           if (!current || !current.name || current.name === 'New Thread') return;
           title.textContent = current.name;
@@ -1827,7 +1912,6 @@
       });
       input.addEventListener('input', () => autoGrowTextarea(input));
       input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.querySelector('#chat-form').requestSubmit(); } });
-      document.querySelectorAll('[data-prompt]').forEach(button => button.onclick = () => { input.value = button.dataset.prompt; autoGrowTextarea(input); input.focus(); });
       document.querySelector('#new-thread').onclick = () => {
         if (state.pendingApproval) return; // don't abandon an open approval mid-decision
         cancelActiveStream();
@@ -1835,7 +1919,7 @@
         state.messageCount = 0;
         state.sending = false;
         title.textContent = getDynamicGreeting();
-        transcript.innerHTML = '';
+        renderWelcomeState();
         document.querySelectorAll('.thread-item').forEach(item => item.classList.remove('active'));
         refreshComposerState();
         input.focus();

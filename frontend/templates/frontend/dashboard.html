@@ -15,19 +15,19 @@
       <button class="connection-row" data-integration="docs"><span><span class="dot dot-off" id="docs-dot"></span>Docs</span><span class="connection-state off" id="docs-state">Connect</span></button>
       <button class="connection-row" data-integration="sheets"><span><span class="dot dot-off" id="sheets-dot"></span>Sheets</span><span class="connection-state off" id="sheets-state">Connect</span></button>
       <button class="connection-row" data-integration="slack"><span><span class="dot dot-off" id="slack-dot"></span>Slack</span><span class="connection-state off" id="slack-state">Connect</span></button>
-      <a class="settings-link" href="/settings/">Manage connected accounts →</a>
+      <a class="manage-accounts-btn" href="/settings/"><span class="icon">⚙️</span> Manage Connections →</a>
     </div>
     <div class="sidebar-footer"><span class="user-avatar" id="user-avatar">?</span><span id="user-label">Workspace online</span><button id="logout" class="logout-btn">Log out</button></div>
   </aside>
   <main class="chat-panel">
-    <header class="chat-header"><div><span class="eyebrow">Operations desk</span><h1 id="thread-title">Good morning.</h1></div><div class="header-meta"><span class="live-pill"><i class="status-dot"></i>Live workspace</span><span id="clock"></span></div></header>
+    <header class="chat-header"><div><span class="eyebrow">Operations desk</span><h1 id="thread-title">Personal Operations</h1></div><div class="header-meta"><span class="live-pill"><i class="status-dot"></i>Live workspace</span><span id="clock"></span></div></header>
     <div id="error-banner" class="error-banner hidden">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
       <span class="msg" id="error-banner-msg"></span>
       <button class="retry" id="error-banner-retry">Retry</button>
       <button class="dismiss" id="error-banner-dismiss">×</button>
     </div>
-    <section id="transcript" class="transcript"><div class="empty-state"><div class="empty-orbit">+</div><h2>What needs moving?</h2><p>Ask me to search, organize, draft, schedule, or keep your day on track.</p><div class="suggestions"><button data-prompt="Give me a quick overview of my inbox">Inbox overview</button><button data-prompt="What is on my calendar today?">Today's calendar</button><button data-prompt="Add a note to my operations doc">Capture a note</button></div></div></section>
+    <section id="transcript" class="transcript"></section>
     <div class="composer-wrap">
       <form id="chat-form" class="composer"><textarea id="message-input" name="message" rows="1" placeholder="Tell your operations agent what to do..." required></textarea><button class="send-button" type="submit" title="Send message">↑</button></form>
       <div class="composer-note" id="composer-note">Enter to send <span>•</span> Checking connected tools...</div>

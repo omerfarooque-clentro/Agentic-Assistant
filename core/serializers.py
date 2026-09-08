@@ -29,6 +29,14 @@ class RegisterationSerializer(serializers.ModelSerializer):
             "email": {"required": True},
         }
 
+    def validate_email(self, value):
+        if not value:
+            raise serializers.ValidationError("Email is required.")
+        normalized = value.strip().lower()
+        if User.objects.filter(email__iexact=normalized).exists():
+            raise serializers.ValidationError("A user with that email already exists.")
+        return normalized
+
     def validate(self, data):
         auto_gen = data.get("auto_generate_password", False)
         password = data.get("password")
@@ -74,13 +82,9 @@ class RegisterationSerializer(serializers.ModelSerializer):
         return ret
 
 
-class LoginSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ("email", "password")
-        extra_kwargs = {
-            "password": {"write_only": True}
-        }
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True, write_only=True)
 
     def validate(self, data):
         email = data.get("email")

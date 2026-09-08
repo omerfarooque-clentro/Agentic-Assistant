@@ -150,6 +150,22 @@ class AuthViewTests(TestCase):
         self.assertIn("recovery_code", response.data)
         self.assertTrue(response.data["recovery_code"].startswith("PO-"))
 
+    def test_registration_duplicate_email_fails(self):
+        User.objects.create_user(
+            username="originaluser",
+            email="duplicate@example.com",
+            password="StrongPassword1!"
+        )
+
+        response = self.client.post("/registration/", {
+            "username": "seconduser",
+            "email": "duplicate@example.com",
+            "password": "OtherPassword123!",
+        }, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.data)
+
     def test_forgot_password_view(self):
         User.objects.create_user(
             username="emma",
