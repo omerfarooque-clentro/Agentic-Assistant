@@ -325,6 +325,7 @@ async def agent_chat_view(request, thread_id):
     await Message.objects.acreate(thread=thread, role="user", content=message)
     await thread.asave(update_fields=["updated_at"]) 
     
+    local_save  = []
 
     async def event_stream():
         try:
@@ -336,15 +337,18 @@ async def agent_chat_view(request, thread_id):
                     yield f"data: {json.dumps({'type': 'status', 'status': chunk.get('status'), 'message': chunk.get('message')})}\n\n"
                     continue
                 if chunk_type == "token":
+                    local_save.append(chunk['token'])
                     yield f"data: {json.dumps({'type': 'token', 'token': chunk['token']})}\n\n"
                     continue
                 if chunk_type == "approval_required":
                     yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt']})}\n\n"
                     return
                 if chunk_type == "error":
-                    await Message.objects.acreate(thread=thread, role="agent", content="An unexpected error occurred during processing, please try again.")
-                    await thread.asave(update_fields=["updated_at"]) 
-                    yield f"data: {json.dumps({'type': 'error', 'message': chunk['message']})}\n\n"
+                    err_msg = chunk.get("message") or "Unknown error occurred"
+                    accumulated = "".join(local_save).strip()
+                    db_content = f"{accumulated}\n\n[Error: {err_msg}]" if accumulated else f"[Error: {err_msg}]"
+                    await Message.objects.acreate(thread=thread, role="agent", content=db_content)
+                    yield f"data: {json.dumps({'type': 'error', 'message': err_msg})}\n\n"
                     return
                 if chunk_type != "completed":
                     continue
@@ -418,6 +422,15 @@ async def tool_approval_view(request, thread_id):
     print(f"i am approve_email_view and i resumed thread {thread.id} with final response: {result['messages'][-1].content!r}")
 
     message = extract_text_content(result["messages"][-1].content)
+    
+    await Message.objects.acreate(
+        thread=thread,
+        role="agent",
+        content=message
+    )
+    
+    await thread.asave(update_fields=["updated_at"])
+    
     return JsonResponse({
         "result": message,
         "thread_id": int(thread.id),
