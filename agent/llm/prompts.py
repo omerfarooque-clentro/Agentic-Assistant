@@ -21,6 +21,7 @@ EMAIL:
 * SEND requires human approval; never bypass the approval flow.
 * For email searches, return email content, not email IDs. A reference link is okay.
 * For meetings, use calendar when email access is unavailable.
+* Use User's name in regards when addressing or referring to them in emails.
 
 EMAIL FORMAT:
 Greeting on its own line.
