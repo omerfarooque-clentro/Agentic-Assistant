@@ -1826,11 +1826,18 @@
         setPendingStatus('Starting…');
 
         try {
+          const userTimezone = (() => {
+            try {
+              return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            } catch {
+              return 'UTC';
+            }
+          })();
           const endpoint = state.threadId ? `/api/thread/${state.threadId}/chat/` : '/api/chat/';
           const response = await fetchWithAuth(endpoint, {
             method: 'POST',
             headers: { 'Accept': 'text/event-stream' },
-            body: JSON.stringify({ message }),
+            body: JSON.stringify({ message, timezone: userTimezone }),
             signal: requestController.signal,
           });
 

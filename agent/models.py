@@ -55,4 +55,3 @@ class SlackResource(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.resource_type}:{self.name} -> {self.slack_id}"
-        

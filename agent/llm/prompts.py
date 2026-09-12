@@ -35,6 +35,11 @@ Name
 
 Keep emails concise, natural, and professional.
 
+CALENDAR:
+
+* Use calendar tools to search, create, update, delete, or check availability for events.
+* Use the current date, time, and timezone context provided in the user's message to accurately resolve relative dates (e.g., 'today', 'tomorrow', 'next Monday') and schedule events in the user's timezone.
+
 DOCUMENTS:
 Use document tools to read, inspect, summarize, or extract information.
 

@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime
 import json
 from asgiref.sync import sync_to_async
 from django.http import JsonResponse
@@ -8,10 +8,12 @@ from rest_framework import generics
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
+# pyrefly: ignore [missing-import]
 from django.contrib.auth import get_user_model
 from agent.runner import run_agent
 from core.serializers import (
     AgentChatSerializer,
+    
     RegisterationSerializer,
     LoginSerializer,
     ApproveEmailSerializer,
@@ -32,14 +34,27 @@ from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
 from agent.models import MCPIntegration
 from django.http import StreamingHttpResponse
-from django.utils import timezone  # This contains the .activate() method
+from django.utils import timezone
 import zoneinfo
 
 User = get_user_model()
 
-user_tz = "Asia/Karachi" 
-timezone.activate(zoneinfo.ZoneInfo(user_tz))
-current_time = timezone.localtime(timezone.now()) 
+
+def format_user_agent_message(message: str, username: str, timezone_str: str | None = None) -> str:
+    """Format user message with dynamic real-time timestamp and resolved timezone context."""
+    tz = None
+    tz_name = (timezone_str or "").strip()
+    if tz_name:
+        try:
+            tz = zoneinfo.ZoneInfo(tz_name)
+        except (zoneinfo.ZoneInfoNotFoundError, ValueError, KeyError):
+            tz = None
+    if tz is None:
+        tz_name = "UTC"
+        tz = zoneinfo.ZoneInfo("UTC")
+
+    now = datetime.now(tz)
+    return f"Date: {now.strftime('%Y-%m-%d %H:%M:%S')} (Timezone: {tz_name}), {username}: {message}"
 
 def extract_text_content(message_content):
     """Extract string content regardless of provider format."""
@@ -255,7 +270,8 @@ async def new_chat_view(request):
         return JsonResponse(serializer.errors, status=400)
 
     message = serializer.validated_data["message"]
-    formatted_message = f"Date: {current_time}, {user.username}: {message}"
+    user_tz = serializer.validated_data.get("timezone")
+    formatted_message = format_user_agent_message(message=message, username=user.username, timezone_str=user_tz)
     thread = await Thread.objects.acreate(user=user, name="New Thread")
     await Message.objects.acreate(thread=thread, role="user", content=message)
     await thread.asave(update_fields=["updated_at"]) 
@@ -315,8 +331,8 @@ async def agent_chat_view(request, thread_id):
         return JsonResponse(serializer.errors, status=400)
 
     message = serializer.validated_data["message"]
-
-    formatted_message = f"Date: {current_time}, {user.username}: {message}"
+    user_tz = serializer.validated_data.get("timezone")
+    formatted_message = format_user_agent_message(message=message, username=user.username, timezone_str=user_tz)
     try:
         thread = await Thread.objects.aget(id=thread_id, user=user)
     except Thread.DoesNotExist:

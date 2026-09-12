@@ -11,6 +11,7 @@ from accounts.utils import (
 
 class AgentChatSerializer(serializers.Serializer):
     message = serializers.CharField()
+    timezone = serializers.CharField(required=False, allow_blank=True, default="UTC")
 
 
 class ApproveEmailSerializer(serializers.Serializer):

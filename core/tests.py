@@ -9,8 +9,10 @@ from core.views import (
     forgot_password_view,
     verify_otp_view,
     reset_password_view,
+    format_user_agent_message,
 )
 from core.serializers import (
+    AgentChatSerializer,
     LoginSerializer,
     RegisterationSerializer,
     ForgotPasswordSerializer,
@@ -335,5 +337,51 @@ class JWTAuthTests(TestCase):
 
         response = self.client.get("/api/list_thread/")
         self.assertEqual(response.status_code, 200)
+
+
+class AgentChatSerializerTests(SimpleTestCase):
+    def test_serializer_with_message_only_defaults_to_utc(self):
+        serializer = AgentChatSerializer(data={"message": "Hello world"})
+        self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["message"], "Hello world")
+        self.assertEqual(serializer.validated_data.get("timezone"), "UTC")
+
+    def test_serializer_with_explicit_timezone(self):
+        serializer = AgentChatSerializer(data={"message": "Schedule a meeting", "timezone": "America/New_York"})
+        self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["message"], "Schedule a meeting")
+        self.assertEqual(serializer.validated_data["timezone"], "America/New_York")
+
+    def test_serializer_missing_message_is_invalid(self):
+        serializer = AgentChatSerializer(data={"timezone": "America/New_York"})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("message", serializer.errors)
+
+
+class FormatUserAgentMessageTests(SimpleTestCase):
+    def test_format_with_valid_timezone(self):
+        result = format_user_agent_message("Schedule a meeting tomorrow at 3pm", "alice", "America/New_York")
+        self.assertIn("alice: Schedule a meeting tomorrow at 3pm", result)
+        self.assertIn("(Timezone: America/New_York)", result)
+        self.assertTrue(result.startswith("Date: "))
+
+    def test_format_with_asia_karachi_timezone(self):
+        result = format_user_agent_message("List my emails", "bob", "Asia/Karachi")
+        self.assertIn("bob: List my emails", result)
+        self.assertIn("(Timezone: Asia/Karachi)", result)
+        self.assertTrue(result.startswith("Date: "))
+
+    def test_format_with_invalid_timezone_falls_back_to_utc(self):
+        result = format_user_agent_message("Hello", "charlie", "Invalid/Fake_Zone")
+        self.assertIn("charlie: Hello", result)
+        self.assertIn("(Timezone: UTC)", result)
+        self.assertTrue(result.startswith("Date: "))
+
+    def test_format_with_empty_or_none_timezone_falls_back_to_utc(self):
+        result_none = format_user_agent_message("Hello", "charlie", None)
+        self.assertIn("(Timezone: UTC)", result_none)
+
+        result_empty = format_user_agent_message("Hello", "charlie", "   ")
+        self.assertIn("(Timezone: UTC)", result_empty)
 
 
