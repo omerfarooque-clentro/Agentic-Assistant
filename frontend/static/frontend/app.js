@@ -186,6 +186,36 @@
   const truncateText = (text, max) => (typeof text === 'string' && text.length > max ? `${text.slice(0, max)}…` : text);
   const safeText = value => (value === null || value === undefined ? '' : String(value));
 
+  const formatRelativeTime = dateInput => {
+    if (!dateInput) return '';
+    const date = new Date(dateInput);
+    if (isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+
+    if (diffSec < 0) return 'Just now';
+    if (diffSec < 60) return diffSec <= 5 ? 'Just now' : `${diffSec}s ago`;
+    if (diffMin < 60) return `${diffMin}m ago`;
+
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const itemDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayDiff = Math.round((today - itemDay) / (1000 * 60 * 60 * 24));
+
+    if (dayDiff === 0 || diffHour < 24) return `${diffHour}h ago`;
+    if (dayDiff === 1) return 'Yesterday';
+    if (dayDiff > 1 && dayDiff <= 7) return 'Last week';
+
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(date);
+  };
+
   const APPROVAL_FIELD_LABELS = { to: 'To', subject: 'Subject', body: 'Body', channel: 'Channel', message: 'Message' };
   const SKIPPED_APPROVAL_KEYS = new Set(['type', 'tool_name', 'is_duplicate', 'domain', 'message', 'args']);
   const titleCase = key => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -1014,6 +1044,41 @@
       ${args.message ? `<div class="slack-approval-bubble">${escapeHtml(truncateText(args.message, 800))}</div>` : ''}
     </div>`;
 
+  const renderDocsApproval = args => {
+    const title = args.title || args.document_id || 'Google Document';
+    const content = args.content || args.text || args.body || args.insert_text || '';
+    return `
+      <div class="docs-approval">
+        <div class="docs-approval-meta">
+          <span class="docs-chip">📄 ${escapeHtml(title)}</span>
+          ${args.document_id && args.title ? `<span class="sheets-range-badge">ID: ${escapeHtml(truncateText(args.document_id, 20))}</span>` : ''}
+        </div>
+        ${content ? `<div class="docs-approval-body">${escapeHtml(truncateText(content, 800))}</div>` : ''}
+      </div>`;
+  };
+
+  const renderSheetsApproval = args => {
+    const name = args.spreadsheet_name || args.spreadsheet_id || 'Google Spreadsheet';
+    const sheet = args.sheet_name || args.sheet || '';
+    const range = args.range || '';
+    const values = args.values || args.rows || args.data || '';
+    let valDisplay = '';
+    if (Array.isArray(values)) {
+      valDisplay = values.map(row => (Array.isArray(row) ? row.join(' | ') : stringifyApprovalValue(row))).join('\n');
+    } else if (values) {
+      valDisplay = stringifyApprovalValue(values);
+    }
+    return `
+      <div class="sheets-approval">
+        <div class="sheets-approval-meta">
+          <span class="sheets-chip">📊 ${escapeHtml(name)}</span>
+          ${sheet ? `<span class="sheets-range-badge">Tab: ${escapeHtml(sheet)}</span>` : ''}
+          ${range ? `<span class="sheets-range-badge">Range: ${escapeHtml(range)}</span>` : ''}
+        </div>
+        ${valDisplay ? `<div class="sheets-approval-body">${escapeHtml(truncateText(valDisplay, 800))}</div>` : ''}
+      </div>`;
+  };
+
   // Docs/Sheets and any tool we don't have a dedicated layout for fall back
   // to a generic field list — but values can be objects/arrays (not just
   // strings) or very long doc/cell content, so stringify and cap them
@@ -1029,6 +1094,8 @@
     if (approval.domain === 'calendar' && (args.summary || args.start_time)) return renderCalendarApproval(args);
     if (approval.domain === 'email' && (args.to || args.subject || args.body)) return renderEmailApproval(args);
     if (approval.domain === 'slack' && (args.channel || args.message)) return renderSlackApproval(args);
+    if (approval.domain === 'docs' && (args.title || args.content || args.text || args.document_id)) return renderDocsApproval(args);
+    if (approval.domain === 'sheets' && (args.spreadsheet_id || args.values || args.rows || args.range)) return renderSheetsApproval(args);
     const fields = Object.entries(args)
       .filter(([key, value]) => value != null && value !== '' && !SKIPPED_APPROVAL_KEYS.has(key))
       .map(([key, value]) => `<dt>${APPROVAL_FIELD_LABELS[key] || titleCase(key)}</dt><dd>${escapeHtml(truncateText(stringifyApprovalValue(value), 600))}</dd>`)
@@ -1641,8 +1708,11 @@
       const transcript = document.querySelector('#transcript');
       const input = document.querySelector('#message-input');
       const title = document.querySelector('#thread-title');
-      const threadList = document.querySelector('#thread-list');
       const sendButton = document.querySelector('.send-button');
+      const threadList = document.querySelector('#thread-list');
+      const threadSearchInput = document.querySelector('#thread-search-input');
+      const threadSearchClear = document.querySelector('#thread-search-clear');
+      const threadCountBadge = document.querySelector('#thread-count-badge');
       const composerNote = document.querySelector('#composer-note');
       const banner = document.querySelector('#error-banner');
       const bannerMsg = document.querySelector('#error-banner-msg');
@@ -2226,8 +2296,10 @@
           ? `Re-run this ${meta.label.toLowerCase()} action?`
           : (approval && approval.message) || `Approve ${meta.label.toLowerCase()} action`;
         card.innerHTML = `
-          <div>
-            <span class="eyebrow" style="color:#a1806f">${meta.icon} Waiting on you — ${meta.label}</span>
+          <div style="flex:1; min-width:0;">
+            <div class="approval-header">
+              <span class="approval-badge">${meta.icon} Waiting on you — ${meta.label}</span>
+            </div>
             <h3>${escapeHtml(heading)}</h3>
             ${renderApprovalBody(approval || {})}
             <div class="approval-status hidden" aria-live="polite"></div>
@@ -2412,30 +2484,130 @@
         }
       };
 
+      const renderThreadItems = (threadsToRender, filterQuery = '') => {
+        threadList.innerHTML = '';
+        if (!threadsToRender || threadsToRender.length === 0) {
+          if (filterQuery) {
+            threadList.innerHTML = `
+              <div class="rail-no-results">
+                <div>No conversations matching "<strong>${escapeHtml(filterQuery)}</strong>"</div>
+                <span>Try a different search term</span>
+                <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-top:4px;" id="reset-search-btn">Clear search</button>
+              </div>`;
+            const resetBtn = threadList.querySelector('#reset-search-btn');
+            if (resetBtn) {
+              resetBtn.onclick = () => {
+                if (threadSearchInput) threadSearchInput.value = '';
+                filterThreads('');
+                if (threadSearchInput) threadSearchInput.focus();
+              };
+            }
+          } else {
+            threadList.innerHTML = '<div class="rail-empty">No threads yet.<br>Start with a question.</div>';
+          }
+          return;
+        }
+
+        threadsToRender.forEach(thread => {
+          const item = document.createElement('button');
+          item.className = 'thread-item';
+          if (state.threadId && thread.id == state.threadId) {
+            item.classList.add('active');
+          }
+          item.dataset.id = thread.id;
+          item.type = 'button';
+
+          const titleText = thread.name || 'New Thread';
+          let titleHtml = escapeHtml(titleText);
+          if (filterQuery) {
+            const qLower = filterQuery.toLowerCase();
+            const idx = titleText.toLowerCase().indexOf(qLower);
+            if (idx !== -1) {
+              const before = titleText.slice(0, idx);
+              const match = titleText.slice(idx, idx + filterQuery.length);
+              const after = titleText.slice(idx + filterQuery.length);
+              titleHtml = `${escapeHtml(before)}<mark class="thread-match-highlight">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+            }
+          }
+
+          const rawDate = thread.updated_at || thread.created_at;
+          const relativeTime = formatRelativeTime(rawDate);
+          const fullDateTooltip = rawDate ? new Intl.DateTimeFormat([], { dateStyle: 'full', timeStyle: 'short' }).format(new Date(rawDate)) : '';
+
+          item.innerHTML = `
+            <div class="thread-item-main">
+              <span class="thread-item-title">${titleHtml}</span>
+              <span class="thread-item-time" title="${escapeHtml(fullDateTooltip)}">${escapeHtml(relativeTime)}</span>
+            </div>
+            <div class="thread-item-actions">
+              <button type="button" class="thread-delete-btn" aria-label="Delete thread" title="Delete conversation">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+              </button>
+            </div>`;
+
+          const deleteButton = item.querySelector('.thread-delete-btn');
+          deleteButton.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            deleteThread(thread.id);
+          };
+          item.onclick = () => selectThread(thread.id);
+          threadList.appendChild(item);
+        });
+      };
+
+      const filterThreads = query => {
+        state.threadSearchQuery = (query || '').trim();
+        if (threadSearchClear) {
+          threadSearchClear.classList.toggle('hidden', !state.threadSearchQuery);
+        }
+        if (!state.threadSearchQuery) {
+          if (threadCountBadge) threadCountBadge.classList.add('hidden');
+          renderThreadItems(state.threads);
+          return;
+        }
+        const q = state.threadSearchQuery.toLowerCase();
+        const filtered = state.threads.filter(t => (t.name || 'New Thread').toLowerCase().includes(q));
+        if (threadCountBadge) {
+          threadCountBadge.textContent = `${filtered.length} of ${state.threads.length}`;
+          threadCountBadge.classList.remove('hidden');
+        }
+        renderThreadItems(filtered, state.threadSearchQuery);
+      };
+
+      if (threadSearchInput) {
+        threadSearchInput.oninput = e => {
+          filterThreads(e.target.value);
+        };
+        threadSearchInput.onkeydown = e => {
+          if (e.key === 'Escape') {
+            threadSearchInput.value = '';
+            filterThreads('');
+            threadSearchInput.blur();
+          }
+        };
+      }
+
+      if (threadSearchClear) {
+        threadSearchClear.onclick = () => {
+          if (threadSearchInput) threadSearchInput.value = '';
+          filterThreads('');
+          if (threadSearchInput) threadSearchInput.focus();
+        };
+      }
+
       const loadThreads = async ({ selectFirst = false } = {}) => {
         renderThreadSkeleton();
         try {
           const data = await api('/api/list_thread/');
           const threads = Array.isArray(data) ? data : data.results || [];
           state.threads = threads;
-          threadList.innerHTML = threads.length ? '' : '<div class="rail-empty">No threads yet.<br>Start with a question.</div>';
-          threads.forEach(thread => {
-            const item = document.createElement('button');
-            item.className = 'thread-item';
-            item.dataset.id = thread.id;
-            item.type = 'button';
-            item.innerHTML = `<span class="thread-item-title"></span><span class="thread-item-meta"><span class="thread-item-time"></span><span class="thread-delete" aria-label="Delete thread" title="Delete thread">×</span></span>`;
-            item.querySelector('.thread-item-title').textContent = thread.name || 'New Thread';
-            item.querySelector('.thread-item-time').textContent = thread.updated_at ? new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }).format(new Date(thread.updated_at)) : '';
-            const deleteButton = item.querySelector('.thread-delete');
-            deleteButton.onclick = event => {
-              event.preventDefault();
-              event.stopPropagation();
-              deleteThread(thread.id);
-            };
-            item.onclick = () => selectThread(thread.id);
-            threadList.appendChild(item);
-          });
+          filterThreads(threadSearchInput ? threadSearchInput.value : '');
           if (selectFirst && !state.initialThreadPicked) {
             state.initialThreadPicked = true;
             if (threads[0]) {

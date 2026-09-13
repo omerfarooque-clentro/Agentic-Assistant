@@ -26,7 +26,24 @@
       </button>
     </div>
 
-    <div class="rail-heading"><span>Conversations</span></div>
+    <div class="thread-rail-header" id="thread-rail-header">
+      <div class="rail-heading rail-heading-threads">
+        <span>Conversations</span>
+        <span class="thread-count-badge hidden" id="thread-count-badge"></span>
+      </div>
+      <div class="thread-search-container" id="thread-search-container">
+        <div class="thread-search-bar" id="thread-search-bar">
+          <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="thread-search-input" class="thread-search-input" placeholder="Search conversations..." autocomplete="off" spellcheck="false" aria-label="Search conversations" />
+          <button type="button" id="thread-search-clear" class="thread-search-clear hidden" title="Clear search (Esc)" aria-label="Clear search">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
     <div id="thread-list" class="thread-list">
       <div class="thread-skeleton"><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div></div>
     </div>
