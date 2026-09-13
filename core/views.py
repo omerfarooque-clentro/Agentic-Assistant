@@ -310,7 +310,7 @@ async def new_chat_view(request):
                 messages = chunk["result"].get("messages", [])
                 final_content = extract_text_content(messages[-1].content) if messages else ""
                 
-                await Message.objects.acreate(thread=thread, role="agent", content=final_content)
+                await Message.objects.acreate(thread=thread, role="agent", content=final_content, metrics=chunk.get("metrics") or {},)
                 await thread.asave(update_fields=["updated_at"])
                 await thread.arefresh_from_db(fields=["name", "updated_at"])
                 yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
