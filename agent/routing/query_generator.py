@@ -93,7 +93,7 @@ def generate_routing_query(messages: Any, available_domains: set[str] | None = N
             model_name=getattr(llm, "model_name"),
             prompt_text_or_messages=formatted_prompt,
         )
-        print(f"Extracted routing query: {extracted_query}")
+
         return {"type": "SINGLE", "query": extracted_query, "metrics": call_metrics}
     except Exception:
         fallback_query = heuristic_disambiguate_query(current_message_text, available_domains)
