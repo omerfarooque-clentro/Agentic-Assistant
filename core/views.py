@@ -384,6 +384,7 @@ async def agent_chat_view(request, thread_id):
                 final_content, suggested_title = extract_title_from_text(raw_content)
 
                 resolved_title = chunk.get("thread_name") or suggested_title
+
                 if resolved_title and thread.name == "New Thread":
                     thread.name = resolved_title
                     await thread.asave(update_fields=["name", "updated_at"])
