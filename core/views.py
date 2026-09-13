@@ -1,4 +1,5 @@
 from datetime import datetime
+import time
 import json
 from asgiref.sync import sync_to_async
 from django.http import JsonResponse
@@ -384,7 +385,7 @@ async def agent_chat_view(request, thread_id):
                     await thread.asave(update_fields=["name", "updated_at"])
                 else:
                     await thread.asave(update_fields=["updated_at"])
-
+            
                 await Message.objects.acreate(
                     thread=thread,
                     role="agent",

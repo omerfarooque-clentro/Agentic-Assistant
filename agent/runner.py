@@ -11,7 +11,7 @@ from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
 from agent.status import NODE_STATUS_MAP
 from agent.metrics import aggregate_turn_metrics
-from agent.llm import StreamTitleFilter, extract_title_from_text
+from agent.llm import StreamTitleFilter, extract_title_from_text, generate_title_from_context
 from conversations.models import Thread
 
 
@@ -37,7 +37,7 @@ async def run_agent(message: str, thread_id: int, user):
         available_domains = list(tools.keys())
 
         thread_obj = await Thread.objects.filter(id=thread_id).afirst()
-        needs_title = bool(thread_obj and thread_obj.name == "New Thread")
+        needs_title = bool(thread_obj and (thread_obj.name in ("New Thread", "New Conversation", "") or not thread_obj.name))
 
         app = create_graph(tools)
 
@@ -110,16 +110,21 @@ async def run_agent(message: str, thread_id: int, user):
         final_state = state.values
         messages = final_state.get("messages", [])
 
-        # Fallback inspection of final message content if closing tag was missing in stream
-        if not extracted_title and needs_title and messages:
-            last_content = getattr(messages[-1], "content", "")
-            if isinstance(last_content, str):
-                _, extracted_title = extract_title_from_text(last_content)
+        # Fallback inspection or generation of title if needed
+        last_content = getattr(messages[-1], "content", "") if messages else ""
+        if isinstance(last_content, list):
+            last_content = " ".join(str(b.get("text") or "") if isinstance(b, dict) else str(b) for b in last_content)
+
+        if not extracted_title and needs_title and last_content:
+            _, extracted_title = extract_title_from_text(str(last_content))
+
+        if not extracted_title and needs_title:
+            extracted_title = await generate_title_from_context(user_prompt=message, assistant_response=str(last_content))
 
         thread_name = thread_obj.name if thread_obj else ""
-        if extracted_title and thread_obj and thread_obj.name == "New Thread":
+        if extracted_title and thread_obj and thread_obj.name in ("New Thread", "New Conversation", "", None):
             thread_obj.name = extracted_title
-            await thread_obj.asave(update_fields=["name"])
+            await thread_obj.asave(update_fields=["name", "updated_at"])
             thread_name = extracted_title
             yield {
                 "type": "thread_name",

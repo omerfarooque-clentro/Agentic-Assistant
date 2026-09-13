@@ -138,3 +138,16 @@ class ConversationAPITests(TestCase):
         self.client.force_authenticate(user=self.user1)
         res = self.client.get(f'/api/thread/{self.thread2.id}/messages/')
         self.assertEqual(res.status_code, 404)
+
+    def test_rename_thread_api(self):
+        self.client.force_authenticate(user=self.user1)
+        res = self.client.patch(f'/api/thread/{self.thread1.id}/rename/', {"name": "Renamed Thread"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["name"], "Renamed Thread")
+        self.thread1.refresh_from_db()
+        self.assertEqual(self.thread1.name, "Renamed Thread")
+
+    def test_cannot_rename_other_user_thread(self):
+        self.client.force_authenticate(user=self.user1)
+        res = self.client.patch(f'/api/thread/{self.thread2.id}/rename/', {"name": "Hacked Name"}, format="json")
+        self.assertEqual(res.status_code, 404)

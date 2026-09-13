@@ -36,3 +36,21 @@ class MessageListView(generics.ListCreateAPIView):
             user=self.request.user,
         )
         return thread.messages.order_by("created_at", "id")
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+
+class ThreadRenameView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, thread_id):
+        thread = get_object_or_404(Thread, id=thread_id, user=request.user)
+        name = (request.data.get("name") or "").strip()
+        if not name:
+            return Response({"detail": "Thread name cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
+        thread.name = name[:255]
+        thread.save(update_fields=["name", "updated_at"])
+        return Response(ThreadSerializer(thread).data)

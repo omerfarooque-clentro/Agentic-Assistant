@@ -115,3 +115,89 @@ def extract_title_from_text(text: str) -> tuple[str, str | None]:
         return cleaned_text, title if title else None
 
     return text, None
+
+
+def clean_heuristic_title(text: str) -> str:
+    """Generate a clean 3-6 word title from a user query string when LLM is unavailable."""
+    if not text:
+        return "New Conversation"
+    # Remove dates/timestamp formatting if present (e.g. Date: ... Omer: ...)
+    clean = re.sub(r"^Date:[^,]+,\s*[^:]+:\s*", "", text, flags=re.IGNORECASE).strip()
+    # Strip common leading question / polite phrases
+    prefixes = [
+        r"^(can\s+you\s+(please\s+)?(help\s+me\s+)?(to\s+)?)",
+        r"^(could\s+you\s+(please\s+)?)",
+        r"^(please\s+)",
+        r"^(tell\s+me\s+(about\s+)?)",
+        r"^(what\s+is\s+(the\s+)?)",
+        r"^(what\s+are\s+(the\s+)?)",
+        r"^(who\s+is\s+(the\s+)?)",
+        r"^(who\s+won\s+(the\s+)?)",
+        r"^(how\s+do\s+i\s+)",
+        r"^(how\s+to\s+)",
+        r"^(where\s+is\s+)",
+        r"^(search\s+(for\s+)?)",
+        r"^(find\s+(me\s+)?)",
+        r"^(show\s+(me\s+)?)",
+        r"^(check\s+(if\s+|for\s+)?)",
+        r"^(lookup\s+)",
+    ]
+    for p in prefixes:
+        clean = re.sub(p, "", clean, flags=re.IGNORECASE).strip()
+
+    # Remove special characters / punctuation
+    clean = re.sub(r"[^\w\s\-\/]", " ", clean).strip()
+    words = clean.split()
+    if not words:
+        return "New Conversation"
+
+    # Take first 3 to 6 words
+    chosen_words = words[:6]
+    title = " ".join(chosen_words)
+    title = " ".join(w.capitalize() if not w.isupper() else w for w in title.split())
+    return title[:50].strip() or "New Conversation"
+
+
+async def generate_title_from_context(user_prompt: str, assistant_response: str = "") -> str:
+    """Generate a concise 3-5 word conversation title using suggested tag, fast LLM, or heuristic fallback."""
+    # 1. First check if assistant response contained <suggested_title>
+    if assistant_response:
+        _, extracted = extract_title_from_text(assistant_response)
+        if extracted and extracted.lower() not in ("new thread", "new conversation"):
+            return extracted
+
+    # Clean the user prompt (remove metadata prefix like "Date: ... Omer: ")
+    clean_prompt = re.sub(r"^Date:[^,]+,\s*[^:]+:\s*", "", user_prompt or "", flags=re.IGNORECASE).strip()
+    if not clean_prompt:
+        return "New Conversation"
+
+    # 2. Try fast LLM invocation with a strict timeout
+    try:
+        import asyncio
+        from langchain_core.messages import SystemMessage, HumanMessage
+        from agent.llm.client import llm_fast
+
+        prompt_excerpt = clean_prompt[:250]
+        messages = [
+            SystemMessage(
+                content=(
+                    "You are a conversation title generator. "
+                    "Output ONLY a concise, high-quality 3 to 5 word title summarizing the user's initial message. "
+                    "Do NOT include quotes, punctuation, prefixes, or formatting. Maximum 50 characters."
+                )
+            ),
+            HumanMessage(content=prompt_excerpt),
+        ]
+        response = await asyncio.wait_for(llm_fast.ainvoke(messages), timeout=2.5)
+        raw_text = response.content if hasattr(response, "content") else str(response)
+        if isinstance(raw_text, list):
+            raw_text = " ".join(str(b.get("text") or "") if isinstance(b, dict) else str(b) for b in raw_text)
+        candidate = re.sub(r"<[^>]+>", "", str(raw_text)).strip().strip("\"' \n\r\t")
+        candidate = candidate.rstrip(".!?:")
+        if candidate and len(candidate.split()) >= 1 and candidate.lower() not in ("new thread", "new conversation"):
+            return candidate[:50]
+    except Exception:
+        pass
+
+    # 3. Robust heuristic fallback
+    return clean_heuristic_title(clean_prompt)

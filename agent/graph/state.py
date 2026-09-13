@@ -25,3 +25,4 @@ class AgentState(TypedDict):
     routing_status: str
 
     available_domains: set[str]
+    needs_title: bool

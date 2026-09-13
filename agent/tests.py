@@ -304,4 +304,31 @@ class MetricsCollectorTests(TestCase):
         self.assertGreater(metrics["input_tokens"], 0)
 
 
+class TitleGenerationTests(TestCase):
+    def test_clean_heuristic_title(self):
+        from agent.llm.titles import clean_heuristic_title
+
+        self.assertEqual(
+            clean_heuristic_title("who won the pakistan tour of england test series?"),
+            "Pakistan Tour Of England Test Series",
+        )
+        self.assertEqual(
+            clean_heuristic_title("can you please search for flight tickets to London?"),
+            "Flight Tickets To London",
+        )
+        self.assertEqual(
+            clean_heuristic_title("Date: 2026-09-13 14:30:00 (Timezone: UTC), Omer: summarize Q3 revenue report"),
+            "Summarize Q3 Revenue Report",
+        )
+
+    async def test_generate_title_from_context_with_suggested_tag(self):
+        from agent.llm.titles import generate_title_from_context
+
+        title = await generate_title_from_context(
+            user_prompt="tell me about England vs Pakistan",
+            assistant_response="England won the series. <suggested_title>England Pakistan Test Results</suggested_title>",
+        )
+        self.assertEqual(title, "England Pakistan Test Results")
+
+
 

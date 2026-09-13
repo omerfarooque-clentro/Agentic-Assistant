@@ -1481,7 +1481,24 @@
     
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
-      const state = { threadId: null, threads: [], initialThreadPicked: false, connectedServices: new Set(), messageCount: 0, sending: false, pendingApproval: null, streamRequestId: 0, abortController: null, sessionTokens: 0 };
+      const state = {
+        threadId: null,
+        threads: [],
+        initialThreadPicked: false,
+        connectedServices: new Set(),
+        messageCount: 0,
+        sending: false,
+        pendingApproval: null,
+        streamRequestId: 0,
+        abortController: null,
+        sessionTokens: 0,
+        sessionStats: { promptTokens: 0, completionTokens: 0, cachedTokens: 0, totalTokens: 0, llmCalls: 0, domains: {} },
+        sessionTurns: [],
+        sessionHudOpen: false,
+        sessionHudMode: 'compact',
+        sessionHudTab: 'overview',
+        lastUserQuery: '',
+      };
       const transcript = document.querySelector('#transcript');
       const input = document.querySelector('#message-input');
       const title = document.querySelector('#thread-title');
@@ -1497,11 +1514,276 @@
       const avatar = document.querySelector('#user-avatar');
       if (avatar) avatar.textContent = currentUser.charAt(0).toUpperCase();
 
+      const recordTurnMetrics = (metrics, userQuery = '', messageEl = null) => {
+        if (!metrics || typeof metrics !== 'object') return;
+        const total = Number(metrics.total_tokens) || ((metrics.input_tokens || 0) + (metrics.output_tokens || 0));
+        const prompt = Number(metrics.input_tokens) || 0;
+        const completion = Number(metrics.output_tokens) || 0;
+        const cached = Number(metrics.cached_tokens) || 0;
+        const calls = Number(metrics.llm_calls) || (metrics.breakdown ? metrics.breakdown.length : 1);
+        const latency = metrics.latency_s != null ? metrics.latency_s : (metrics.latency_ms ? (metrics.latency_ms / 1000).toFixed(2) : '1.0');
+
+        state.sessionTokens += total;
+        state.sessionStats.promptTokens += prompt;
+        state.sessionStats.completionTokens += completion;
+        state.sessionStats.cachedTokens += cached;
+        state.sessionStats.totalTokens += total;
+        state.sessionStats.llmCalls += calls;
+
+        const breakdown = metrics.breakdown || [];
+        const turnDomains = new Set();
+        breakdown.forEach(step => {
+          const name = step.name || 'General';
+          const domain = name.split(' ')[0] || 'General';
+          turnDomains.add(domain);
+          state.sessionStats.domains[domain] = (state.sessionStats.domains[domain] || 0) + (step.total_tokens || 0);
+        });
+
+        const turnNumber = state.sessionTurns.length + 1;
+        const turnRecord = {
+          turnNumber,
+          query: userQuery || (state.lastUserQuery || `Turn #${turnNumber}`),
+          totalTokens: total,
+          promptTokens: prompt,
+          completionTokens: completion,
+          cachedTokens: cached,
+          latency,
+          calls,
+          domains: Array.from(turnDomains),
+          metrics,
+          messageEl,
+        };
+        state.sessionTurns.push(turnRecord);
+
+        const el = document.querySelector('#session-tokens');
+        if (el) el.textContent = state.sessionTokens.toLocaleString();
+
+        if (state.sessionHudOpen) {
+          renderSessionHud();
+        }
+      };
+
       const updateSessionTokens = (count) => {
         state.sessionTokens = (state.sessionTokens || 0) + (Number(count) || 0);
         const el = document.querySelector('#session-tokens');
         if (el) el.textContent = state.sessionTokens.toLocaleString();
       };
+
+      const closeSessionHud = () => {
+        state.sessionHudOpen = false;
+        const pill = document.querySelector('#session-token-pill');
+        const panel = document.querySelector('#session-hud-panel');
+        if (pill) {
+          pill.classList.remove('active');
+          pill.setAttribute('aria-expanded', 'false');
+        }
+        if (panel) panel.classList.add('hidden');
+      };
+
+      const toggleSessionHud = () => {
+        state.sessionHudOpen = !state.sessionHudOpen;
+        const pill = document.querySelector('#session-token-pill');
+        const panel = document.querySelector('#session-hud-panel');
+        if (!pill || !panel) return;
+
+        document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+
+        if (state.sessionHudOpen) {
+          pill.classList.add('active');
+          pill.setAttribute('aria-expanded', 'true');
+          panel.classList.remove('hidden');
+          renderSessionHud();
+        } else {
+          pill.classList.remove('active');
+          pill.setAttribute('aria-expanded', 'false');
+          panel.classList.add('hidden');
+        }
+      };
+
+      const renderSessionHud = () => {
+        const panel = document.querySelector('#session-hud-panel');
+        if (!panel) return;
+        const stats = state.sessionStats;
+        const turns = state.sessionTurns;
+        const mode = state.sessionHudMode;
+        const tab = state.sessionHudTab;
+        const totalTok = stats.totalTokens || state.sessionTokens || 0;
+        const cacheHitPct = (stats.promptTokens + stats.cachedTokens > 0)
+          ? ((stats.cachedTokens / (stats.promptTokens + stats.cachedTokens)) * 100).toFixed(1)
+          : '0';
+
+        let bodyContent = '';
+
+        if (tab === 'overview') {
+          bodyContent = `
+            <div class="popover-stats-grid">
+              <div class="stat-card">
+                <span class="stat-label">Session Tokens</span>
+                <span class="stat-value highlight">${totalTok.toLocaleString()}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Total LLM Calls</span>
+                <span class="stat-value">${stats.llmCalls || 0}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Input / Prompt</span>
+                <span class="stat-value">${stats.promptTokens.toLocaleString()}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Output / Gen</span>
+                <span class="stat-value">${stats.completionTokens.toLocaleString()}</span>
+              </div>
+            </div>
+            ${stats.cachedTokens > 0 ? `
+              <div class="cached-tokens-row">
+                <span>⚡ Prompt Cache Saved</span>
+                <span class="cache-val">${stats.cachedTokens.toLocaleString()} tok (${cacheHitPct}%)</span>
+              </div>
+            ` : ''}
+            <div class="context-window-wrap">
+              <div class="context-window-header">
+                <span>Session Efficiency</span>
+                <span class="context-percent">${turns.length} Turn${turns.length === 1 ? '' : 's'} Recorded</span>
+              </div>
+              <div class="context-window-meta">
+                <span>Avg ${(turns.length ? Math.round(totalTok / turns.length) : 0).toLocaleString()} tok/turn</span>
+                <span>Zero-cost Router Active</span>
+              </div>
+            </div>
+          `;
+        } else if (tab === 'turns') {
+          if (!turns.length) {
+            bodyContent = '<div style="font-size:10px; color:#788c7f; text-align:center; padding:16px 0;">No turns recorded yet in this session.</div>';
+          } else {
+            bodyContent = `
+              <div class="metrics-subheading">Turn History (Click to navigate)</div>
+              <div style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+                ${turns.map((t, idx) => `
+                  <div class="turn-nav-item" data-turn-idx="${idx}" role="button" tabindex="0" title="Jump to Turn #${t.turnNumber}">
+                    <div class="turn-nav-left">
+                      <span class="turn-badge">#${t.turnNumber}</span>
+                      <span class="turn-preview">${escapeHtml(t.query)}</span>
+                    </div>
+                    <div class="turn-nav-right">
+                      <span>${t.totalTokens.toLocaleString()} tok</span>
+                      <span class="dot">•</span>
+                      <span>${t.latency}s</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+        } else if (tab === 'domains') {
+          const domainKeys = Object.keys(stats.domains);
+          if (!domainKeys.length) {
+            bodyContent = '<div style="font-size:10px; color:#788c7f; text-align:center; padding:16px 0;">No agent domains active yet.</div>';
+          } else {
+            bodyContent = `
+              <div class="metrics-subheading">Domain Token Distribution</div>
+              <div class="metrics-breakdown-list">
+                ${domainKeys.map(d => {
+                  const tok = stats.domains[d];
+                  const pct = totalTok > 0 ? Math.round((tok / totalTok) * 100) : 0;
+                  return `
+                    <div class="metrics-breakdown-item" style="cursor:default;">
+                      <div class="metrics-breakdown-main">
+                        <div class="item-title">
+                          <span class="step-name">${escapeHtml(d)} Agent</span>
+                        </div>
+                        <div class="item-stats">
+                          <span>${tok.toLocaleString()} tok</span>
+                          <span class="dot">•</span>
+                          <span>${pct}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `;
+          }
+        }
+
+        panel.innerHTML = `
+          <div class="popover-header">
+            <div class="popover-title">
+              <span>⚡</span> Session Intelligence HUD
+            </div>
+            <div class="hud-header-actions">
+              <button class="hud-action-btn" id="session-hud-mode-btn" title="Toggle view density">${mode === 'compact' ? 'Expand' : 'Compact'}</button>
+              <button class="hud-close-btn" id="session-hud-close-btn" title="Close HUD" aria-label="Close">×</button>
+            </div>
+          </div>
+          <div class="hud-tab-nav">
+            <button class="hud-tab-btn ${tab === 'overview' ? 'active' : ''}" data-tab="overview">Overview</button>
+            <button class="hud-tab-btn ${tab === 'turns' ? 'active' : ''}" data-tab="turns">Turns (${turns.length})</button>
+            <button class="hud-tab-btn ${tab === 'domains' ? 'active' : ''}" data-tab="domains">Domains</button>
+          </div>
+          <div class="session-hud-body">
+            ${bodyContent}
+          </div>
+          <div class="popover-footer">
+            <span>Active Session • ${turns.length} Turn${turns.length === 1 ? '' : 's'}</span>
+            <button class="hud-action-btn" id="session-hud-scroll-latest" style="font-size:8.5px;">Jump to Latest</button>
+          </div>
+        `;
+
+        const closeBtn = panel.querySelector('#session-hud-close-btn');
+        if (closeBtn) {
+          closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            closeSessionHud();
+          };
+        }
+
+        const modeBtn = panel.querySelector('#session-hud-mode-btn');
+        if (modeBtn) {
+          modeBtn.onclick = (e) => {
+            e.stopPropagation();
+            state.sessionHudMode = state.sessionHudMode === 'compact' ? 'expanded' : 'compact';
+            renderSessionHud();
+          };
+        }
+
+        const scrollLatest = panel.querySelector('#session-hud-scroll-latest');
+        if (scrollLatest) {
+          scrollLatest.onclick = (e) => {
+            e.stopPropagation();
+            transcript.scrollTo({ top: transcript.scrollHeight, behavior: 'smooth' });
+          };
+        }
+
+        panel.querySelectorAll('.hud-tab-btn').forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            state.sessionHudTab = btn.dataset.tab;
+            renderSessionHud();
+          };
+        });
+
+        panel.querySelectorAll('.turn-nav-item').forEach(item => {
+          item.onclick = (e) => {
+            e.stopPropagation();
+            const idx = Number(item.dataset.turnIdx);
+            const turn = state.sessionTurns[idx];
+            if (turn && turn.messageEl) {
+              turn.messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              turn.messageEl.classList.remove('turn-highlight-flash');
+              void turn.messageEl.offsetWidth;
+              turn.messageEl.classList.add('turn-highlight-flash');
+            }
+          };
+        });
+      };
+
+      const sessionPill = document.querySelector('#session-token-pill');
+      if (sessionPill) {
+        sessionPill.onclick = (e) => {
+          e.stopPropagation();
+          toggleSessionHud();
+        };
+      }
 
       const showBanner = (message, retry) => {
         bannerMsg.textContent = message;
@@ -1512,183 +1794,6 @@
       const hideBanner = () => banner.classList.add('hidden');
       bannerDismiss.onclick = hideBanner;
 
-      // Single source of truth for whether the composer should accept input —
-      // it must stay locked while a message is sending, while an approval is
-      // still pending (a new chat message would race the paused, interrupted
-      // graph run), and while the browser is offline.
-      const refreshComposerState = () => {
-        const busy = state.sending || !!state.pendingApproval || !navigator.onLine;
-        input.disabled = busy;
-        sendButton.disabled = busy;
-        if (!navigator.onLine) {
-          composerNote.textContent = "You're offline — reconnect to send messages";
-        } else if (state.pendingApproval) {
-          composerNote.textContent = 'Review the action above before continuing';
-        } else {
-          const count = state.connectedServices.size;
-          composerNote.textContent = count
-            ? `Enter to send • ${count} tool${count === 1 ? '' : 's'} connected`
-            : 'Enter to send • No tools connected yet — try Gmail first';
-        }
-      };
-
-      const loadIntegrations = async () => {
-        try {
-          const data = await api('/api/integrations/status/');
-          state.connectedServices = new Set((data.integrations || []).filter(item => item.enabled).map(item => item.service));
-          ['gmail', 'calendar', 'docs', 'sheets', 'slack'].forEach(service => {
-            const dot = document.querySelector(`#${service}-dot`);
-            const stateEl = document.querySelector(`#${service}-state`);
-            const connected = state.connectedServices.has(service);
-            if (dot) dot.classList.toggle('dot-on', connected), dot.classList.toggle('dot-off', !connected);
-            if (stateEl) { stateEl.textContent = connected ? 'Connected' : 'Connect'; stateEl.classList.toggle('off', !connected); }
-          });
-          refreshComposerState();
-        } catch (error) { console.warn('Could not load integrations', error); }
-      };
-      document.querySelectorAll('[data-integration]').forEach(button => button.onclick = async () => { const service = button.dataset.integration; try { const data = await api(`/api/integrations/${service}/connect/`); window.location.href = data.authorization_url; } catch (error) { showBanner(error.message); } });
-
-      const renderMetricsBadge = (metrics) => {
-        if (!metrics || typeof metrics !== 'object') return '';
-        const latency = metrics.latency_s != null ? metrics.latency_s : (metrics.latency_ms ? (metrics.latency_ms / 1000).toFixed(2) : '1.0');
-        const totalTokens = metrics.total_tokens || ((metrics.input_tokens || 0) + (metrics.output_tokens || 0));
-        const inputTokens = metrics.input_tokens || 0;
-        const outputTokens = metrics.output_tokens || 0;
-        const cachedTokens = metrics.cached_tokens || 0;
-        const contextLimit = metrics.context_limit || 128000;
-        const contextPct = metrics.context_used_pct != null ? metrics.context_used_pct : Math.min(100, ((totalTokens / contextLimit) * 100).toFixed(2));
-        const rawModel = metrics.model || 'openai/gpt-oss-120b';
-        const modelClean = rawModel.split('/').pop();
-        const calls = metrics.llm_calls || (metrics.breakdown ? metrics.breakdown.length : 1);
-        const breakdown = metrics.breakdown || [];
-
-        let breakdownHtml = '';
-        if (breakdown.length > 0) {
-          breakdownHtml = `
-            <div class="metrics-breakdown-section">
-              <div class="metrics-subheading">Pipeline Execution Breakdown</div>
-              <div class="metrics-breakdown-list">
-                ${breakdown.map((item, idx) => `
-                  <div class="metrics-breakdown-item">
-                    <div class="item-title">
-                      <span class="step-num">${idx + 1}</span>
-                      <span class="step-name">${escapeHtml(item.name || 'LLM Call')}</span>
-                      <span class="step-model">${escapeHtml(item.model ? item.model.split('/').pop() : '')}</span>
-                    </div>
-                    <div class="item-stats">
-                      <span>${(item.total_tokens || ((item.input_tokens || 0) + (item.output_tokens || 0))).toLocaleString()} tok</span>
-                      <span class="dot">•</span>
-                      <span>${item.latency_ms ? item.latency_ms + 'ms' : (item.latency_s ? item.latency_s + 's' : '')}</span>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `;
-        }
-
-        return `
-          <div class="message-metrics" tabindex="0" role="region" aria-label="Token and performance metrics">
-            <div class="metrics-badge">
-              <span class="metric-icon">⚡</span>
-              <span class="metric-time">${latency}s</span>
-              <span class="metric-dot">•</span>
-              <span class="metric-count">${totalTokens.toLocaleString()} tok</span>
-            </div>
-            <div class="metrics-popover">
-              <div class="popover-header">
-                <div class="popover-title"><span>⚡</span> Turn Performance & Tokens</div>
-                <span class="popover-model-badge">${escapeHtml(modelClean)}</span>
-              </div>
-              <div class="popover-stats-grid">
-                <div class="stat-card">
-                  <span class="stat-label">Response Latency</span>
-                  <span class="stat-value">${latency}s</span>
-                </div>
-                <div class="stat-card">
-                  <span class="stat-label">Total Tokens</span>
-                  <span class="stat-value highlight">${totalTokens.toLocaleString()}</span>
-                </div>
-                <div class="stat-card">
-                  <span class="stat-label">Input (Prompt)</span>
-                  <span class="stat-value">${inputTokens.toLocaleString()}</span>
-                </div>
-                <div class="stat-card">
-                  <span class="stat-label">Output (Gen)</span>
-                  <span class="stat-value">${outputTokens.toLocaleString()}</span>
-                </div>
-              </div>
-              ${cachedTokens > 0 ? `
-                <div class="cached-tokens-row">
-                  <span>⚡ Prompt Cache Hit</span>
-                  <span class="cache-val">${cachedTokens.toLocaleString()} tokens cached</span>
-                </div>
-              ` : ''}
-              <div class="context-window-wrap">
-                <div class="context-window-header">
-                  <span>Context Window Utilization</span>
-                  <span class="context-percent">${contextPct}% of ${(contextLimit / 1000).toFixed(0)}k limit</span>
-                </div>
-                <div class="context-progress-bar">
-                  <div class="context-progress-fill" style="width: ${Math.max(1.5, Math.min(100, contextPct))}%"></div>
-                </div>
-                <div class="context-window-meta">
-                  <span>${totalTokens.toLocaleString()} used</span>
-                  <span>${contextLimit.toLocaleString()} capacity</span>
-                </div>
-              </div>
-              ${breakdownHtml}
-              <div class="popover-footer">
-                <span>LLM Calls: <strong>${calls}</strong></span>
-                <span class="cache-tag">Zero-cost reference router</span>
-              </div>
-            </div>
-          </div>
-        `;
-      };
-
-      const addMessage = (role, content, pending = false, metrics = null) => {
-        const item = document.createElement('article');
-        item.className = `message ${role} ${pending ? 'pending' : ''}`;
-        item.innerHTML = `<span class="message-label">${role === 'user' ? 'You' : 'Ops agent'}</span><div class="message-content"></div>`;
-        const body = item.querySelector('.message-content');
-        const text = safeText(content); // tool/message payloads aren't guaranteed to be strings
-        if (pending) {
-          body.innerHTML = '<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>Processing request…</span></div>';
-        } else if (role === 'user') {
-          body.textContent = text;
-        } else {
-          const weatherData = parseWeatherData(text);
-          if (weatherData) {
-            const cardWrap = document.createElement('div');
-            cardWrap.innerHTML = renderWeatherCard(weatherData);
-            if (cardWrap.firstElementChild) {
-              body.appendChild(cardWrap.firstElementChild);
-            }
-            if (weatherData.restMarkdown) {
-              const textWrap = document.createElement('div');
-              textWrap.className = 'markdown-body';
-              textWrap.innerHTML = renderMarkdown(weatherData.restMarkdown);
-              body.appendChild(textWrap);
-            }
-          } else {
-            const textWrap = document.createElement('div');
-            textWrap.className = 'markdown-body';
-            textWrap.innerHTML = renderMarkdown(text);
-            body.appendChild(textWrap);
-          }
-          if (metrics && typeof metrics === 'object') {
-            const metricsWrap = document.createElement('div');
-            metricsWrap.className = 'message-metrics-container';
-            metricsWrap.innerHTML = renderMetricsBadge(metrics);
-            item.appendChild(metricsWrap);
-          }
-        }
-        transcript.appendChild(item);
-        transcript.scrollTop = transcript.scrollHeight;
-        state.messageCount += 1;
-        return item;
-      };
 
       const addApprovalCard = approval => {
         const domain = (approval && approval.domain) || 'email';
@@ -1825,6 +1930,12 @@
           : (currentThread && currentThread.name === 'New Thread' ? 'New Conversation' : 'Workspace Chat');
         title.textContent = threadName;
 
+        state.sessionTurns = [];
+        state.sessionTokens = 0;
+        state.sessionStats = { promptTokens: 0, completionTokens: 0, cachedTokens: 0, totalTokens: 0, llmCalls: 0, domains: {} };
+        const sessionCountEl = document.querySelector('#session-tokens');
+        if (sessionCountEl) sessionCountEl.textContent = '0';
+
         document.querySelectorAll('.thread-item').forEach(item => item.classList.toggle('active', item.dataset.id == id));
         transcript.innerHTML = '<div class="loading-line">Loading thread history...</div>';
         try {
@@ -1835,22 +1946,19 @@
           if (!messages.length) {
             renderWelcomeState();
           } else {
-            let threadTokens = 0;
             messages.forEach(message => {
-              const metrics = message.metrics || null;
-              if (metrics && metrics.total_tokens) {
-                threadTokens += metrics.total_tokens;
+              const role = message.role === 'assistant' ? 'agent' : message.role;
+              if (role === 'user') {
+                state.lastUserQuery = message.content;
               }
+              const metrics = message.metrics || null;
               addMessage(
-                message.role === 'assistant' ? 'agent' : message.role,
+                role,
                 message.content,
                 false,
                 metrics
               );
             });
-            if (threadTokens > 0) {
-              updateSessionTokens(threadTokens);
-            }
           }
         } catch (error) {
           transcript.innerHTML = '';
@@ -1981,6 +2089,8 @@
               title.textContent = data.thread_name;
               const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || currentThreadId}"] .thread-item-title`);
               if (item) item.textContent = data.thread_name;
+              const tr = (state.threads || []).find(t => String(t.id) === String(data.thread_id || currentThreadId));
+              if (tr) tr.name = data.thread_name;
             }
             return;
           }
@@ -2036,14 +2146,13 @@
             assistantText = finalText;
             pending.remove();
             const metrics = data.metrics || null;
-            if (metrics && metrics.total_tokens) {
-              updateSessionTokens(metrics.total_tokens);
-            }
             addMessage('agent', assistantText, false, metrics);
             if (data.thread_name && data.thread_name !== 'New Thread') {
               title.textContent = data.thread_name;
               const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || currentThreadId}"] .thread-item-title`);
               if (item) item.textContent = data.thread_name;
+              const tr = (state.threads || []).find(t => String(t.id) === String(data.thread_id || currentThreadId));
+              if (tr) tr.name = data.thread_name;
             } else if (state.messageCount >= 2) {
               syncThreadName();
             }
@@ -2251,9 +2360,82 @@
       // Cleanup interval on page unload
       window.addEventListener('beforeunload', () => clearInterval(clockInterval));
       autoGrowTextarea(input);
-      // Restore a message the user was mid-typing if a session refresh forced a redirect.
       const savedDraft = sessionStorage.getItem('ops_draft');
       if (savedDraft) { sessionStorage.removeItem('ops_draft'); input.value = savedDraft; autoGrowTextarea(input); }
+      const setupThreadRenaming = () => {
+        const editBtn = document.querySelector('#edit-thread-title-btn');
+        if (!editBtn || !title) return;
+
+        const startInlineEdit = () => {
+          if (!state.threadId || title.querySelector('input')) return;
+          const currentName = title.textContent.trim();
+          const defaultVal = (currentName === 'New Conversation' || currentName === 'Personal Operations') ? '' : currentName;
+          title.innerHTML = `<input type="text" class="title-edit-input" value="${escapeHtml(defaultVal)}" placeholder="Conversation name..." />`;
+          const inputEl = title.querySelector('input');
+          inputEl.focus();
+          inputEl.select();
+
+          let committed = false;
+          const commitRename = async () => {
+            if (committed) return;
+            committed = true;
+            const newName = inputEl.value.trim() || currentName;
+            title.textContent = newName;
+            if (newName && newName !== currentName && newName !== 'New Thread') {
+              try {
+                await api(`/api/thread/${encodeURIComponent(state.threadId)}/rename/`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ name: newName }),
+                });
+                const item = threadList.querySelector(`.thread-item[data-id="${state.threadId}"] .thread-item-title`);
+                if (item) item.textContent = newName;
+                const tr = (state.threads || []).find(t => String(t.id) === String(state.threadId));
+                if (tr) tr.name = newName;
+              } catch (e) {
+                showBanner("Couldn't rename thread: " + e.message);
+              }
+            }
+          };
+
+          inputEl.onkeydown = e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitRename();
+            } else if (e.key === 'Escape') {
+              committed = true;
+              title.textContent = currentName;
+            }
+          };
+          inputEl.onblur = commitRename;
+        };
+
+        editBtn.onclick = (e) => {
+          e.stopPropagation();
+          startInlineEdit();
+        };
+        title.ondblclick = (e) => {
+          e.stopPropagation();
+          startInlineEdit();
+        };
+      };
+
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#session-token-wrapper')) {
+          closeSessionHud();
+        }
+        if (!e.target.closest('.message-metrics')) {
+          document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeSessionHud();
+          document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+        }
+      });
+
+      setupThreadRenaming();
       loadIntegrations();
       loadThreads({ selectFirst: true });
     }
