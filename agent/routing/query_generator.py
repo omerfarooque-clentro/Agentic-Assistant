@@ -19,7 +19,24 @@ class ParsedRoutingQuery(TypedDict):
     metrics: CallMetrics | None
 
 
-def generate_routing_query(messages: Any) -> ParsedRoutingQuery:
+def heuristic_disambiguate_query(text: str, available_domains: set[str] | None = None) -> str:
+    """Heuristically resolve queries like 'check latest message from arsalan' to Slack or Gmail."""
+    clean = re.sub(r"^Date:[^,]+,\s*[^:]+:\s*", "", text or "", flags=re.IGNORECASE).strip()
+    match = re.search(
+        r"(?:check|find|get|show|read|see|fetch)\s+(?:the\s+)?(?:latest|recent|new|unread)?\s*(?:message|messages|msg|msgs|meesage|meesages)\s+(?:from|by)\s+([a-zA-Z0-9_\-\.]+)",
+        clean,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        person = match.group(1)
+        if available_domains is None or "slack" in available_domains:
+            return f"search slack for {person} latest message"
+        elif "email" in available_domains:
+            return f"search gmail for {person} latest message"
+    return clean
+
+
+def generate_routing_query(messages: Any, available_domains: set[str] | None = None) -> ParsedRoutingQuery:
     """Rewrite a contextual user message into a self-contained routing query using the fast 8B model."""
     if isinstance(messages, (list, tuple)):
         message_list = list(messages)
@@ -56,23 +73,27 @@ def generate_routing_query(messages: Any) -> ParsedRoutingQuery:
         latest_message=current_message_text,
     ).to_messages()
 
-    start_time = time.perf_counter()
-    response = llm.invoke(formatted_prompt)
-    elapsed_ms = (time.perf_counter() - start_time) * 1000
+    try:
+        start_time = time.perf_counter()
+        response = llm.invoke(formatted_prompt)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-    raw_content = str(getattr(response, "content", "")).strip()
+        raw_content = str(getattr(response, "content", "")).strip()
 
-    # Clean any formatting prefixes like QUERY: <text>
-    query_match = re.search(r"QUERY:\s*(.*)", raw_content, re.IGNORECASE | re.DOTALL)
-    extracted_query = (query_match.group(1).strip() if query_match else raw_content).strip('"`\'')
+        # Clean any formatting prefixes like QUERY: <text>
+        query_match = re.search(r"QUERY:\s*(.*)", raw_content, re.IGNORECASE | re.DOTALL)
+        extracted_query = (query_match.group(1).strip() if query_match else raw_content).strip('"`\'')
 
-    # Extract metrics via unified metrics module
-    call_metrics = extract_call_metrics(
-        response=response,
-        step_name="Query Rewrite (Call #1)",
-        latency_ms=elapsed_ms,
-        model_name=getattr(llm, "model_name", DEFAULT_FAST_MODEL),
-        prompt_text_or_messages=formatted_prompt,
-    )
+        # Extract metrics via unified metrics module
+        call_metrics = extract_call_metrics(
+            response=response,
+            step_name="Query Rewrite (Call #1)",
+            latency_ms=elapsed_ms,
+            model_name=getattr(llm, "model_name", DEFAULT_FAST_MODEL),
+            prompt_text_or_messages=formatted_prompt,
+        )
 
-    return {"type": "SINGLE", "query": extracted_query, "metrics": call_metrics}
+        return {"type": "SINGLE", "query": extracted_query, "metrics": call_metrics}
+    except Exception:
+        fallback_query = heuristic_disambiguate_query(current_message_text, available_domains)
+        return {"type": "SINGLE", "query": fallback_query, "metrics": None}

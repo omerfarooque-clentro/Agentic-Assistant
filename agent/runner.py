@@ -11,7 +11,7 @@ from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
 from agent.status import NODE_STATUS_MAP
 from agent.metrics import aggregate_turn_metrics
-from agent.llm import StreamTitleFilter, extract_title_from_text, generate_title_from_context
+from agent.llm import StreamTitleFilter, extract_title_from_text, generate_title_from_context, is_substantive_for_title
 from conversations.models import Thread
 
 
@@ -118,7 +118,7 @@ async def run_agent(message: str, thread_id: int, user):
         if not extracted_title and needs_title and last_content:
             _, extracted_title = extract_title_from_text(str(last_content))
 
-        if not extracted_title and needs_title:
+        if not extracted_title and needs_title and is_substantive_for_title(user_prompt=message, assistant_response=str(last_content)):
             extracted_title = await generate_title_from_context(user_prompt=message, assistant_response=str(last_content))
 
         thread_name = thread_obj.name if thread_obj else ""

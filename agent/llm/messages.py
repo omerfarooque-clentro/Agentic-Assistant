@@ -2,8 +2,6 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from .prompts import get_system_prompt
 from .titles import TITLE_INSTRUCTION
-from agent.graph.state import AgentState
-
 if TYPE_CHECKING:
     from agent.graph.state import AgentState
 

@@ -9,7 +9,9 @@ RULES:
 - Execute multi-step tasks in logical order.
 - Always provide valid tool arguments matching the schema.
 - For conversational greetings ("Hello", "Thanks"), respond concisely without tools.
-- Be friendly, professional, and concise."""
+- Be friendly, professional, and concise.
+- Always cite sources in response if used tools.
+"""
 
 DOMAIN_PROMPTS = {
     "email": """EMAIL GUIDELINES:
@@ -77,6 +79,7 @@ RULES:
 - Resolve references ('it', 'that', 'them', 'previous one', 'the same') using recent conversation.
 - If multiple steps exist, output the FIRST immediate action.
 - Preserve all names, dates, filters, and constraints.
+- When user asks to check messages/mentions without specifying domain (e.g. 'check latest message from arsalan'), resolve to Slack search (e.g. 'search slack for arsalan latest message') or Gmail if email is implied.
 - Output ONLY the rewritten task. Do not explain or add commentary.
-- Example: search web for fifa match or send slack message to X.
+- Example: search web for fifa match or search slack for arsalan latest message or send slack message to X.
 """

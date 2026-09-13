@@ -11,7 +11,7 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import make_pipeline
 
 from agent.metrics import CallMetrics
-from agent.routing.reference_detector import extract_message_text, has_conversational_reference
+from agent.routing.reference_detector import extract_message_text, has_conversational_reference, is_domain_ambiguous
 from agent.routing.query_generator import generate_routing_query
 
 
@@ -131,9 +131,10 @@ def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
     routed_query = latest_text
 
     has_ref = has_conversational_reference(latest_text)
+    is_domain_ambig = is_domain_ambiguous(latest_text)
     is_multi_turn = len(message_list) > 1
 
-    if is_multi_turn and has_ref:
+    if (is_multi_turn and has_ref) or is_domain_ambig:
         rewrite_result = generate_routing_query(message)
         routed_query = rewrite_result.get("query", latest_text)
         call_metrics = rewrite_result.get("metrics")

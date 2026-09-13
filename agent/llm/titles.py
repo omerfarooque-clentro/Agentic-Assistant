@@ -157,6 +157,34 @@ def clean_heuristic_title(text: str) -> str:
     title = " ".join(w.capitalize() if not w.isupper() else w for w in title.split())
     return title[:50].strip() or "New Conversation"
 
+TRIVIAL_GREETINGS = {
+    "hi", "hello", "hey", "test", "testing", "yo", "morning", "good morning",
+    "good evening", "good afternoon", "thanks", "thank you", "ok", "okay",
+    "cool", "yes", "no", "sup", "howdy", "hola",
+}
+
+
+def is_substantive_for_title(user_prompt: str, assistant_response: str = "") -> bool:
+    """Check if the exchange has sufficient substance/context to assign a meaningful conversation title."""
+    if assistant_response:
+        _, extracted = extract_title_from_text(assistant_response)
+        if extracted and extracted.lower() not in ("new thread", "new conversation"):
+            return True
+
+    clean = re.sub(r"^Date:[^,]+,\s*[^:]+:\s*", "", user_prompt or "", flags=re.IGNORECASE).strip()
+    words = re.sub(r"[^\w\s]", "", clean.lower()).split()
+
+    if not words:
+        return False
+
+    if len(words) <= 2 and all(w in TRIVIAL_GREETINGS for w in words):
+        return False
+
+    if len(clean) < 15 and any(w in TRIVIAL_GREETINGS for w in words):
+        return False
+
+    return True
+
 
 async def generate_title_from_context(user_prompt: str, assistant_response: str = "") -> str:
     """Generate a concise 3-5 word conversation title using suggested tag, fast LLM, or heuristic fallback."""

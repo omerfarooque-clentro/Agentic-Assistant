@@ -321,14 +321,32 @@ class TitleGenerationTests(TestCase):
             "Summarize Q3 Revenue Report",
         )
 
-    async def test_generate_title_from_context_with_suggested_tag(self):
-        from agent.llm.titles import generate_title_from_context
+    def test_is_substantive_for_title(self):
+        from agent.llm.titles import is_substantive_for_title
 
-        title = await generate_title_from_context(
-            user_prompt="tell me about England vs Pakistan",
-            assistant_response="England won the series. <suggested_title>England Pakistan Test Results</suggested_title>",
-        )
-        self.assertEqual(title, "England Pakistan Test Results")
+        # Trivial greetings should not be substantive
+        self.assertFalse(is_substantive_for_title("hi"))
+        self.assertFalse(is_substantive_for_title("hello"))
+        self.assertFalse(is_substantive_for_title("hey there"))
+        self.assertFalse(is_substantive_for_title("Date: 2026-09-13 14:30:00, Omer: hi"))
+
+        # Real tasks should be substantive
+        self.assertTrue(is_substantive_for_title("summarize Q3 revenue report"))
+        self.assertTrue(is_substantive_for_title("check my recent slack messages"))
+        self.assertTrue(is_substantive_for_title("hi", assistant_response="Summary <suggested_title>Revenue Sync</suggested_title>"))
+
+    def test_is_domain_ambiguous(self):
+        from agent.routing.reference_detector import is_domain_ambiguous
+
+        # Explicit service names are NOT ambiguous
+        self.assertFalse(is_domain_ambiguous("check slack messages from arsalan"))
+        self.assertFalse(is_domain_ambiguous("search gmail for invoice"))
+        self.assertFalse(is_domain_ambiguous("search web for latest news"))
+
+        # Ambiguous messages without domain keyword ARE ambiguous
+        self.assertTrue(is_domain_ambiguous("check latest message from arsalan"))
+        self.assertTrue(is_domain_ambiguous("check lates meesage from arsalan"))
+        self.assertTrue(is_domain_ambiguous("show unread messages"))
 
 
 

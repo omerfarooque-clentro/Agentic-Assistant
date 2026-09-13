@@ -40,6 +40,44 @@
     return refreshInFlight.finally(() => { refreshInFlight = null; });
   };
 
+  const initThemeToggle = () => {
+    const toggleTheme = () => {
+      const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      if (next === 'dark') {
+        document.documentElement.classList.add('theme-dark');
+      } else {
+        document.documentElement.classList.remove('theme-dark');
+      }
+      try { localStorage.setItem('ops_theme', next); } catch (e) {}
+    };
+
+    const buttons = document.querySelectorAll('#theme-toggle, .theme-toggle-btn');
+    buttons.forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        toggleTheme();
+      };
+    });
+
+    if (!window.__themeKeyBound) {
+      window.__themeKeyBound = true;
+      window.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+          e.preventDefault();
+          toggleTheme();
+        }
+      });
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initThemeToggle);
+  } else {
+    initThemeToggle();
+  }
+
   const forceSignOut = () => {
     // Session can't be recovered — send the user back to sign in instead of
     // leaving the workspace showing a stale/blank thread list and history.
@@ -164,10 +202,13 @@
     const source = String(raw == null ? '' : raw).replace(/\r\n/g, '\n');
     const inline = line => {
       let text = escapeHtml(line);
+      // Markdown links: [title](url) -> open in new tab
       text = text.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
       text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
       text = text.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+      // Auto-link standalone URLs not inside an href attribute
+      text = text.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
       return text;
     };
 
@@ -176,8 +217,11 @@
     let codeBlockOpen = false;
     let codeBlockLang = '';
     let codeBlockContent = '';
+    let inSlackFeed = false;
+    const extractedSources = [];
 
     const closeList = () => { if (listType) { html += `</${listType}>`; listType = null; } };
+    const closeSlackFeed = () => { if (inSlackFeed) { html += '</div>'; inSlackFeed = false; } };
     const closeCodeBlock = () => {
       if (codeBlockOpen) {
         const langClass = codeBlockLang ? ` class="language-${escapeHtml(codeBlockLang)}"` : '';
@@ -188,6 +232,21 @@
       }
     };
 
+    // Extract citations / sources for footer cards
+    const urlMatches = source.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(?:\b)(https?:\/\/[^\s<>"')]+)/g);
+    for (const match of urlMatches) {
+      const url = match[2] || match[3];
+      const title = match[1] || url;
+      if (url && !extractedSources.some(s => s.url === url)) {
+        try {
+          const domain = new URL(url).hostname.replace(/^www\./, '');
+          extractedSources.push({ url, title, domain });
+        } catch (e) {
+          extractedSources.push({ url, title, domain: 'source' });
+        }
+      }
+    }
+
     const lines = source.split('\n');
     let i = 0;
     while (i < lines.length) {
@@ -196,6 +255,7 @@
       // Handle code fences
       if (line.match(/^```/)) {
         closeList();
+        closeSlackFeed();
         if (codeBlockOpen) {
           closeCodeBlock();
         } else {
@@ -217,6 +277,7 @@
       // Handle tables (pipe-separated)
       if (line.includes('|') && (i + 1 < lines.length) && lines[i + 1].match(/^\s*\|?\s*[-:| ]+\|[-:| ]*$/)) {
         closeList();
+        closeSlackFeed();
         closeCodeBlock();
         const parseRow = l => {
           let s = l.trim();
@@ -259,6 +320,7 @@
       const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
       if (headingMatch) {
         closeList();
+        closeSlackFeed();
         closeCodeBlock();
         const level = headingMatch[1].length;
         html += `<h${level}>${inline(headingMatch[2])}</h${level}>`;
@@ -269,6 +331,7 @@
       // Handle blockquotes
       if (line.match(/^>\s/)) {
         closeList();
+        closeSlackFeed();
         closeCodeBlock();
         html += '<blockquote>';
         while (i < lines.length && lines[i].match(/^>\s/)) {
@@ -283,15 +346,34 @@
       // Handle horizontal rules
       if (line.match(/^\s*([-*_])\s*\1\s*\1[\s\1]*$/) || line.match(/^---+$/) || line.match(/^\*\*\*+$/)) {
         closeList();
+        closeSlackFeed();
         closeCodeBlock();
         html += '<hr>';
         i++;
         continue;
       }
 
-      // Handle bullet lists
-      const bullet = line.match(/^\s*[-*]\s+(.*)/);
+      // Handle Slack activity feed items (e.g. "*   **2026-08-31 21:48:45 PKT** (DM with Arsalan): 'Hello, Arsalan!'")
+      const slackMatch = line.match(/^\s*[-*•▪▫]?\s*(?:\*\*)?(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s+[A-Z]{2,4})?)(?:\*\*)?\s+\(([^)]+)\):\s*["“']?([\s\S]+?)["”']?$/);
+      if (slackMatch) {
+        closeList();
+        closeCodeBlock();
+        if (!inSlackFeed) {
+          html += '<div class="slack-activity-feed">';
+          inSlackFeed = true;
+        }
+        const timeStr = escapeHtml(slackMatch[1].trim());
+        const channelStr = escapeHtml(slackMatch[2].trim());
+        const contentStr = inline(slackMatch[3].trim());
+        html += `<div class="slack-activity-item"><div class="slack-activity-header"><span class="slack-channel-badge">${channelStr}</span><span class="slack-time-badge">${timeStr}</span></div><div class="slack-activity-body">${contentStr}</div></div>`;
+        i++;
+        continue;
+      }
+
+      // Handle bullet lists (supporting -, *, and unicode bullets •, ▪, ▫)
+      const bullet = line.match(/^\s*[-*•▪▫]\s+(.*)/);
       if (bullet) {
+        closeSlackFeed();
         closeCodeBlock();
         if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul'; }
         html += `<li>${inline(bullet[1])}</li>`;
@@ -302,6 +384,7 @@
       // Handle numbered lists
       const numbered = line.match(/^\s*\d+\.\s+(.*)/);
       if (numbered) {
+        closeSlackFeed();
         closeCodeBlock();
         if (listType !== 'ol') { closeList(); html += '<ol>'; listType = 'ol'; }
         html += `<li>${inline(numbered[1])}</li>`;
@@ -310,6 +393,7 @@
       }
 
       // Handle paragraphs
+      closeSlackFeed();
       closeCodeBlock();
       if (!line.trim()) {
         closeList();
@@ -322,7 +406,30 @@
     }
 
     closeList();
+    closeSlackFeed();
     closeCodeBlock();
+
+    // Render interactive source / citation cards footer if sources were cited
+    if (extractedSources.length > 0) {
+      const chipsHtml = extractedSources.map(s => `
+        <a class="source-chip" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title)}">
+          <span class="source-icon">🔗</span>
+          <span class="source-title">${escapeHtml(s.title.length > 30 ? s.title.slice(0, 30) + '…' : s.title)}</span>
+          <span class="source-domain">${escapeHtml(s.domain)}</span>
+          <span class="source-arrow">↗</span>
+        </a>
+      `).join('');
+      html += `
+        <div class="sources-container">
+          <div class="sources-heading">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Sources & References
+          </div>
+          <div class="sources-grid">${chipsHtml}</div>
+        </div>
+      `;
+    }
+
     return html;
   };
 
@@ -933,16 +1040,43 @@
     parseWeatherData,
     renderWeatherCard,
     renderMarkdown,
+    bindTheme: initThemeToggle,
     bindLogin() {
-      document.querySelector('#login-form').addEventListener('submit', async event => {
+      initThemeToggle();
+      const form = document.querySelector('#login-form');
+      if (!form) return;
+      form.addEventListener('submit', async event => {
         event.preventDefault();
         localStorage.removeItem('ops_access');
         localStorage.removeItem('ops_refresh');
         localStorage.removeItem('ops_user');
-        try { const data = await api('/login/', { method: 'POST', body: JSON.stringify(formData(event.currentTarget)), public: true, skipRefresh: true }); localStorage.setItem('ops_access', data.access); localStorage.setItem('ops_refresh', data.refresh || data.refersh); localStorage.setItem('ops_user', data.username); window.location = '/'; } catch (error) { showError(error); }
+        const submitBtn = form.querySelector('#btn-login-submit') || form.querySelector('button[type="submit"]');
+        const progressEl = document.querySelector('#login-progress');
+        const errTarget = document.querySelector('#form-error');
+        if (errTarget) errTarget.textContent = '';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('is-loading');
+        }
+        if (progressEl) progressEl.classList.remove('hidden');
+        try {
+          const data = await api('/login/', { method: 'POST', body: JSON.stringify(formData(event.currentTarget)), public: true, skipRefresh: true });
+          localStorage.setItem('ops_access', data.access);
+          localStorage.setItem('ops_refresh', data.refresh || data.refersh);
+          localStorage.setItem('ops_user', data.username);
+          window.location = '/';
+        } catch (error) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('is-loading');
+          }
+          if (progressEl) progressEl.classList.add('hidden');
+          showError(error);
+        }
       });
     },
     bindRegister() {
+      initThemeToggle();
       const regForm = document.querySelector('#register-form');
       if (!regForm) return;
 
@@ -981,6 +1115,9 @@
         const formInputs = regForm.querySelectorAll('input, button');
         const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Start workspace <span>-></span>';
 
+        // Extract form data BEFORE disabling inputs, otherwise FormData omits disabled elements!
+        const payload = formData(event.currentTarget);
+
         if (submitBtn) {
           submitBtn.disabled = true;
           submitBtn.classList.add('is-loading');
@@ -992,7 +1129,7 @@
         try {
           const data = await api('/registration/', {
             method: 'POST',
-            body: JSON.stringify(formData(event.currentTarget)),
+            body: JSON.stringify(payload),
             public: true,
             skipRefresh: true
           });
@@ -1047,6 +1184,7 @@
       });
     },
     bindResetPassword() {
+      initThemeToggle();
       let recoveryEmail = '';
       let recoveryOtp = '';
 
@@ -1246,6 +1384,7 @@
       }
     },
     initSettings() {
+      initThemeToggle();
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
       const errorTarget = document.querySelector('#settings-error');
       const setError = error => { errorTarget.textContent = error.message; };
@@ -1513,6 +1652,53 @@
       document.querySelector('#user-label').textContent = currentUser;
       const avatar = document.querySelector('#user-avatar');
       if (avatar) avatar.textContent = currentUser.charAt(0).toUpperCase();
+
+      // Theme toggle support (Button + Keyboard shortcut Ctrl+Shift+T)
+      const themeToggleBtn = document.querySelector('#theme-toggle');
+      const toggleTheme = () => {
+        const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        if (next === 'dark') {
+          document.documentElement.classList.add('theme-dark');
+        } else {
+          document.documentElement.classList.remove('theme-dark');
+        }
+        localStorage.setItem('ops_theme', next);
+      };
+      if (themeToggleBtn) {
+        themeToggleBtn.onclick = () => toggleTheme();
+      }
+      window.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+          e.preventDefault();
+          toggleTheme();
+        }
+      });
+
+      // Network & slow internet feedback toasts
+      const networkToast = document.querySelector('#network-toast');
+      const networkMsg = document.querySelector('#network-toast-msg');
+      let netTimer = null;
+      const showNetToast = (msg, persistent = false) => {
+        if (!networkToast) return;
+        if (networkMsg) networkMsg.textContent = msg;
+        networkToast.classList.remove('hidden');
+        if (netTimer) clearTimeout(netTimer);
+        if (!persistent) {
+          netTimer = setTimeout(() => { networkToast.classList.add('hidden'); }, 4000);
+        }
+      };
+      const hideNetToast = () => {
+        if (networkToast) networkToast.classList.add('hidden');
+      };
+
+      window.addEventListener('offline', () => {
+        showNetToast('Internet connection lost. Waiting for connection…', true);
+      });
+      window.addEventListener('online', () => {
+        showNetToast('Internet restored! Workspace is back online.');
+      });
 
       const recordTurnMetrics = (metrics, userQuery = '', messageEl = null) => {
         if (!metrics || typeof metrics !== 'object') return;
@@ -1952,11 +2138,37 @@
       const addMessage = (role, content, pending = false, metrics = null) => {
         const item = document.createElement('article');
         item.className = `message ${role} ${pending ? 'pending' : ''}`;
-        item.innerHTML = `<span class="message-label">${role === 'user' ? 'You' : 'Ops agent'}</span><div class="message-content"></div>`;
+        const labelHtml = role === 'user'
+          ? `<span class="message-label"><span class="message-label-left">You</span></span>`
+          : `<span class="message-label">
+               <span class="message-label-left">
+                 <span class="message-label-avatar agent">⚡</span>
+                 <span>Personal Ops</span>
+               </span>
+               <span class="message-actions">
+                 <button class="copy-msg-btn" type="button" title="Copy response">
+                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                   <span>Copy</span>
+                 </button>
+               </span>
+             </span>`;
+        item.innerHTML = `${labelHtml}<div class="message-content"></div>`;
+        const copyBtn = item.querySelector('.copy-msg-btn');
+        if (copyBtn) {
+          copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            const rawContent = (typeof content === 'string' ? content : (item.querySelector('.message-content') ? item.querySelector('.message-content').innerText : '')).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
+            navigator.clipboard.writeText(rawContent).then(() => {
+              const span = copyBtn.querySelector('span') || copyBtn;
+              span.textContent = 'Copied!';
+              setTimeout(() => { span.textContent = 'Copy'; }, 1800);
+            }).catch(() => {});
+          };
+        }
         const body = item.querySelector('.message-content');
         const text = safeText(content);
         if (pending) {
-          body.innerHTML = '<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>Processing request…</span></div>';
+          body.innerHTML = '<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>Operations agent thinking…</span></div>';
         } else if (role === 'user') {
           body.textContent = text;
         } else {
@@ -2147,7 +2359,7 @@
         if (sessionCountEl) sessionCountEl.textContent = '0';
 
         document.querySelectorAll('.thread-item').forEach(item => item.classList.toggle('active', item.dataset.id == id));
-        transcript.innerHTML = '<div class="loading-line">Loading thread history...</div>';
+        transcript.innerHTML = '<div class="loading-line"><span class="btn-spinner spinner-dark"></span> Loading conversation history…</div>';
         try {
           const data = await api(`/api/thread/${encodeURIComponent(id)}/messages/`);
           const messages = Array.isArray(data) ? data : data.results || [];
@@ -2157,17 +2369,21 @@
             renderWelcomeState();
           } else {
             messages.forEach(message => {
-              const role = message.role === 'assistant' ? 'agent' : message.role;
-              if (role === 'user') {
-                state.lastUserQuery = message.content;
+              try {
+                const role = message.role === 'assistant' ? 'agent' : message.role;
+                if (role === 'user') {
+                  state.lastUserQuery = message.content;
+                }
+                const metrics = message.metrics || null;
+                addMessage(
+                  role,
+                  message.content,
+                  false,
+                  metrics
+                );
+              } catch (err) {
+                console.error('Failed to render message:', err);
               }
-              const metrics = message.metrics || null;
-              addMessage(
-                role,
-                message.content,
-                false,
-                metrics
-              );
             });
           }
         } catch (error) {
@@ -2272,9 +2488,15 @@
         let assistantText = '';
         let completedHandled = false;
         let hasReceivedTokens = false;
+        const slowTimer = setTimeout(() => {
+          if (!hasReceivedTokens && state.sending) {
+            setPendingStatus('Connecting across tools… network is slow, still processing');
+          }
+        }, 5500);
 
         const handlePayload = data => {
           if (!data || typeof data !== 'object') return;
+          if (slowTimer) clearTimeout(slowTimer);
           const status = data.status || data.type || '';
           const token = data.token ?? data.delta ?? data.chunk ?? data.content ?? data.text ?? '';
           const response = data.response ?? data.result ?? data.output ?? data.content ?? data.text ?? '';
