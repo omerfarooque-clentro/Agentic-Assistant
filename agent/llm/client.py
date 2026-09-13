@@ -15,16 +15,9 @@ llm_google = ChatGoogleGenerativeAI(
     temperature=0,
 )
 
-# Fast lightweight model for narrow tasks like query rewriting & reference resolution (Call #1)
-llm_groq_fast = ChatGroq(
-    model="llama-3.1-8b-instant",
-    temperature=0,
-)
 
-# Tiered LLM instances with resilient cross-provider fallbacks
+# Resilient models with cross-provider fallbacks
 llm = llm_groq.with_fallbacks([llm_google], exceptions_to_handle=(Exception,))
-llm_fast = llm_groq_fast.with_fallbacks([llm_google], exceptions_to_handle=(Exception,))
-
 
 def bind_tools_with_fallback(tools):
     """Bind the same tools to each provider before composing its fallback."""
