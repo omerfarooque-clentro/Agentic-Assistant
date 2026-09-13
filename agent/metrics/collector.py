@@ -9,7 +9,6 @@ from agent.metrics.types import (
     TurnMetrics,
     CONTEXT_WINDOW_LIMIT,
     DEFAULT_MODEL,
-    DEFAULT_FAST_MODEL,
 )
 
 

@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from agent.llm.prompts import QUERY_GENERATOR_PROMPT
 from agent.llm.client import llm
-from agent.metrics import CallMetrics, extract_call_metrics, DEFAULT_FAST_MODEL
+from agent.metrics import CallMetrics, extract_call_metrics
 from agent.routing.reference_detector import extract_message_text, has_conversational_reference
 
 
@@ -71,7 +71,7 @@ def generate_routing_query(messages: Any) -> ParsedRoutingQuery:
         response=response,
         step_name="Query Rewrite (Call #1)",
         latency_ms=elapsed_ms,
-        model_name=getattr(llm, "model_name", DEFAULT_FAST_MODEL),
+        model_name=getattr(llm, "model_name"),
         prompt_text_or_messages=formatted_prompt,
     )
 
