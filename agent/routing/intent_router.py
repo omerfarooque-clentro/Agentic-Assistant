@@ -197,7 +197,7 @@ def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
         status = "confident"
     else:
         status = "ambiguous"
-
+    print(f"Routed query: {routed_query}, Candidates: {candidates}")
     return {
         "intent": prediction,
         "domain": domain,

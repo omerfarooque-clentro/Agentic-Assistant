@@ -38,6 +38,7 @@ def heuristic_disambiguate_query(text: str, available_domains: set[str] | None =
 
 def generate_routing_query(messages: Any, available_domains: set[str] | None = None) -> ParsedRoutingQuery:
     """Rewrite a contextual user message into a self-contained routing query using the fast 8B model."""
+    print(f"Generating routing query for messages: {messages}")
     if isinstance(messages, (list, tuple)):
         message_list = list(messages)
     elif messages:
@@ -96,4 +97,5 @@ def generate_routing_query(messages: Any, available_domains: set[str] | None = N
         return {"type": "SINGLE", "query": extracted_query, "metrics": call_metrics}
     except Exception:
         fallback_query = heuristic_disambiguate_query(current_message_text, available_domains)
+        print(f"Fallback routing query: {fallback_query}")
         return {"type": "SINGLE", "query": fallback_query, "metrics": None}
