@@ -38,6 +38,7 @@ def heuristic_disambiguate_query(text: str, available_domains: set[str] | None =
 
 def generate_routing_query(messages: Any, available_domains: set[str] | None = None) -> ParsedRoutingQuery:
     """Rewrite a contextual user message into a self-contained routing query using the fast 8B model."""
+    print(f"Generating routing query for messages: {messages}")
     if isinstance(messages, (list, tuple)):
         message_list = list(messages)
     elif messages:
@@ -84,16 +85,17 @@ def generate_routing_query(messages: Any, available_domains: set[str] | None = N
         query_match = re.search(r"QUERY:\s*(.*)", raw_content, re.IGNORECASE | re.DOTALL)
         extracted_query = (query_match.group(1).strip() if query_match else raw_content).strip('"`\'')
 
-    # Extract metrics via unified metrics module
-    call_metrics = extract_call_metrics(
-        response=response,
-        step_name="Query Rewrite (Call #1)",
-        latency_ms=elapsed_ms,
-        model_name=getattr(llm, "model_name"),
-        prompt_text_or_messages=formatted_prompt,
-    )
-
+        # Extract metrics via unified metrics module
+        call_metrics = extract_call_metrics(
+            response=response,
+            step_name="Query Rewrite (Call #1)",
+            latency_ms=elapsed_ms,
+            model_name=getattr(llm, "model_name"),
+            prompt_text_or_messages=formatted_prompt,
+        )
+        print(f"Extracted routing query: {extracted_query}")
         return {"type": "SINGLE", "query": extracted_query, "metrics": call_metrics}
     except Exception:
         fallback_query = heuristic_disambiguate_query(current_message_text, available_domains)
+        print(f"Fallback routing query: {fallback_query}")
         return {"type": "SINGLE", "query": fallback_query, "metrics": None}
