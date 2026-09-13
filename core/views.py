@@ -384,7 +384,12 @@ async def agent_chat_view(request, thread_id):
                 else:
                     await thread.asave(update_fields=["updated_at"])
 
-                await Message.objects.acreate(thread=thread, role="agent", content=final_content)
+                await Message.objects.acreate(
+                    thread=thread,
+                    role="agent",
+                    content=final_content,
+                    metrics=chunk.get("metrics") or {},
+                )
                 yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
                 return
         except Exception as e:
@@ -458,16 +463,25 @@ async def tool_approval_view(request, thread_id):
     else:
         await thread.asave(update_fields=["updated_at"])
 
+    from agent.metrics import aggregate_turn_metrics
+    approval_metrics = aggregate_turn_metrics(
+        call_metrics=result.get("call_metrics", []),
+        start_time=time.perf_counter(),
+        messages=result.get("messages", []),
+    )
+
     await Message.objects.acreate(
         thread=thread,
         role="agent",
-        content=message
+        content=message,
+        metrics=approval_metrics,
     )
 
     return JsonResponse({
         "result": message,
         "thread_id": int(thread.id),
         "thread_name": thread.name,
+        "metrics": approval_metrics,
     })
 
 

@@ -15,27 +15,44 @@ REFERENCE_PATTERN = re.compile(
 SHORT_ACTION_TRIGGERS = {"yes", "send", "email", "share", "post", "cancel", "confirm", "reply", "forward"}
 
 
-def extract_message_text(message: Any) -> str:
+ENVELOPE_PATTERN = re.compile(
+    r"^Date:\s*[\d\-:\s]+(?:\(Timezone:[^)]+\))?,\s*[^:]+:\s*",
+    re.IGNORECASE,
+)
+
+
+def strip_message_envelope(text: str) -> str:
+    """Strip 'Date: ... (Timezone: ...), <User>: ' envelope from formatted prompt text."""
+    if not text or not isinstance(text, str):
+        return text or ""
+    return ENVELOPE_PATTERN.sub("", text).strip()
+
+
+def extract_message_text(message: Any, strip_envelope: bool = False) -> str:
     """Normalize and extract plain text from any LangChain message, dict, string, or object."""
     if message is None:
         return ""
     if isinstance(message, str):
-        return message
-    if isinstance(message, dict):
-        return str(message.get("text") or message.get("content") or "")
-    if hasattr(message, "content"):
+        raw = message
+    elif isinstance(message, dict):
+        raw = str(message.get("text") or message.get("content") or "")
+    elif hasattr(message, "content"):
         content = message.content
         if isinstance(content, str):
-            return content
-        if isinstance(content, list):
+            raw = content
+        elif isinstance(content, list):
             parts = [
                 b.get("text", "")
                 for b in content
                 if isinstance(b, dict) and b.get("type") == "text"
             ]
-            return " ".join(parts)
-        return str(content)
-    return str(message)
+            raw = " ".join(parts)
+        else:
+            raw = str(content)
+    else:
+        raw = str(message)
+
+    return strip_message_envelope(raw) if strip_envelope else raw
 
 
 def has_conversational_reference(text: str) -> bool:
@@ -43,7 +60,7 @@ def has_conversational_reference(text: str) -> bool:
     if not text or not isinstance(text, str):
         return False
 
-    cleaned = text.strip().lower()
+    cleaned = strip_message_envelope(text).strip().lower()
     words = cleaned.split()
 
     # Check for short follow-up commands like "send it", "email that", "do it"
@@ -51,3 +68,4 @@ def has_conversational_reference(text: str) -> bool:
         return True
 
     return bool(REFERENCE_PATTERN.search(cleaned))
+

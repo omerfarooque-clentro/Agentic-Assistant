@@ -126,7 +126,7 @@ def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
     else:
         message_list = []
 
-    latest_text = extract_message_text(message_list[-1]) if message_list else ""
+    latest_text = extract_message_text(message_list[-1], strip_envelope=True) if message_list else ""
     call_metrics: CallMetrics | None = None
     routed_query = latest_text
 
@@ -137,18 +137,17 @@ def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
         rewrite_result = generate_routing_query(message)
         routed_query = rewrite_result.get("query", latest_text)
         call_metrics = rewrite_result.get("metrics")
-    
+
     candidates = get_candidate_intents(routed_query, available_domains=available_domains, top_k=2)
 
-    # Disambiguation fallback: if direct classification on multi-turn was ambiguous, try rewriting
-    if is_multi_turn and not has_ref and call_metrics is None:
-        if not candidates or candidates[0]["probability"] < CONFIDENCE_THRESHOLD:
-            rewrite_result = generate_routing_query(message)
-            rewritten_text = rewrite_result.get("query", "")
-            if rewritten_text and rewritten_text != routed_query:
-                routed_query = rewritten_text
-                call_metrics = rewrite_result.get("metrics")
-                candidates = get_candidate_intents(routed_query, available_domains=available_domains, top_k=2)
+    # Disambiguation fallback: only trigger if no intent matched at all across available domains
+    if is_multi_turn and not has_ref and call_metrics is None and not candidates:
+        rewrite_result = generate_routing_query(message)
+        rewritten_text = rewrite_result.get("query", "")
+        if rewritten_text and rewritten_text != routed_query:
+            routed_query = rewritten_text
+            call_metrics = rewrite_result.get("metrics")
+            candidates = get_candidate_intents(routed_query, available_domains=available_domains, top_k=2)
 
     if not candidates:
         return {

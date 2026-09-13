@@ -1835,7 +1835,22 @@
           if (!messages.length) {
             renderWelcomeState();
           } else {
-            messages.forEach(message => addMessage(message.role === 'assistant' ? 'agent' : message.role, message.content));
+            let threadTokens = 0;
+            messages.forEach(message => {
+              const metrics = message.metrics || null;
+              if (metrics && metrics.total_tokens) {
+                threadTokens += metrics.total_tokens;
+              }
+              addMessage(
+                message.role === 'assistant' ? 'agent' : message.role,
+                message.content,
+                false,
+                metrics
+              );
+            });
+            if (threadTokens > 0) {
+              updateSessionTokens(threadTokens);
+            }
           }
         } catch (error) {
           transcript.innerHTML = '';
@@ -2202,7 +2217,11 @@
           status.textContent = value ? '✓ Approved — sending now.' : '✓ Cancelled.';
           state.pendingApproval = null;
           refreshComposerState();
-          addMessage('agent', data.result || (value ? 'Approved — sending now.' : 'Cancelled.'));
+          const approvalMetrics = data.metrics || null;
+          if (approvalMetrics && approvalMetrics.total_tokens) {
+            updateSessionTokens(approvalMetrics.total_tokens);
+          }
+          addMessage('agent', data.result || (value ? 'Approved — sending now.' : 'Cancelled.'), false, approvalMetrics);
           if (data.thread_name && data.thread_name !== 'New Thread') {
             title.textContent = data.thread_name;
             const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);

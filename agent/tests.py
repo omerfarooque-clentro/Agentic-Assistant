@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
@@ -156,4 +158,125 @@ class StreamTitleFilterTests(TestCase):
         clean_text, title = extract_title_from_text(text)
         self.assertEqual(clean_text, "Here is the summary.")
         self.assertEqual(title, "Executive Summary")
+
+
+class EnvelopeAndReferenceDetectorTests(TestCase):
+    def test_strip_message_envelope(self):
+        from agent.routing.reference_detector import strip_message_envelope
+
+        raw1 = "Date: 2026-09-13 13:49:00 (Timezone: UTC), Omer: search my unread emails"
+        self.assertEqual(strip_message_envelope(raw1), "search my unread emails")
+
+        raw2 = "Date: 2026-09-13 13:49:00, Alice: send it to Bob"
+        self.assertEqual(strip_message_envelope(raw2), "send it to Bob")
+
+        plain = "what tools are available"
+        self.assertEqual(strip_message_envelope(plain), "what tools are available")
+
+    def test_has_conversational_reference_with_envelope(self):
+        from agent.routing.reference_detector import has_conversational_reference
+
+        # With envelope, should still detect pronoun "it" correctly
+        raw_ref = "Date: 2026-09-13 13:49:00 (Timezone: UTC), Omer: forward it to Sarah"
+        self.assertTrue(has_conversational_reference(raw_ref))
+
+        # With envelope, standalone query should NOT have reference
+        raw_standalone = "Date: 2026-09-13 13:49:00 (Timezone: UTC), Omer: search my unread emails"
+        self.assertFalse(has_conversational_reference(raw_standalone))
+
+
+class MultiTurnRoutingTests(TestCase):
+    def test_standalone_multi_turn_bypasses_query_generator(self):
+        history = [
+            HumanMessage(content="What operations tasks can you assist me with?"),
+            AIMessage(content="I can assist with Gmail, Calendar, Docs, Sheets, and Slack."),
+            HumanMessage(content="Date: 2026-09-13 13:49:00 (Timezone: UTC), Omer: search my unread emails"),
+        ]
+        available_domains = {"email", "calendar", "docs", "sheets", "slack", "research"}
+        result = route_intent(history, available_domains=available_domains)
+        self.assertEqual(result["domain"], "email")
+        self.assertEqual(result["intent"], "email.search")
+        self.assertIsNone(result["call_metrics"], "Standalone query in multi-turn must bypass Call #1!")
+
+    @patch("agent.routing.intent_router.generate_routing_query")
+    def test_reference_multi_turn_triggers_query_generator(self, mock_query_gen):
+        mock_query_gen.return_value = {
+            "type": "SINGLE",
+            "query": "Forward the Q3 Budget email to Sarah",
+            "metrics": {
+                "name": "Query Rewrite (Call #1)",
+                "model": "llama-3.1-8b-instant",
+                "input_tokens": 120,
+                "output_tokens": 15,
+                "total_tokens": 135,
+                "cached_tokens": 0,
+                "latency_ms": 150.0,
+            },
+        }
+        history = [
+            HumanMessage(content="Search for emails from Alex"),
+            AIMessage(content="Found email from Alex: Subject: Q3 Budget."),
+            HumanMessage(content="Date: 2026-09-13 13:49:00 (Timezone: UTC), Omer: forward it to Sarah"),
+        ]
+        available_domains = {"email", "calendar", "docs", "sheets", "slack", "research"}
+        result = route_intent(history, available_domains=available_domains)
+        self.assertEqual(result["domain"], "email")
+        mock_query_gen.assert_called_once()
+        self.assertIsNotNone(result["call_metrics"], "Pronoun 'it' must trigger Call #1 rewrite!")
+        self.assertEqual(result["call_metrics"]["name"], "Query Rewrite (Call #1)")
+
+
+class MetricsCollectorTests(TestCase):
+    def test_extract_call_metrics_structure(self):
+        from agent.metrics import extract_call_metrics, CallMetrics
+
+        mock_response = AIMessage(
+            content="Hello world",
+            usage_metadata={"input_tokens": 100, "output_tokens": 25, "total_tokens": 125},
+        )
+        metrics = extract_call_metrics(
+            response=mock_response,
+            step_name="Test Call",
+            latency_ms=250.5,
+            model_name="openai/gpt-oss-120b",
+        )
+        self.assertEqual(metrics["name"], "Test Call")
+        self.assertEqual(metrics["input_tokens"], 100)
+        self.assertEqual(metrics["output_tokens"], 25)
+        self.assertEqual(metrics["total_tokens"], 125)
+        self.assertEqual(metrics["latency_ms"], 250.5)
+        self.assertEqual(metrics["model"], "openai/gpt-oss-120b")
+
+    def test_aggregate_turn_metrics(self):
+        from agent.metrics import aggregate_turn_metrics, CallMetrics
+
+        call1: CallMetrics = {
+            "name": "Query Generator (Call #1)",
+            "model": "llama-3.1-8b-instant",
+            "input_tokens": 150,
+            "output_tokens": 30,
+            "total_tokens": 180,
+            "cached_tokens": 0,
+            "latency_ms": 300,
+        }
+        call2: CallMetrics = {
+            "name": "Email Agent (Call #2)",
+            "model": "openai/gpt-oss-120b",
+            "input_tokens": 800,
+            "output_tokens": 120,
+            "total_tokens": 920,
+            "cached_tokens": 50,
+            "latency_ms": 1200,
+        }
+        import time
+        start_time = time.perf_counter() - 1.5
+        turn_metrics = aggregate_turn_metrics([call1, call2], start_time=start_time)
+
+        self.assertEqual(turn_metrics["total_tokens"], 1100)
+        self.assertEqual(turn_metrics["input_tokens"], 950)
+        self.assertEqual(turn_metrics["output_tokens"], 150)
+        self.assertEqual(turn_metrics["cached_tokens"], 50)
+        self.assertEqual(turn_metrics["llm_calls"], 2)
+        self.assertEqual(len(turn_metrics["breakdown"]), 2)
+
 
