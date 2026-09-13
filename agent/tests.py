@@ -279,4 +279,29 @@ class MetricsCollectorTests(TestCase):
         self.assertEqual(turn_metrics["llm_calls"], 2)
         self.assertEqual(len(turn_metrics["breakdown"]), 2)
 
+    def test_extract_call_metrics_with_list_content_blocks(self):
+        from agent.metrics import extract_call_metrics
+
+        mock_response = AIMessage(content="Search completed.")
+        # Sequence of messages where item 7 has list content (e.g. ToolMessage from search)
+        messages = [
+            HumanMessage(content="msg0"),
+            AIMessage(content="msg1"),
+            HumanMessage(content="msg2"),
+            AIMessage(content="msg3"),
+            HumanMessage(content="msg4"),
+            AIMessage(content="msg5"),
+            HumanMessage(content="msg6"),
+            ToolMessage(content=[{"type": "text", "text": "weather data"}], tool_call_id="call_7"),
+        ]
+        metrics = extract_call_metrics(
+            response=mock_response,
+            step_name="Research Agent (Call #2)",
+            latency_ms=300.0,
+            prompt_text_or_messages=messages,
+        )
+        self.assertEqual(metrics["name"], "Research Agent (Call #2)")
+        self.assertGreater(metrics["input_tokens"], 0)
+
+
 

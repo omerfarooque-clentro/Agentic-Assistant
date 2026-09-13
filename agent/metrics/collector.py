@@ -42,10 +42,20 @@ def extract_call_metrics(
 
     if prompt_text_or_messages is not None:
         if isinstance(prompt_text_or_messages, (list, tuple)):
-            prompt_str = " ".join(
-                getattr(m, "content", "") if hasattr(m, "content") else str(m)
-                for m in prompt_text_or_messages
-            )
+            parts: list[str] = []
+            for m in prompt_text_or_messages:
+                content = getattr(m, "content", m)
+                if isinstance(content, str):
+                    parts.append(content)
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict):
+                            parts.append(str(block.get("text") or block.get("content") or ""))
+                        else:
+                            parts.append(str(block))
+                else:
+                    parts.append(str(content or ""))
+            prompt_str = " ".join(parts)
         else:
             prompt_str = str(prompt_text_or_messages)
         fallback_input = estimate_tokens(prompt_str)
