@@ -40,6 +40,44 @@
     return refreshInFlight.finally(() => { refreshInFlight = null; });
   };
 
+  const initThemeToggle = () => {
+    const toggleTheme = () => {
+      const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      if (next === 'dark') {
+        document.documentElement.classList.add('theme-dark');
+      } else {
+        document.documentElement.classList.remove('theme-dark');
+      }
+      try { localStorage.setItem('ops_theme', next); } catch (e) {}
+    };
+
+    const buttons = document.querySelectorAll('#theme-toggle, .theme-toggle-btn');
+    buttons.forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        toggleTheme();
+      };
+    });
+
+    if (!window.__themeKeyBound) {
+      window.__themeKeyBound = true;
+      window.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+          e.preventDefault();
+          toggleTheme();
+        }
+      });
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initThemeToggle);
+  } else {
+    initThemeToggle();
+  }
+
   const forceSignOut = () => {
     // Session can't be recovered — send the user back to sign in instead of
     // leaving the workspace showing a stale/blank thread list and history.
@@ -148,6 +186,36 @@
   const truncateText = (text, max) => (typeof text === 'string' && text.length > max ? `${text.slice(0, max)}…` : text);
   const safeText = value => (value === null || value === undefined ? '' : String(value));
 
+  const formatRelativeTime = dateInput => {
+    if (!dateInput) return '';
+    const date = new Date(dateInput);
+    if (isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+
+    if (diffSec < 0) return 'Just now';
+    if (diffSec < 60) return diffSec <= 5 ? 'Just now' : `${diffSec}s ago`;
+    if (diffMin < 60) return `${diffMin}m ago`;
+
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const itemDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayDiff = Math.round((today - itemDay) / (1000 * 60 * 60 * 24));
+
+    if (dayDiff === 0 || diffHour < 24) return `${diffHour}h ago`;
+    if (dayDiff === 1) return 'Yesterday';
+    if (dayDiff > 1 && dayDiff <= 7) return 'Last week';
+
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(date);
+  };
+
   const APPROVAL_FIELD_LABELS = { to: 'To', subject: 'Subject', body: 'Body', channel: 'Channel', message: 'Message' };
   const SKIPPED_APPROVAL_KEYS = new Set(['type', 'tool_name', 'is_duplicate', 'domain', 'message', 'args']);
   const titleCase = key => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -164,10 +232,13 @@
     const source = String(raw == null ? '' : raw).replace(/\r\n/g, '\n');
     const inline = line => {
       let text = escapeHtml(line);
+      // Markdown links: [title](url) -> open in new tab
       text = text.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
       text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
       text = text.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+      // Auto-link standalone URLs not inside an href attribute
+      text = text.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
       return text;
     };
 
@@ -176,8 +247,11 @@
     let codeBlockOpen = false;
     let codeBlockLang = '';
     let codeBlockContent = '';
+    let inSlackFeed = false;
+    const extractedSources = [];
 
     const closeList = () => { if (listType) { html += `</${listType}>`; listType = null; } };
+    const closeSlackFeed = () => { if (inSlackFeed) { html += '</div>'; inSlackFeed = false; } };
     const closeCodeBlock = () => {
       if (codeBlockOpen) {
         const langClass = codeBlockLang ? ` class="language-${escapeHtml(codeBlockLang)}"` : '';
@@ -188,6 +262,21 @@
       }
     };
 
+    // Extract citations / sources for footer cards
+    const urlMatches = source.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(?:\b)(https?:\/\/[^\s<>"')]+)/g);
+    for (const match of urlMatches) {
+      const url = match[2] || match[3];
+      const title = match[1] || url;
+      if (url && !extractedSources.some(s => s.url === url)) {
+        try {
+          const domain = new URL(url).hostname.replace(/^www\./, '');
+          extractedSources.push({ url, title, domain });
+        } catch (e) {
+          extractedSources.push({ url, title, domain: 'source' });
+        }
+      }
+    }
+
     const lines = source.split('\n');
     let i = 0;
     while (i < lines.length) {
@@ -196,6 +285,7 @@
       // Handle code fences
       if (line.match(/^```/)) {
         closeList();
+        closeSlackFeed();
         if (codeBlockOpen) {
           closeCodeBlock();
         } else {
@@ -217,6 +307,7 @@
       // Handle tables (pipe-separated)
       if (line.includes('|') && (i + 1 < lines.length) && lines[i + 1].match(/^\s*\|?\s*[-:| ]+\|[-:| ]*$/)) {
         closeList();
+        closeSlackFeed();
         closeCodeBlock();
         const parseRow = l => {
           let s = l.trim();
@@ -259,6 +350,7 @@
       const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
       if (headingMatch) {
         closeList();
+        closeSlackFeed();
         closeCodeBlock();
         const level = headingMatch[1].length;
         html += `<h${level}>${inline(headingMatch[2])}</h${level}>`;
@@ -269,6 +361,7 @@
       // Handle blockquotes
       if (line.match(/^>\s/)) {
         closeList();
+        closeSlackFeed();
         closeCodeBlock();
         html += '<blockquote>';
         while (i < lines.length && lines[i].match(/^>\s/)) {
@@ -283,15 +376,34 @@
       // Handle horizontal rules
       if (line.match(/^\s*([-*_])\s*\1\s*\1[\s\1]*$/) || line.match(/^---+$/) || line.match(/^\*\*\*+$/)) {
         closeList();
+        closeSlackFeed();
         closeCodeBlock();
         html += '<hr>';
         i++;
         continue;
       }
 
-      // Handle bullet lists
-      const bullet = line.match(/^\s*[-*]\s+(.*)/);
+      // Handle Slack activity feed items (e.g. "*   **2026-08-31 21:48:45 PKT** (DM with Arsalan): 'Hello, Arsalan!'")
+      const slackMatch = line.match(/^\s*[-*•▪▫]?\s*(?:\*\*)?(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s+[A-Z]{2,4})?)(?:\*\*)?\s+\(([^)]+)\):\s*["“']?([\s\S]+?)["”']?$/);
+      if (slackMatch) {
+        closeList();
+        closeCodeBlock();
+        if (!inSlackFeed) {
+          html += '<div class="slack-activity-feed">';
+          inSlackFeed = true;
+        }
+        const timeStr = escapeHtml(slackMatch[1].trim());
+        const channelStr = escapeHtml(slackMatch[2].trim());
+        const contentStr = inline(slackMatch[3].trim());
+        html += `<div class="slack-activity-item"><div class="slack-activity-header"><span class="slack-channel-badge">${channelStr}</span><span class="slack-time-badge">${timeStr}</span></div><div class="slack-activity-body">${contentStr}</div></div>`;
+        i++;
+        continue;
+      }
+
+      // Handle bullet lists (supporting -, *, and unicode bullets •, ▪, ▫)
+      const bullet = line.match(/^\s*[-*•▪▫]\s+(.*)/);
       if (bullet) {
+        closeSlackFeed();
         closeCodeBlock();
         if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul'; }
         html += `<li>${inline(bullet[1])}</li>`;
@@ -302,6 +414,7 @@
       // Handle numbered lists
       const numbered = line.match(/^\s*\d+\.\s+(.*)/);
       if (numbered) {
+        closeSlackFeed();
         closeCodeBlock();
         if (listType !== 'ol') { closeList(); html += '<ol>'; listType = 'ol'; }
         html += `<li>${inline(numbered[1])}</li>`;
@@ -310,6 +423,7 @@
       }
 
       // Handle paragraphs
+      closeSlackFeed();
       closeCodeBlock();
       if (!line.trim()) {
         closeList();
@@ -322,7 +436,30 @@
     }
 
     closeList();
+    closeSlackFeed();
     closeCodeBlock();
+
+    // Render interactive source / citation cards footer if sources were cited
+    if (extractedSources.length > 0) {
+      const chipsHtml = extractedSources.map(s => `
+        <a class="source-chip" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title)}">
+          <span class="source-icon">🔗</span>
+          <span class="source-title">${escapeHtml(s.title.length > 30 ? s.title.slice(0, 30) + '…' : s.title)}</span>
+          <span class="source-domain">${escapeHtml(s.domain)}</span>
+          <span class="source-arrow">↗</span>
+        </a>
+      `).join('');
+      html += `
+        <div class="sources-container">
+          <div class="sources-heading">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Sources & References
+          </div>
+          <div class="sources-grid">${chipsHtml}</div>
+        </div>
+      `;
+    }
+
     return html;
   };
 
@@ -907,6 +1044,41 @@
       ${args.message ? `<div class="slack-approval-bubble">${escapeHtml(truncateText(args.message, 800))}</div>` : ''}
     </div>`;
 
+  const renderDocsApproval = args => {
+    const title = args.title || args.document_id || 'Google Document';
+    const content = args.content || args.text || args.body || args.insert_text || '';
+    return `
+      <div class="docs-approval">
+        <div class="docs-approval-meta">
+          <span class="docs-chip">📄 ${escapeHtml(title)}</span>
+          ${args.document_id && args.title ? `<span class="sheets-range-badge">ID: ${escapeHtml(truncateText(args.document_id, 20))}</span>` : ''}
+        </div>
+        ${content ? `<div class="docs-approval-body">${escapeHtml(truncateText(content, 800))}</div>` : ''}
+      </div>`;
+  };
+
+  const renderSheetsApproval = args => {
+    const name = args.spreadsheet_name || args.spreadsheet_id || 'Google Spreadsheet';
+    const sheet = args.sheet_name || args.sheet || '';
+    const range = args.range || '';
+    const values = args.values || args.rows || args.data || '';
+    let valDisplay = '';
+    if (Array.isArray(values)) {
+      valDisplay = values.map(row => (Array.isArray(row) ? row.join(' | ') : stringifyApprovalValue(row))).join('\n');
+    } else if (values) {
+      valDisplay = stringifyApprovalValue(values);
+    }
+    return `
+      <div class="sheets-approval">
+        <div class="sheets-approval-meta">
+          <span class="sheets-chip">📊 ${escapeHtml(name)}</span>
+          ${sheet ? `<span class="sheets-range-badge">Tab: ${escapeHtml(sheet)}</span>` : ''}
+          ${range ? `<span class="sheets-range-badge">Range: ${escapeHtml(range)}</span>` : ''}
+        </div>
+        ${valDisplay ? `<div class="sheets-approval-body">${escapeHtml(truncateText(valDisplay, 800))}</div>` : ''}
+      </div>`;
+  };
+
   // Docs/Sheets and any tool we don't have a dedicated layout for fall back
   // to a generic field list — but values can be objects/arrays (not just
   // strings) or very long doc/cell content, so stringify and cap them
@@ -922,6 +1094,8 @@
     if (approval.domain === 'calendar' && (args.summary || args.start_time)) return renderCalendarApproval(args);
     if (approval.domain === 'email' && (args.to || args.subject || args.body)) return renderEmailApproval(args);
     if (approval.domain === 'slack' && (args.channel || args.message)) return renderSlackApproval(args);
+    if (approval.domain === 'docs' && (args.title || args.content || args.text || args.document_id)) return renderDocsApproval(args);
+    if (approval.domain === 'sheets' && (args.spreadsheet_id || args.values || args.rows || args.range)) return renderSheetsApproval(args);
     const fields = Object.entries(args)
       .filter(([key, value]) => value != null && value !== '' && !SKIPPED_APPROVAL_KEYS.has(key))
       .map(([key, value]) => `<dt>${APPROVAL_FIELD_LABELS[key] || titleCase(key)}</dt><dd>${escapeHtml(truncateText(stringifyApprovalValue(value), 600))}</dd>`)
@@ -933,16 +1107,43 @@
     parseWeatherData,
     renderWeatherCard,
     renderMarkdown,
+    bindTheme: initThemeToggle,
     bindLogin() {
-      document.querySelector('#login-form').addEventListener('submit', async event => {
+      initThemeToggle();
+      const form = document.querySelector('#login-form');
+      if (!form) return;
+      form.addEventListener('submit', async event => {
         event.preventDefault();
         localStorage.removeItem('ops_access');
         localStorage.removeItem('ops_refresh');
         localStorage.removeItem('ops_user');
-        try { const data = await api('/login/', { method: 'POST', body: JSON.stringify(formData(event.currentTarget)), public: true, skipRefresh: true }); localStorage.setItem('ops_access', data.access); localStorage.setItem('ops_refresh', data.refresh || data.refersh); localStorage.setItem('ops_user', data.username); window.location = '/'; } catch (error) { showError(error); }
+        const submitBtn = form.querySelector('#btn-login-submit') || form.querySelector('button[type="submit"]');
+        const progressEl = document.querySelector('#login-progress');
+        const errTarget = document.querySelector('#form-error');
+        if (errTarget) errTarget.textContent = '';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('is-loading');
+        }
+        if (progressEl) progressEl.classList.remove('hidden');
+        try {
+          const data = await api('/login/', { method: 'POST', body: JSON.stringify(formData(event.currentTarget)), public: true, skipRefresh: true });
+          localStorage.setItem('ops_access', data.access);
+          localStorage.setItem('ops_refresh', data.refresh || data.refersh);
+          localStorage.setItem('ops_user', data.username);
+          window.location = '/';
+        } catch (error) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('is-loading');
+          }
+          if (progressEl) progressEl.classList.add('hidden');
+          showError(error);
+        }
       });
     },
     bindRegister() {
+      initThemeToggle();
       const regForm = document.querySelector('#register-form');
       if (!regForm) return;
 
@@ -975,10 +1176,27 @@
         event.preventDefault();
         const errTarget = document.querySelector('#form-error');
         if (errTarget) errTarget.textContent = '';
+
+        const submitBtn = regForm.querySelector('button[type="submit"]');
+        const progressEl = document.querySelector('#register-progress');
+        const formInputs = regForm.querySelectorAll('input, button');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Start workspace <span>-></span>';
+
+        // Extract form data BEFORE disabling inputs, otherwise FormData omits disabled elements!
+        const payload = formData(event.currentTarget);
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('is-loading');
+          submitBtn.innerHTML = '<span class="btn-spinner"></span> Creating workspace… <span>⏳</span>';
+        }
+        if (progressEl) progressEl.classList.remove('hidden');
+        formInputs.forEach(el => { if (el !== submitBtn) el.disabled = true; });
+
         try {
           const data = await api('/registration/', {
             method: 'POST',
-            body: JSON.stringify(formData(event.currentTarget)),
+            body: JSON.stringify(payload),
             public: true,
             skipRefresh: true
           });
@@ -1021,11 +1239,19 @@
             window.location = '/signin/';
           }
         } catch (error) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('is-loading');
+            submitBtn.innerHTML = originalBtnHtml;
+          }
+          if (progressEl) progressEl.classList.add('hidden');
+          formInputs.forEach(el => el.disabled = false);
           showError(error);
         }
       });
     },
     bindResetPassword() {
+      initThemeToggle();
       let recoveryEmail = '';
       let recoveryOtp = '';
 
@@ -1038,7 +1264,16 @@
           if (errEl) errEl.textContent = '';
 
           const emailInput = document.querySelector('#input-recovery-email');
+          const submitBtn = formEmail.querySelector('button[type="submit"]');
+          const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Continue to Recovery OTP <span>-></span>';
           recoveryEmail = emailInput ? emailInput.value.trim() : '';
+
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Checking account… <span>⏳</span>';
+          }
+          if (emailInput) emailInput.disabled = true;
 
           try {
             await api('/api/auth/forgot-password/', {
@@ -1053,6 +1288,12 @@
             const displayEmail = document.querySelector('#display-recovery-email');
             if (displayEmail) displayEmail.value = recoveryEmail;
           } catch (error) {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (emailInput) emailInput.disabled = false;
             if (errEl) errEl.textContent = error.message;
           }
         });
@@ -1076,7 +1317,16 @@
           if (errEl) errEl.textContent = '';
 
           const otpInput = document.querySelector('#input-recovery-otp');
+          const submitBtn = formOtp.querySelector('button[type="submit"]');
+          const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Verify OTP <span>-></span>';
           recoveryOtp = otpInput ? otpInput.value.trim() : '';
+
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Verifying OTP… <span>⏳</span>';
+          }
+          if (otpInput) otpInput.disabled = true;
 
           try {
             await api('/api/auth/verify-otp/', {
@@ -1089,6 +1339,12 @@
             document.querySelector('#stage-otp').classList.add('hidden');
             document.querySelector('#stage-password').classList.remove('hidden');
           } catch (error) {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (otpInput) otpInput.disabled = false;
             if (errEl) errEl.textContent = error.message;
           }
         });
@@ -1101,6 +1357,8 @@
         const confirmInput = document.querySelector('#input-confirm-password');
         const genBtn = document.querySelector('#btn-generate-reset-password');
         const toggleBtn = document.querySelector('#btn-toggle-new-password');
+        const submitBtn = formReset.querySelector('button[type="submit"]');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Update Password & Rotate OTP <span>-></span>';
 
         if (genBtn && pwdInput && confirmInput) {
           genBtn.addEventListener('click', () => {
@@ -1136,6 +1394,14 @@
             if (errEl) errEl.textContent = 'Passwords do not match.';
             return;
           }
+
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Updating password & rotating OTP… <span>⏳</span>';
+          }
+          if (pwdInput) pwdInput.disabled = true;
+          if (confirmInput) confirmInput.disabled = true;
 
           try {
             const data = await api('/api/auth/reset-password/', {
@@ -1185,6 +1451,7 @@
       }
     },
     initSettings() {
+      initThemeToggle();
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
       const errorTarget = document.querySelector('#settings-error');
       const setError = error => { errorTarget.textContent = error.message; };
@@ -1219,7 +1486,18 @@
           const errEl = document.querySelector('#rotate-otp-error');
           if (errEl) errEl.textContent = '';
           const pwdInput = document.querySelector('#input-rotate-otp-password');
+          const submitBtn = formRotateOtp.querySelector('button[type="submit"]');
+          const progressEl = document.querySelector('#rotate-otp-progress');
+          const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Generate New Recovery Code <span>→</span>';
           const password = pwdInput ? pwdInput.value : '';
+
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Generating Key… <span>⏳</span>';
+          }
+          if (pwdInput) pwdInput.disabled = true;
+          if (progressEl) progressEl.classList.remove('hidden');
 
           try {
             const data = await api('/api/auth/otp-generate/', {
@@ -1227,9 +1505,22 @@
               body: JSON.stringify({ password })
             });
 
-            if (pwdInput) pwdInput.value = '';
+            if (pwdInput) {
+              pwdInput.value = '';
+              pwdInput.disabled = false;
+            }
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (progressEl) progressEl.classList.add('hidden');
+
             const resultBox = document.querySelector('#settings-otp-result');
-            if (resultBox) resultBox.classList.remove('hidden');
+            if (resultBox) {
+              resultBox.classList.remove('hidden');
+              resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
 
             const codeEl = document.querySelector('#settings-new-code');
             if (codeEl) codeEl.textContent = data.recovery_code || '';
@@ -1254,6 +1545,13 @@
               };
             }
           } catch (error) {
+            if (pwdInput) pwdInput.disabled = false;
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (progressEl) progressEl.classList.add('hidden');
             if (errEl) errEl.textContent = error.message;
           }
         });
@@ -1273,6 +1571,9 @@
         const genBtn = document.querySelector('#btn-gen-settings-pass');
         const successEl = document.querySelector('#change-pass-success');
         const errEl = document.querySelector('#change-pass-error');
+        const submitBtn = formChangePass.querySelector('button[type="submit"]');
+        const progressEl = document.querySelector('#change-pass-progress');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Update Password <span>→</span>';
 
         if (radioPass && radioOtp) {
           radioPass.addEventListener('change', () => {
@@ -1311,6 +1612,13 @@
             return;
           }
 
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Updating… <span>⏳</span>';
+          }
+          if (progressEl) progressEl.classList.remove('hidden');
+
           try {
             const data = await api('/api/auth/change-password/', {
               method: 'POST',
@@ -1326,6 +1634,13 @@
             if (curOtpInput) curOtpInput.value = '';
             if (newPassInput) newPassInput.value = '';
             if (confirmPassInput) confirmPassInput.value = '';
+
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (progressEl) progressEl.classList.add('hidden');
 
             if (successEl) {
               successEl.textContent = data.detail || 'Password updated successfully.';
@@ -1357,6 +1672,12 @@
               }
             }
           } catch (error) {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (progressEl) progressEl.classList.add('hidden');
             if (errEl) errEl.textContent = error.message;
           }
         });
@@ -1366,12 +1687,32 @@
     
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
-      const state = { threadId: null, threads: [], initialThreadPicked: false, connectedServices: new Set(), messageCount: 0, sending: false, pendingApproval: null, streamRequestId: 0, abortController: null };
+      const state = {
+        threadId: null,
+        threads: [],
+        initialThreadPicked: false,
+        connectedServices: new Set(),
+        messageCount: 0,
+        sending: false,
+        pendingApproval: null,
+        streamRequestId: 0,
+        abortController: null,
+        sessionTokens: 0,
+        sessionStats: { promptTokens: 0, completionTokens: 0, cachedTokens: 0, totalTokens: 0, llmCalls: 0, domains: {} },
+        sessionTurns: [],
+        sessionHudOpen: false,
+        sessionHudMode: 'compact',
+        sessionHudTab: 'overview',
+        lastUserQuery: '',
+      };
       const transcript = document.querySelector('#transcript');
       const input = document.querySelector('#message-input');
       const title = document.querySelector('#thread-title');
-      const threadList = document.querySelector('#thread-list');
       const sendButton = document.querySelector('.send-button');
+      const threadList = document.querySelector('#thread-list');
+      const threadSearchInput = document.querySelector('#thread-search-input');
+      const threadSearchClear = document.querySelector('#thread-search-clear');
+      const threadCountBadge = document.querySelector('#thread-count-badge');
       const composerNote = document.querySelector('#composer-note');
       const banner = document.querySelector('#error-banner');
       const bannerMsg = document.querySelector('#error-banner-msg');
@@ -1381,6 +1722,324 @@
       document.querySelector('#user-label').textContent = currentUser;
       const avatar = document.querySelector('#user-avatar');
       if (avatar) avatar.textContent = currentUser.charAt(0).toUpperCase();
+
+      // Theme toggle support (Button + Keyboard shortcut Ctrl+Shift+T)
+      const themeToggleBtn = document.querySelector('#theme-toggle');
+      const toggleTheme = () => {
+        const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        if (next === 'dark') {
+          document.documentElement.classList.add('theme-dark');
+        } else {
+          document.documentElement.classList.remove('theme-dark');
+        }
+        localStorage.setItem('ops_theme', next);
+      };
+      if (themeToggleBtn) {
+        themeToggleBtn.onclick = () => toggleTheme();
+      }
+      window.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+          e.preventDefault();
+          toggleTheme();
+        }
+      });
+
+      // Network & slow internet feedback toasts
+      const networkToast = document.querySelector('#network-toast');
+      const networkMsg = document.querySelector('#network-toast-msg');
+      let netTimer = null;
+      const showNetToast = (msg, persistent = false) => {
+        if (!networkToast) return;
+        if (networkMsg) networkMsg.textContent = msg;
+        networkToast.classList.remove('hidden');
+        if (netTimer) clearTimeout(netTimer);
+        if (!persistent) {
+          netTimer = setTimeout(() => { networkToast.classList.add('hidden'); }, 4000);
+        }
+      };
+      const hideNetToast = () => {
+        if (networkToast) networkToast.classList.add('hidden');
+      };
+
+      window.addEventListener('offline', () => {
+        showNetToast('Internet connection lost. Waiting for connection…', true);
+      });
+      window.addEventListener('online', () => {
+        showNetToast('Internet restored! Workspace is back online.');
+      });
+
+      const recordTurnMetrics = (metrics, userQuery = '', messageEl = null) => {
+        if (!metrics || typeof metrics !== 'object') return;
+        const total = Number(metrics.total_tokens) || ((metrics.input_tokens || 0) + (metrics.output_tokens || 0));
+        const prompt = Number(metrics.input_tokens) || 0;
+        const completion = Number(metrics.output_tokens) || 0;
+        const cached = Number(metrics.cached_tokens) || 0;
+        const calls = Number(metrics.llm_calls) || (metrics.breakdown ? metrics.breakdown.length : 1);
+        const latency = metrics.latency_s != null ? metrics.latency_s : (metrics.latency_ms ? (metrics.latency_ms / 1000).toFixed(2) : '1.0');
+
+        state.sessionTokens += total;
+        state.sessionStats.promptTokens += prompt;
+        state.sessionStats.completionTokens += completion;
+        state.sessionStats.cachedTokens += cached;
+        state.sessionStats.totalTokens += total;
+        state.sessionStats.llmCalls += calls;
+
+        const breakdown = metrics.breakdown || [];
+        const turnDomains = new Set();
+        breakdown.forEach(step => {
+          const name = step.name || 'General';
+          const domain = name.split(' ')[0] || 'General';
+          turnDomains.add(domain);
+          state.sessionStats.domains[domain] = (state.sessionStats.domains[domain] || 0) + (step.total_tokens || 0);
+        });
+
+        const turnNumber = state.sessionTurns.length + 1;
+        const turnRecord = {
+          turnNumber,
+          query: userQuery || (state.lastUserQuery || `Turn #${turnNumber}`),
+          totalTokens: total,
+          promptTokens: prompt,
+          completionTokens: completion,
+          cachedTokens: cached,
+          latency,
+          calls,
+          domains: Array.from(turnDomains),
+          metrics,
+          messageEl,
+        };
+        state.sessionTurns.push(turnRecord);
+
+        const el = document.querySelector('#session-tokens');
+        if (el) el.textContent = state.sessionTokens.toLocaleString();
+
+        if (state.sessionHudOpen) {
+          renderSessionHud();
+        }
+      };
+
+      const updateSessionTokens = (count) => {
+        state.sessionTokens = (state.sessionTokens || 0) + (Number(count) || 0);
+        const el = document.querySelector('#session-tokens');
+        if (el) el.textContent = state.sessionTokens.toLocaleString();
+      };
+
+      const closeSessionHud = () => {
+        state.sessionHudOpen = false;
+        const pill = document.querySelector('#session-token-pill');
+        const panel = document.querySelector('#session-hud-panel');
+        if (pill) {
+          pill.classList.remove('active');
+          pill.setAttribute('aria-expanded', 'false');
+        }
+        if (panel) panel.classList.add('hidden');
+      };
+
+      const toggleSessionHud = () => {
+        state.sessionHudOpen = !state.sessionHudOpen;
+        const pill = document.querySelector('#session-token-pill');
+        const panel = document.querySelector('#session-hud-panel');
+        if (!pill || !panel) return;
+
+        document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+
+        if (state.sessionHudOpen) {
+          pill.classList.add('active');
+          pill.setAttribute('aria-expanded', 'true');
+          panel.classList.remove('hidden');
+          renderSessionHud();
+        } else {
+          pill.classList.remove('active');
+          pill.setAttribute('aria-expanded', 'false');
+          panel.classList.add('hidden');
+        }
+      };
+
+      const renderSessionHud = () => {
+        const panel = document.querySelector('#session-hud-panel');
+        if (!panel) return;
+        const stats = state.sessionStats;
+        const turns = state.sessionTurns;
+        const mode = state.sessionHudMode;
+        const tab = state.sessionHudTab;
+        const totalTok = stats.totalTokens || state.sessionTokens || 0;
+        const cacheHitPct = (stats.promptTokens + stats.cachedTokens > 0)
+          ? ((stats.cachedTokens / (stats.promptTokens + stats.cachedTokens)) * 100).toFixed(1)
+          : '0';
+
+        let bodyContent = '';
+
+        if (tab === 'overview') {
+          bodyContent = `
+            <div class="popover-stats-grid">
+              <div class="stat-card">
+                <span class="stat-label">Session Tokens</span>
+                <span class="stat-value highlight">${totalTok.toLocaleString()}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Total LLM Calls</span>
+                <span class="stat-value">${stats.llmCalls || 0}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Input / Prompt</span>
+                <span class="stat-value">${stats.promptTokens.toLocaleString()}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Output / Gen</span>
+                <span class="stat-value">${stats.completionTokens.toLocaleString()}</span>
+              </div>
+            </div>
+            ${stats.cachedTokens > 0 ? `
+              <div class="cached-tokens-row">
+                <span>⚡ Prompt Cache Saved</span>
+                <span class="cache-val">${stats.cachedTokens.toLocaleString()} tok (${cacheHitPct}%)</span>
+              </div>
+            ` : ''}
+            <div class="context-window-wrap">
+              <div class="context-window-header">
+                <span>Session Efficiency</span>
+                <span class="context-percent">${turns.length} Turn${turns.length === 1 ? '' : 's'} Recorded</span>
+              </div>
+              <div class="context-window-meta">
+                <span>Avg ${(turns.length ? Math.round(totalTok / turns.length) : 0).toLocaleString()} tok/turn</span>
+                <span>Zero-cost Router Active</span>
+              </div>
+            </div>
+          `;
+        } else if (tab === 'turns') {
+          if (!turns.length) {
+            bodyContent = '<div style="font-size:10px; color:#788c7f; text-align:center; padding:16px 0;">No turns recorded yet in this session.</div>';
+          } else {
+            bodyContent = `
+              <div class="metrics-subheading">Turn History (Click to navigate)</div>
+              <div style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+                ${turns.map((t, idx) => `
+                  <div class="turn-nav-item" data-turn-idx="${idx}" role="button" tabindex="0" title="Jump to Turn #${t.turnNumber}">
+                    <div class="turn-nav-left">
+                      <span class="turn-badge">#${t.turnNumber}</span>
+                      <span class="turn-preview">${escapeHtml(t.query)}</span>
+                    </div>
+                    <div class="turn-nav-right">
+                      <span>${t.totalTokens.toLocaleString()} tok</span>
+                      <span class="dot">•</span>
+                      <span>${t.latency}s</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+        } else if (tab === 'domains') {
+          const domainKeys = Object.keys(stats.domains);
+          if (!domainKeys.length) {
+            bodyContent = '<div style="font-size:10px; color:#788c7f; text-align:center; padding:16px 0;">No agent domains active yet.</div>';
+          } else {
+            bodyContent = `
+              <div class="metrics-subheading">Domain Token Distribution</div>
+              <div class="metrics-breakdown-list">
+                ${domainKeys.map(d => {
+                  const tok = stats.domains[d];
+                  const pct = totalTok > 0 ? Math.round((tok / totalTok) * 100) : 0;
+                  return `
+                    <div class="metrics-breakdown-item" style="cursor:default;">
+                      <div class="metrics-breakdown-main">
+                        <div class="item-title">
+                          <span class="step-name">${escapeHtml(d)} Agent</span>
+                        </div>
+                        <div class="item-stats">
+                          <span>${tok.toLocaleString()} tok</span>
+                          <span class="dot">•</span>
+                          <span>${pct}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `;
+          }
+        }
+
+        panel.innerHTML = `
+          <div class="popover-header">
+            <div class="popover-title">
+              <span>⚡</span> Session Intelligence HUD
+            </div>
+            <div class="hud-header-actions">
+              <button class="hud-action-btn" id="session-hud-mode-btn" title="Toggle view density">${mode === 'compact' ? 'Expand' : 'Compact'}</button>
+              <button class="hud-close-btn" id="session-hud-close-btn" title="Close HUD" aria-label="Close">×</button>
+            </div>
+          </div>
+          <div class="hud-tab-nav">
+            <button class="hud-tab-btn ${tab === 'overview' ? 'active' : ''}" data-tab="overview">Overview</button>
+            <button class="hud-tab-btn ${tab === 'turns' ? 'active' : ''}" data-tab="turns">Turns (${turns.length})</button>
+            <button class="hud-tab-btn ${tab === 'domains' ? 'active' : ''}" data-tab="domains">Domains</button>
+          </div>
+          <div class="session-hud-body">
+            ${bodyContent}
+          </div>
+          <div class="popover-footer">
+            <span>Active Session • ${turns.length} Turn${turns.length === 1 ? '' : 's'}</span>
+            <button class="hud-action-btn" id="session-hud-scroll-latest" style="font-size:8.5px;">Jump to Latest</button>
+          </div>
+        `;
+
+        const closeBtn = panel.querySelector('#session-hud-close-btn');
+        if (closeBtn) {
+          closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            closeSessionHud();
+          };
+        }
+
+        const modeBtn = panel.querySelector('#session-hud-mode-btn');
+        if (modeBtn) {
+          modeBtn.onclick = (e) => {
+            e.stopPropagation();
+            state.sessionHudMode = state.sessionHudMode === 'compact' ? 'expanded' : 'compact';
+            renderSessionHud();
+          };
+        }
+
+        const scrollLatest = panel.querySelector('#session-hud-scroll-latest');
+        if (scrollLatest) {
+          scrollLatest.onclick = (e) => {
+            e.stopPropagation();
+            transcript.scrollTo({ top: transcript.scrollHeight, behavior: 'smooth' });
+          };
+        }
+
+        panel.querySelectorAll('.hud-tab-btn').forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            state.sessionHudTab = btn.dataset.tab;
+            renderSessionHud();
+          };
+        });
+
+        panel.querySelectorAll('.turn-nav-item').forEach(item => {
+          item.onclick = (e) => {
+            e.stopPropagation();
+            const idx = Number(item.dataset.turnIdx);
+            const turn = state.sessionTurns[idx];
+            if (turn && turn.messageEl) {
+              turn.messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              turn.messageEl.classList.remove('turn-highlight-flash');
+              void turn.messageEl.offsetWidth;
+              turn.messageEl.classList.add('turn-highlight-flash');
+            }
+          };
+        });
+      };
+
+      const sessionPill = document.querySelector('#session-token-pill');
+      if (sessionPill) {
+        sessionPill.onclick = (e) => {
+          e.stopPropagation();
+          toggleSessionHud();
+        };
+      }
 
       const showBanner = (message, retry) => {
         bannerMsg.textContent = message;
@@ -1419,22 +2078,167 @@
             const dot = document.querySelector(`#${service}-dot`);
             const stateEl = document.querySelector(`#${service}-state`);
             const connected = state.connectedServices.has(service);
-            if (dot) dot.classList.toggle('dot-on', connected), dot.classList.toggle('dot-off', !connected);
-            if (stateEl) { stateEl.textContent = connected ? 'Connected' : 'Connect'; stateEl.classList.toggle('off', !connected); }
+            if (dot) {
+              dot.classList.toggle('dot-on', connected);
+              dot.classList.toggle('dot-off', !connected);
+            }
+            if (stateEl) {
+              stateEl.textContent = connected ? 'Connected' : 'Connect';
+              stateEl.classList.toggle('off', !connected);
+            }
           });
           refreshComposerState();
-        } catch (error) { console.warn('Could not load integrations', error); }
+        } catch (error) {
+          console.warn('Could not load integrations', error);
+        }
       };
-      document.querySelectorAll('[data-integration]').forEach(button => button.onclick = async () => { const service = button.dataset.integration; try { const data = await api(`/api/integrations/${service}/connect/`); window.location.href = data.authorization_url; } catch (error) { showBanner(error.message); } });
 
-      const addMessage = (role, content, pending = false) => {
+      document.querySelectorAll('[data-integration]').forEach(button => {
+        button.onclick = async () => {
+          const service = button.dataset.integration;
+          try {
+            const data = await api(`/api/integrations/${service}/connect/`);
+            window.location.href = data.authorization_url;
+          } catch (error) {
+            showBanner(error.message);
+          }
+        };
+      });
+
+      const renderMetricsBadge = (metrics) => {
+        if (!metrics || typeof metrics !== 'object') return '';
+        const latency = metrics.latency_s != null ? metrics.latency_s : (metrics.latency_ms ? (metrics.latency_ms / 1000).toFixed(2) : '1.0');
+        const totalTokens = metrics.total_tokens || ((metrics.input_tokens || 0) + (metrics.output_tokens || 0));
+        const inputTokens = metrics.input_tokens || 0;
+        const outputTokens = metrics.output_tokens || 0;
+        const cachedTokens = metrics.cached_tokens || 0;
+        const contextLimit = metrics.context_limit || 128000;
+        const contextPct = metrics.context_used_pct != null ? metrics.context_used_pct : Math.min(100, ((totalTokens / contextLimit) * 100).toFixed(2));
+        const rawModel = metrics.model || 'openai/gpt-oss-120b';
+        const modelClean = rawModel.split('/').pop();
+        const calls = metrics.llm_calls || (metrics.breakdown ? metrics.breakdown.length : 1);
+        const breakdown = metrics.breakdown || [];
+
+        let breakdownHtml = '';
+        if (breakdown.length > 0) {
+          breakdownHtml = `
+            <div class="metrics-breakdown-section">
+              <div class="metrics-subheading">Pipeline Execution Breakdown</div>
+              <div class="metrics-breakdown-list">
+                ${breakdown.map((item, idx) => `
+                  <div class="metrics-breakdown-item">
+                    <div class="item-title">
+                      <span class="step-num">${idx + 1}</span>
+                      <span class="step-name">${escapeHtml(item.name || 'LLM Call')}</span>
+                      <span class="step-model">${escapeHtml(item.model ? item.model.split('/').pop() : '')}</span>
+                    </div>
+                    <div class="item-stats">
+                      <span>${(item.total_tokens || ((item.input_tokens || 0) + (item.output_tokens || 0))).toLocaleString()} tok</span>
+                      <span class="dot">•</span>
+                      <span>${item.latency_ms ? item.latency_ms + 'ms' : (item.latency_s ? item.latency_s + 's' : '')}</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="message-metrics" tabindex="0" role="region" aria-label="Token and performance metrics">
+            <div class="metrics-badge" role="button" tabindex="0" title="Click to inspect Turn Performance & Tokens">
+              <span class="metric-icon">⚡</span>
+              <span class="metric-time">${latency}s</span>
+              <span class="metric-dot">•</span>
+              <span class="metric-count">${totalTokens.toLocaleString()} tok</span>
+              <span class="hud-expand-caret">▾</span>
+            </div>
+            <div class="metrics-popover">
+              <div class="popover-header">
+                <div class="popover-title"><span>⚡</span> Turn Performance & Tokens</div>
+                <span class="popover-model-badge">${escapeHtml(modelClean)}</span>
+              </div>
+              <div class="popover-stats-grid">
+                <div class="stat-card">
+                  <span class="stat-label">Response Latency</span>
+                  <span class="stat-value">${latency}s</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Total Tokens</span>
+                  <span class="stat-value highlight">${totalTokens.toLocaleString()}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Input (Prompt)</span>
+                  <span class="stat-value">${inputTokens.toLocaleString()}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Output (Gen)</span>
+                  <span class="stat-value">${outputTokens.toLocaleString()}</span>
+                </div>
+              </div>
+              ${cachedTokens > 0 ? `
+                <div class="cached-tokens-row">
+                  <span>⚡ Prompt Cache Hit</span>
+                  <span class="cache-val">${cachedTokens.toLocaleString()} tokens cached</span>
+                </div>
+              ` : ''}
+              <div class="context-window-wrap">
+                <div class="context-window-header">
+                  <span>Context Window Utilization</span>
+                  <span class="context-percent">${contextPct}% of ${(contextLimit / 1000).toFixed(0)}k limit</span>
+                </div>
+                <div class="context-progress-bar">
+                  <div class="context-progress-fill" style="width: ${Math.max(1.5, Math.min(100, contextPct))}%"></div>
+                </div>
+                <div class="context-window-meta">
+                  <span>${totalTokens.toLocaleString()} used</span>
+                  <span>${contextLimit.toLocaleString()} capacity</span>
+                </div>
+              </div>
+              ${breakdownHtml}
+              <div class="popover-footer">
+                <span>LLM Calls: <strong>${calls}</strong></span>
+                <span class="cache-tag">Zero-cost reference router</span>
+              </div>
+            </div>
+          </div>
+        `;
+      };
+
+      const addMessage = (role, content, pending = false, metrics = null) => {
         const item = document.createElement('article');
         item.className = `message ${role} ${pending ? 'pending' : ''}`;
-        item.innerHTML = `<span class="message-label">${role === 'user' ? 'You' : 'Ops agent'}</span><div class="message-content"></div>`;
+        const labelHtml = role === 'user'
+          ? `<span class="message-label"><span class="message-label-left">You</span></span>`
+          : `<span class="message-label">
+               <span class="message-label-left">
+                 <span class="message-label-avatar agent">⚡</span>
+                 <span>Personal Ops</span>
+               </span>
+               <span class="message-actions">
+                 <button class="copy-msg-btn" type="button" title="Copy response">
+                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                   <span>Copy</span>
+                 </button>
+               </span>
+             </span>`;
+        item.innerHTML = `${labelHtml}<div class="message-content"></div>`;
+        const copyBtn = item.querySelector('.copy-msg-btn');
+        if (copyBtn) {
+          copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            const rawContent = (typeof content === 'string' ? content : (item.querySelector('.message-content') ? item.querySelector('.message-content').innerText : '')).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
+            navigator.clipboard.writeText(rawContent).then(() => {
+              const span = copyBtn.querySelector('span') || copyBtn;
+              span.textContent = 'Copied!';
+              setTimeout(() => { span.textContent = 'Copy'; }, 1800);
+            }).catch(() => {});
+          };
+        }
         const body = item.querySelector('.message-content');
-        const text = safeText(content); // tool/message payloads aren't guaranteed to be strings
+        const text = safeText(content);
         if (pending) {
-          body.innerHTML = '<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>Processing request…</span></div>';
+          body.innerHTML = '<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>Operations agent thinking…</span></div>';
         } else if (role === 'user') {
           body.textContent = text;
         } else {
@@ -1457,6 +2261,25 @@
             textWrap.innerHTML = renderMarkdown(text);
             body.appendChild(textWrap);
           }
+          if (metrics && typeof metrics === 'object') {
+            recordTurnMetrics(metrics, state.lastUserQuery || 'Agent Response', item);
+            const metricsWrap = document.createElement('div');
+            metricsWrap.className = 'message-metrics-container';
+            metricsWrap.innerHTML = renderMetricsBadge(metrics);
+            const badgeEl = metricsWrap.querySelector('.metrics-badge');
+            if (badgeEl) {
+              badgeEl.onclick = (e) => {
+                e.stopPropagation();
+                const metricsContainer = badgeEl.closest('.message-metrics');
+                if (metricsContainer) {
+                  const wasOpen = metricsContainer.classList.contains('is-open');
+                  document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+                  if (!wasOpen) metricsContainer.classList.add('is-open');
+                }
+              };
+            }
+            item.appendChild(metricsWrap);
+          }
         }
         transcript.appendChild(item);
         transcript.scrollTop = transcript.scrollHeight;
@@ -1473,8 +2296,10 @@
           ? `Re-run this ${meta.label.toLowerCase()} action?`
           : (approval && approval.message) || `Approve ${meta.label.toLowerCase()} action`;
         card.innerHTML = `
-          <div>
-            <span class="eyebrow" style="color:#a1806f">${meta.icon} Waiting on you — ${meta.label}</span>
+          <div style="flex:1; min-width:0;">
+            <div class="approval-header">
+              <span class="approval-badge">${meta.icon} Waiting on you — ${meta.label}</span>
+            </div>
             <h3>${escapeHtml(heading)}</h3>
             ${renderApprovalBody(approval || {})}
             <div class="approval-status hidden" aria-live="polite"></div>
@@ -1599,8 +2424,14 @@
           : (currentThread && currentThread.name === 'New Thread' ? 'New Conversation' : 'Workspace Chat');
         title.textContent = threadName;
 
+        state.sessionTurns = [];
+        state.sessionTokens = 0;
+        state.sessionStats = { promptTokens: 0, completionTokens: 0, cachedTokens: 0, totalTokens: 0, llmCalls: 0, domains: {} };
+        const sessionCountEl = document.querySelector('#session-tokens');
+        if (sessionCountEl) sessionCountEl.textContent = '0';
+
         document.querySelectorAll('.thread-item').forEach(item => item.classList.toggle('active', item.dataset.id == id));
-        transcript.innerHTML = '<div class="loading-line">Loading thread history...</div>';
+        transcript.innerHTML = '<div class="loading-line"><span class="btn-spinner spinner-dark"></span> Loading conversation history…</div>';
         try {
           const data = await api(`/api/thread/${encodeURIComponent(id)}/messages/`);
           const messages = Array.isArray(data) ? data : data.results || [];
@@ -1609,7 +2440,23 @@
           if (!messages.length) {
             renderWelcomeState();
           } else {
-            messages.forEach(message => addMessage(message.role === 'assistant' ? 'agent' : message.role, message.content));
+            messages.forEach(message => {
+              try {
+                const role = message.role === 'assistant' ? 'agent' : message.role;
+                if (role === 'user') {
+                  state.lastUserQuery = message.content;
+                }
+                const metrics = message.metrics || null;
+                addMessage(
+                  role,
+                  message.content,
+                  false,
+                  metrics
+                );
+              } catch (err) {
+                console.error('Failed to render message:', err);
+              }
+            });
           }
         } catch (error) {
           transcript.innerHTML = '';
@@ -1637,30 +2484,130 @@
         }
       };
 
+      const renderThreadItems = (threadsToRender, filterQuery = '') => {
+        threadList.innerHTML = '';
+        if (!threadsToRender || threadsToRender.length === 0) {
+          if (filterQuery) {
+            threadList.innerHTML = `
+              <div class="rail-no-results">
+                <div>No conversations matching "<strong>${escapeHtml(filterQuery)}</strong>"</div>
+                <span>Try a different search term</span>
+                <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-top:4px;" id="reset-search-btn">Clear search</button>
+              </div>`;
+            const resetBtn = threadList.querySelector('#reset-search-btn');
+            if (resetBtn) {
+              resetBtn.onclick = () => {
+                if (threadSearchInput) threadSearchInput.value = '';
+                filterThreads('');
+                if (threadSearchInput) threadSearchInput.focus();
+              };
+            }
+          } else {
+            threadList.innerHTML = '<div class="rail-empty">No threads yet.<br>Start with a question.</div>';
+          }
+          return;
+        }
+
+        threadsToRender.forEach(thread => {
+          const item = document.createElement('button');
+          item.className = 'thread-item';
+          if (state.threadId && thread.id == state.threadId) {
+            item.classList.add('active');
+          }
+          item.dataset.id = thread.id;
+          item.type = 'button';
+
+          const titleText = thread.name || 'New Thread';
+          let titleHtml = escapeHtml(titleText);
+          if (filterQuery) {
+            const qLower = filterQuery.toLowerCase();
+            const idx = titleText.toLowerCase().indexOf(qLower);
+            if (idx !== -1) {
+              const before = titleText.slice(0, idx);
+              const match = titleText.slice(idx, idx + filterQuery.length);
+              const after = titleText.slice(idx + filterQuery.length);
+              titleHtml = `${escapeHtml(before)}<mark class="thread-match-highlight">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+            }
+          }
+
+          const rawDate = thread.updated_at || thread.created_at;
+          const relativeTime = formatRelativeTime(rawDate);
+          const fullDateTooltip = rawDate ? new Intl.DateTimeFormat([], { dateStyle: 'full', timeStyle: 'short' }).format(new Date(rawDate)) : '';
+
+          item.innerHTML = `
+            <div class="thread-item-main">
+              <span class="thread-item-title">${titleHtml}</span>
+              <span class="thread-item-time" title="${escapeHtml(fullDateTooltip)}">${escapeHtml(relativeTime)}</span>
+            </div>
+            <div class="thread-item-actions">
+              <button type="button" class="thread-delete-btn" aria-label="Delete thread" title="Delete conversation">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+              </button>
+            </div>`;
+
+          const deleteButton = item.querySelector('.thread-delete-btn');
+          deleteButton.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            deleteThread(thread.id);
+          };
+          item.onclick = () => selectThread(thread.id);
+          threadList.appendChild(item);
+        });
+      };
+
+      const filterThreads = query => {
+        state.threadSearchQuery = (query || '').trim();
+        if (threadSearchClear) {
+          threadSearchClear.classList.toggle('hidden', !state.threadSearchQuery);
+        }
+        if (!state.threadSearchQuery) {
+          if (threadCountBadge) threadCountBadge.classList.add('hidden');
+          renderThreadItems(state.threads);
+          return;
+        }
+        const q = state.threadSearchQuery.toLowerCase();
+        const filtered = state.threads.filter(t => (t.name || 'New Thread').toLowerCase().includes(q));
+        if (threadCountBadge) {
+          threadCountBadge.textContent = `${filtered.length} of ${state.threads.length}`;
+          threadCountBadge.classList.remove('hidden');
+        }
+        renderThreadItems(filtered, state.threadSearchQuery);
+      };
+
+      if (threadSearchInput) {
+        threadSearchInput.oninput = e => {
+          filterThreads(e.target.value);
+        };
+        threadSearchInput.onkeydown = e => {
+          if (e.key === 'Escape') {
+            threadSearchInput.value = '';
+            filterThreads('');
+            threadSearchInput.blur();
+          }
+        };
+      }
+
+      if (threadSearchClear) {
+        threadSearchClear.onclick = () => {
+          if (threadSearchInput) threadSearchInput.value = '';
+          filterThreads('');
+          if (threadSearchInput) threadSearchInput.focus();
+        };
+      }
+
       const loadThreads = async ({ selectFirst = false } = {}) => {
         renderThreadSkeleton();
         try {
           const data = await api('/api/list_thread/');
           const threads = Array.isArray(data) ? data : data.results || [];
           state.threads = threads;
-          threadList.innerHTML = threads.length ? '' : '<div class="rail-empty">No threads yet.<br>Start with a question.</div>';
-          threads.forEach(thread => {
-            const item = document.createElement('button');
-            item.className = 'thread-item';
-            item.dataset.id = thread.id;
-            item.type = 'button';
-            item.innerHTML = `<span class="thread-item-title"></span><span class="thread-item-meta"><span class="thread-item-time"></span><span class="thread-delete" aria-label="Delete thread" title="Delete thread">×</span></span>`;
-            item.querySelector('.thread-item-title').textContent = thread.name || 'New Thread';
-            item.querySelector('.thread-item-time').textContent = thread.updated_at ? new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }).format(new Date(thread.updated_at)) : '';
-            const deleteButton = item.querySelector('.thread-delete');
-            deleteButton.onclick = event => {
-              event.preventDefault();
-              event.stopPropagation();
-              deleteThread(thread.id);
-            };
-            item.onclick = () => selectThread(thread.id);
-            threadList.appendChild(item);
-          });
+          filterThreads(threadSearchInput ? threadSearchInput.value : '');
           if (selectFirst && !state.initialThreadPicked) {
             state.initialThreadPicked = true;
             if (threads[0]) {
@@ -1713,9 +2660,15 @@
         let assistantText = '';
         let completedHandled = false;
         let hasReceivedTokens = false;
+        const slowTimer = setTimeout(() => {
+          if (!hasReceivedTokens && state.sending) {
+            setPendingStatus('Connecting across tools… network is slow, still processing');
+          }
+        }, 5500);
 
         const handlePayload = data => {
           if (!data || typeof data !== 'object') return;
+          if (slowTimer) clearTimeout(slowTimer);
           const status = data.status || data.type || '';
           const token = data.token ?? data.delta ?? data.chunk ?? data.content ?? data.text ?? '';
           const response = data.response ?? data.result ?? data.output ?? data.content ?? data.text ?? '';
@@ -1733,6 +2686,19 @@
             return;
           }
 
+          // Handle live thread title updates
+          if (data.type === 'thread_name' && data.thread_name) {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            if (data.thread_name !== 'New Thread') {
+              title.textContent = data.thread_name;
+              const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || currentThreadId}"] .thread-item-title`);
+              if (item) item.textContent = data.thread_name;
+              const tr = (state.threads || []).find(t => String(t.id) === String(data.thread_id || currentThreadId));
+              if (tr) tr.name = data.thread_name;
+            }
+            return;
+          }
+
           // Handle token streaming - transition from status to actual response
           if (data.type === 'token') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
@@ -1740,7 +2706,7 @@
             hasReceivedTokens = true;
             assistantText += safeText(token);
             pending.classList.remove('pending');
-            body.textContent = assistantText;
+            body.textContent = assistantText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
             transcript.scrollTop = transcript.scrollHeight;
             return;
           }
@@ -1779,11 +2745,25 @@
           if (data.type === 'completed' || status === 'completed') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
             completedHandled = true;
-            const finalText = safeText(typeof response === 'string' ? response : response && typeof response === 'object' ? (response.content || response.text || JSON.stringify(response)) : assistantText);
+            const rawResponse = typeof response === 'string' ? response : response && typeof response === 'object' ? (response.content || response.text || JSON.stringify(response)) : assistantText;
+            const finalText = safeText(rawResponse).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
             assistantText = finalText;
             pending.remove();
-            addMessage('agent', assistantText);
-            if (state.messageCount >= 3) syncThreadName();
+            const metrics = data.metrics || null;
+            addMessage('agent', assistantText, false, metrics);
+            if (!state.threadId && data.thread_id) {
+              state.threadId = data.thread_id;
+              loadThreads();
+            }
+            if (data.thread_name && data.thread_name !== 'New Thread') {
+              title.textContent = data.thread_name;
+              const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || currentThreadId}"] .thread-item-title`);
+              if (item) item.textContent = data.thread_name;
+              const tr = (state.threads || []).find(t => String(t.id) === String(data.thread_id || currentThreadId));
+              if (tr) tr.name = data.thread_name;
+            } else if (state.messageCount >= 2) {
+              syncThreadName();
+            }
             return 'completed';
           }
 
@@ -1885,6 +2865,8 @@
             if (!completedHandled && assistantText) {
               pending.remove();
               addMessage('agent', assistantText);
+            } else if (!completedHandled) {
+              pending.remove();
             }
             break;
           }
@@ -1954,7 +2936,16 @@
           status.textContent = value ? '✓ Approved — sending now.' : '✓ Cancelled.';
           state.pendingApproval = null;
           refreshComposerState();
-          addMessage('agent', data.result || (value ? 'Approved — sending now.' : 'Cancelled.'));
+          const approvalMetrics = data.metrics || null;
+          if (approvalMetrics && approvalMetrics.total_tokens) {
+            updateSessionTokens(approvalMetrics.total_tokens);
+          }
+          addMessage('agent', data.result || (value ? 'Approved — sending now.' : 'Cancelled.'), false, approvalMetrics);
+          if (data.thread_name && data.thread_name !== 'New Thread') {
+            title.textContent = data.thread_name;
+            const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);
+            if (item) item.textContent = data.thread_name;
+          }
           setTimeout(() => { if (card && card.isConnected) card.remove(); }, 600);
         } catch (error) {
           card.classList.remove('is-busy');
@@ -1979,9 +2970,82 @@
       // Cleanup interval on page unload
       window.addEventListener('beforeunload', () => clearInterval(clockInterval));
       autoGrowTextarea(input);
-      // Restore a message the user was mid-typing if a session refresh forced a redirect.
       const savedDraft = sessionStorage.getItem('ops_draft');
       if (savedDraft) { sessionStorage.removeItem('ops_draft'); input.value = savedDraft; autoGrowTextarea(input); }
+      const setupThreadRenaming = () => {
+        const editBtn = document.querySelector('#edit-thread-title-btn');
+        if (!editBtn || !title) return;
+
+        const startInlineEdit = () => {
+          if (!state.threadId || title.querySelector('input')) return;
+          const currentName = title.textContent.trim();
+          const defaultVal = (currentName === 'New Conversation' || currentName === 'Personal Operations') ? '' : currentName;
+          title.innerHTML = `<input type="text" class="title-edit-input" value="${escapeHtml(defaultVal)}" placeholder="Conversation name..." />`;
+          const inputEl = title.querySelector('input');
+          inputEl.focus();
+          inputEl.select();
+
+          let committed = false;
+          const commitRename = async () => {
+            if (committed) return;
+            committed = true;
+            const newName = inputEl.value.trim() || currentName;
+            title.textContent = newName;
+            if (newName && newName !== currentName && newName !== 'New Thread') {
+              try {
+                await api(`/api/thread/${encodeURIComponent(state.threadId)}/rename/`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ name: newName }),
+                });
+                const item = threadList.querySelector(`.thread-item[data-id="${state.threadId}"] .thread-item-title`);
+                if (item) item.textContent = newName;
+                const tr = (state.threads || []).find(t => String(t.id) === String(state.threadId));
+                if (tr) tr.name = newName;
+              } catch (e) {
+                showBanner("Couldn't rename thread: " + e.message);
+              }
+            }
+          };
+
+          inputEl.onkeydown = e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitRename();
+            } else if (e.key === 'Escape') {
+              committed = true;
+              title.textContent = currentName;
+            }
+          };
+          inputEl.onblur = commitRename;
+        };
+
+        editBtn.onclick = (e) => {
+          e.stopPropagation();
+          startInlineEdit();
+        };
+        title.ondblclick = (e) => {
+          e.stopPropagation();
+          startInlineEdit();
+        };
+      };
+
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#session-token-wrapper')) {
+          closeSessionHud();
+        }
+        if (!e.target.closest('.message-metrics')) {
+          document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeSessionHud();
+          document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+        }
+      });
+
+      setupThreadRenaming();
       loadIntegrations();
       loadThreads({ selectFirst: true });
     }

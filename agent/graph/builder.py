@@ -14,7 +14,6 @@ from agent.graph.nodes import (
     nlp_node,
     supervisor_router,
     scoped_should_continue,
-    thread_naming_node,
 )
 from agent.routing.intent_router import get_mcp_tool_names
 
@@ -93,13 +92,10 @@ def create_graph(tools_groups):
     )
     
     def general_agent(state):
-        return agent_node(state, llm)
+        return agent_node(state, llm, domain="general")
 
     graph.add_node("general_agent", general_agent)
-    graph.add_edge("general_agent", "thread_naming")
-
-    graph.add_node("thread_naming", thread_naming_node)
-    graph.add_edge("thread_naming", END)
+    graph.add_edge("general_agent", END)
 
 
     approval_domains = [
@@ -111,7 +107,7 @@ def create_graph(tools_groups):
         if not domain_tools:
             continue
 
-        def make_agent(domain_tools):
+        def make_agent(domain_tools, domain):
             def scoped_agent(state):
                 allowed_names = get_mcp_tool_names(state.get("intent", ""))
                 selected_tools = [
@@ -127,16 +123,17 @@ def create_graph(tools_groups):
                 return agent_node(
                     state,
                     bind_tools_with_fallback(selected_tools),
+                    domain=domain,
                 )
             return scoped_agent
         
         agent_name = f"{domain}_agent"
         tools_name = f"{domain}_tools"
 
-        graph.add_node(agent_name, make_agent(domain_tools))
+        graph.add_node(agent_name, make_agent(domain_tools, domain))
         graph.add_node(tools_name, ToolNode(domain_tools, handle_tool_errors=True))
 
-        route_map = {"tools": tools_name, "end": "thread_naming"}
+        route_map = {"tools": tools_name, "end": END}
         
         if domain in approval_domains:
             route_map["approval"] = "approval"
@@ -154,7 +151,7 @@ def create_graph(tools_groups):
         "approval route map:",
         {
             **{domain: f"{domain}_tools" for domain in approval_domains},
-            "cancel": "thread_naming",
+            "cancel": END,
         },
     ) 
     if approval_domains:
@@ -165,7 +162,7 @@ def create_graph(tools_groups):
             approval_result,
             {
                 **{domain: f"{domain}_tools" for domain in approval_domains},
-                "cancel": "thread_naming",
+                "cancel": END,
             },
         )
 

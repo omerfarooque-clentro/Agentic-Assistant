@@ -1,4 +1,5 @@
 from datetime import datetime
+import time
 import json
 from asgiref.sync import sync_to_async
 from django.http import JsonResponse
@@ -11,6 +12,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 # pyrefly: ignore [missing-import]
 from django.contrib.auth import get_user_model
 from agent.runner import run_agent
+from agent.llm import extract_title_from_text
 from core.serializers import (
     AgentChatSerializer,
     
@@ -61,12 +63,13 @@ def extract_text_content(message_content):
     if isinstance(message_content, str):
         return message_content
     elif isinstance(message_content, list):
-        # Extract text from block lists returned by Gemini/Claude
-        text_parts = [
-            block.get("text", "") 
-            for block in message_content 
-            if isinstance(block, dict) and block.get("type") == "text"
-        ]
+        # Extract text from block lists returned by Gemini/Claude/LangChain
+        text_parts = []
+        for block in message_content:
+            if isinstance(block, dict):
+                text_parts.append(str(block.get("text") or block.get("content") or ""))
+            else:
+                text_parts.append(str(block))
         return " ".join(text_parts)
     return str(message_content)
  
@@ -297,6 +300,9 @@ async def new_chat_view(request):
                     await Message.objects.acreate(thread=thread, role="agent", content="An unexpected error occurred during processing, please try again.")
                     await thread.asave(update_fields=["updated_at"]) 
                     return
+                if chunk_type == "thread_name":
+                    yield f"data: {json.dumps({'type': 'thread_name', 'thread_id': chunk['thread_id'], 'thread_name': chunk['thread_name']})}\n\n"
+                    continue
                 if chunk_type != "completed":
                     print(f"new_chat event_stream: ignoring unexpected chunk type={chunk_type} for thread {thread.id}")
                     continue
@@ -304,9 +310,10 @@ async def new_chat_view(request):
                 messages = chunk["result"].get("messages", [])
                 final_content = extract_text_content(messages[-1].content) if messages else ""
                 
-                await Message.objects.acreate(thread=thread, role="agent", content=final_content)
-                await thread.asave(update_fields=["updated_at"]) 
-                yield f"data: {json.dumps({'type': 'completed', 'response': final_content})}\n\n"
+                await Message.objects.acreate(thread=thread, role="agent", content=final_content, metrics=chunk.get("metrics") or {},)
+                await thread.asave(update_fields=["updated_at"])
+                await thread.arefresh_from_db(fields=["name", "updated_at"])
+                yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
                 return
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -366,14 +373,31 @@ async def agent_chat_view(request, thread_id):
                     await Message.objects.acreate(thread=thread, role="agent", content=db_content)
                     yield f"data: {json.dumps({'type': 'error', 'message': err_msg})}\n\n"
                     return
+                if chunk_type == "thread_name":
+                    yield f"data: {json.dumps({'type': 'thread_name', 'thread_id': chunk['thread_id'], 'thread_name': chunk['thread_name']})}\n\n"
+                    continue
                 if chunk_type != "completed":
                     continue
 
                 messages = chunk["result"].get("messages", [])
-                final_content = extract_text_content(messages[-1].content) if messages else ""
-                await Message.objects.acreate(thread=thread, role="agent", content=final_content)
-                await thread.asave(update_fields=["updated_at"]) 
-                yield f"data: {json.dumps({'type': 'completed', 'response': final_content})}\n\n"
+                raw_content = extract_text_content(messages[-1].content) if messages else ""
+                final_content, suggested_title = extract_title_from_text(raw_content)
+
+                resolved_title = chunk.get("thread_name") or suggested_title
+
+                if resolved_title and thread.name == "New Thread":
+                    thread.name = resolved_title
+                    await thread.asave(update_fields=["name", "updated_at"])
+                else:
+                    await thread.asave(update_fields=["updated_at"])
+            
+                await Message.objects.acreate(
+                    thread=thread,
+                    role="agent",
+                    content=final_content,
+                    metrics=chunk.get("metrics") or {},
+                )
+                yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
                 return
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -437,19 +461,34 @@ async def tool_approval_view(request, thread_id):
 
     print(f"i am approve_email_view and i resumed thread {thread.id} with final response: {result['messages'][-1].content!r}")
 
-    message = extract_text_content(result["messages"][-1].content)
-    
+    raw_message = extract_text_content(result["messages"][-1].content)
+    message, suggested_title = extract_title_from_text(raw_message)
+
+    if suggested_title and thread.name == "New Thread":
+        thread.name = suggested_title
+        await thread.asave(update_fields=["name", "updated_at"])
+    else:
+        await thread.asave(update_fields=["updated_at"])
+
+    from agent.metrics import aggregate_turn_metrics
+    approval_metrics = aggregate_turn_metrics(
+        call_metrics=result.get("call_metrics", []),
+        start_time=time.perf_counter(),
+        messages=result.get("messages", []),
+    )
+
     await Message.objects.acreate(
         thread=thread,
         role="agent",
-        content=message
+        content=message,
+        metrics=approval_metrics,
     )
-    
-    await thread.asave(update_fields=["updated_at"])
-    
+
     return JsonResponse({
         "result": message,
         "thread_id": int(thread.id),
+        "thread_name": thread.name,
+        "metrics": approval_metrics,
     })
 
 

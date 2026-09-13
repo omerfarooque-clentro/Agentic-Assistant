@@ -4,6 +4,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
+# Main frontier model for complex tool orchestration and agent reasoning (Call #2)
 llm_groq = ChatGroq(
     model="openai/gpt-oss-120b",
     temperature=0,
@@ -14,9 +15,9 @@ llm_google = ChatGoogleGenerativeAI(
     temperature=0,
 )
 
-# Keep Groq as the normal provider and retry failed requests with Gemini.
-llm = llm_groq.with_fallbacks([llm_google], exceptions_to_handle=(Exception,))
 
+# Resilient models with cross-provider fallbacks
+llm = llm_groq.with_fallbacks([llm_google], exceptions_to_handle=(Exception,))
 
 def bind_tools_with_fallback(tools):
     """Bind the same tools to each provider before composing its fallback."""
@@ -24,3 +25,4 @@ def bind_tools_with_fallback(tools):
         [llm_google.bind_tools(tools)],
         exceptions_to_handle=(Exception,),
     )
+

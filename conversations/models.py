@@ -15,6 +15,7 @@ class Message(models.Model):
     thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name='messages')
     content = models.TextField()
     role = models.CharField(max_length=50)  # e.g., 'user', 'assistant', etc.
+    metrics = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
