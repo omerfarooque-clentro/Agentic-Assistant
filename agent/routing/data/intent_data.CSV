@@ -203,21 +203,21 @@ I need to find the email about the meeting details,email.search
 I need to find the email about the design specs,email.search
 I need to find the email about the payment,email.search
 I need to find the email about the shipping update,email.search
-send an email about Ali,email.send
-send an email about Ahmed,email.send
-send an email about Sarah,email.send
-send an email about my manager,email.send
-send an email about the client,email.send
-send an email about the design team,email.send
-send an email about finance,email.send
-send an email about HR,email.send
-send an email about the backend team,email.send
-send an email about the candidate,email.send
-send an email about Hasnain,email.send
-send an email about the vendor,email.send
-send an email about Pawan,email.send
-send an email about the customer,email.send
-send an email about legal,email.send
+shoot an email to arsalan saying I will be late,email.send
+drop a quick email to arsalan,email.send
+shoot an email to Alex about the meeting,email.send
+send an email to boss about my leave,email.send
+email arsalan saying I will be late,email.send
+drop an email to Sarah regarding the update,email.send
+send a quick email to John,email.send
+send an email to team about the deployment,email.send
+mail arsalan about project updates,email.send
+send email to client saying proposal is ready,email.send
+send an email to HR about my vacation,email.send
+shoot a message via email to Alex,email.send
+email the team lead that I am sick,email.send
+send an email to finance about the invoice,email.send
+shoot an email to the client,email.send
 send an email about the product team,email.send
 send an email about the recruiter,email.send
 send an email about the leadership group,email.send
@@ -404,25 +404,25 @@ put the update in an email to the leadership group,email.send
 put the update in an email to the support team,email.send
 put the update in an email to our partners,email.send
 read the latest email,email.read
-read Sarah's message,email.read
-read the mail from Ahmed,email.read
-read today's unread mail,email.read
+open my latest email,email.read
+check my unread emails,email.read
+read the email from Sarah,email.read
+read new emails in my inbox,email.read
+show me the email from Alice,email.read
+open the email about project status,email.read
+read the email from boss,email.read
+read my latest email in Gmail,email.read
+open the last email I received,email.read
+show the latest email from John,email.read
+read recent emails from my inbox,email.read
+get the content of the latest email,email.read
+open the email from finance,email.read
+read the email sent by client,email.read
+check what Sarah emailed me,email.read
+read the newest email in my inbox,email.read
+open my unread email from team,email.read
+show content of the latest email,email.read
 read the email from HR,email.read
-read the client thread,email.read
-read the deployment message,email.read
-read the invoice email,email.read
-read the message about the meeting,email.read
-read the newest Gmail notification,email.read
-read my manager's email,email.read
-read the backend team's note,email.read
-read the contract message,email.read
-read the security alert,email.read
-read the reply from finance,email.read
-read the email with the attachment,email.read
-read the project kickoff thread,email.read
-read the customer's response,email.read
-read the travel confirmation,email.read
-read the email from yesterday,email.read
 open the latest email,email.read
 open Sarah's message,email.read
 open the mail from Ahmed,email.read
@@ -603,7 +603,7 @@ bring up the project kickoff thread from Gmail,email.read
 bring up the customer's response from Gmail,email.read
 bring up the travel confirmation from Gmail,email.read
 bring up the email from yesterday from Gmail,email.read
-draft the project delay,email.draft
+compose a draft email to Alice regarding our weekly meeting,email.draft
 draft tomorrow's meeting,email.draft
 draft the architecture review,email.draft
 draft the invoice question,email.draft
@@ -1403,26 +1403,26 @@ I want to see meetings with Ahmed on my calendar,calendar.search
 I want to see my morning schedule on my calendar,calendar.search
 I want to see the next calendar event on my calendar,calendar.search
 I want to see the events on June 12 on my calendar,calendar.search
+reschedule tomorrow's meeting,calendar.update
 move tomorrow's meeting,calendar.update
-move the 10 AM call,calendar.update
-move the project review,calendar.update
-move lunch with Sarah,calendar.update
-move my dentist appointment,calendar.update
-move the team sync,calendar.update
-move the client demo,calendar.update
-move the meeting with Ahmed,calendar.update
-move the sprint planning event,calendar.update
-move Friday's appointment,calendar.update
-move the design review,calendar.update
-move the vendor call,calendar.update
-move my one on one,calendar.update
-move the product walkthrough,calendar.update
-move the quarterly calendar review,calendar.update
-move the calendar invite,calendar.update
-move the afternoon call,calendar.update
-move the leadership meeting,calendar.update
-move the standup,calendar.update
-move the hiring interview,calendar.update
+reschedule tomorrow's meeting to 4pm,calendar.update
+move my 3pm meeting to 4pm,calendar.update
+push the sprint planning by 30 minutes,calendar.update
+reschedule my call with Alice,calendar.update
+change the time of tomorrow's meeting,calendar.update
+update the meeting time on my calendar,calendar.update
+postpone tomorrow's standup to 11am,calendar.update
+reschedule the team sync to Friday,calendar.update
+move my 2pm call to 3pm tomorrow,calendar.update
+change tomorrow's calendar event to 5pm,calendar.update
+reschedule the client meeting,calendar.update
+move the engineering sync to tomorrow afternoon,calendar.update
+update calendar event time,calendar.update
+push back my meeting by an hour,calendar.update
+shift tomorrow's meeting to 2pm,calendar.update
+reschedule focus time to 3pm,calendar.update
+move the budget review to next Monday,calendar.update
+update the event details for tomorrow,calendar.update
 reschedule tomorrow's meeting,calendar.update
 reschedule the 10 AM call,calendar.update
 reschedule the project review,calendar.update
@@ -1803,26 +1803,26 @@ cancel the invite for the standup,calendar.delete
 cancel the invite for the hiring interview,calendar.delete
 cancel the invite for the leadership meeting,calendar.delete
 cancel the invite for the old calendar event,calendar.delete
-am I free for a meeting tomorrow,calendar.availability
-am I free for a call at 3 PM,calendar.availability
-am I free for an hour this afternoon,calendar.availability
-am I free for a meeting with Ali,calendar.availability
-am I free for a team sync Friday,calendar.availability
-am I free for lunch next week,calendar.availability
-am I free for a 30 minute review,calendar.availability
-am I free for a client call,calendar.availability
-am I free for a one on one,calendar.availability
-am I free for a meeting at noon,calendar.availability
-am I free for a call between two and five,calendar.availability
-am I free for the project discussion,calendar.availability
-am I free for a meeting next Monday morning,calendar.availability
-am I free for a design review,calendar.availability
-am I free for a follow-up with Ahmed,calendar.availability
-am I free for an appointment tomorrow,calendar.availability
-am I free for a planning session,calendar.availability
-am I free for a vendor call,calendar.availability
-am I free for a quick chat today,calendar.availability
-am I free for the proposed meeting time,calendar.availability
+am I free tomorrow at 3pm,calendar.availability
+am I free at 3pm,calendar.availability
+am I free tomorrow at 3 PM,calendar.availability
+am I free at 10am,calendar.availability
+am I free at 10 AM,calendar.availability
+am I free tomorrow afternoon,calendar.availability
+is my calendar free tomorrow at 3pm,calendar.availability
+do I have time for a call tomorrow at 3pm,calendar.availability
+check my availability for tomorrow at 2pm,calendar.availability
+check availability for Friday afternoon,calendar.availability
+see if I am free tomorrow at 3pm,calendar.availability
+check if I have any free time tomorrow,calendar.availability
+when am I free tomorrow,calendar.availability
+am I available tomorrow at 3pm,calendar.availability
+check calendar availability for tomorrow at 4pm,calendar.availability
+do I have any free slots tomorrow,calendar.availability
+is Friday afternoon open on my calendar,calendar.availability
+am I free for a sync tomorrow at 11am,calendar.availability
+check if my calendar is open at 2pm,calendar.availability
+do I have an opening tomorrow at 3pm,calendar.availability
 when can I meet for a meeting tomorrow,calendar.availability
 when can I meet for a call at 3 PM,calendar.availability
 when can I meet for an hour this afternoon,calendar.availability
@@ -2603,26 +2603,26 @@ make changes to the team handbook,docs.update
 make changes to the decision log,docs.update
 make changes to the support playbook,docs.update
 make changes to the roadmap document,docs.update
-summarize the project document,docs.summarize
-summarize the requirements doc,docs.summarize
-summarize the policy file,docs.summarize
 summarize the report,docs.summarize
+summarize the policy file,docs.summarize
 summarize the architecture document,docs.summarize
-summarize the meeting notes,docs.summarize
-summarize the client proposal,docs.summarize
-summarize the attached PDF,docs.summarize
-summarize the sprint retro doc,docs.summarize
-summarize the design brief,docs.summarize
+give me a summary of the document,docs.summarize
+summarize the doc for me,docs.summarize
+provide a summary of the quarterly report,docs.summarize
+tldr of the document,docs.summarize
+summarize the meeting notes doc,docs.summarize
+give me the key takeaways from the document,docs.summarize
+summarize this document,docs.summarize
+generate a summary of the product specs,docs.summarize
+summarize the project proposal doc,docs.summarize
+can you summarize the document for me,docs.summarize
+brief summary of the doc,docs.summarize
+summarize the design doc,docs.summarize
+summarize the contract document,docs.summarize
+give me a concise summary of this doc,docs.summarize
+summarize the client review document,docs.summarize
 summarize the onboarding guide,docs.summarize
-summarize the research document,docs.summarize
-summarize the contract draft,docs.summarize
-summarize the product spec,docs.summarize
-summarize the incident report,docs.summarize
-summarize the roadmap,docs.summarize
-summarize the budget narrative,docs.summarize
-summarize the release document,docs.summarize
-summarize the planning notes,docs.summarize
-summarize the shared Google Doc,docs.summarize
+write a summary of the strategy document,docs.summarize
 give me the main points of the project document,docs.summarize
 give me the main points of the requirements doc,docs.summarize
 give me the main points of the policy file,docs.summarize
@@ -2803,21 +2803,21 @@ make a brief summary of the budget narrative,docs.summarize
 make a brief summary of the release document,docs.summarize
 make a brief summary of the planning notes,docs.summarize
 make a brief summary of the shared Google Doc,docs.summarize
-read the budget spreadsheet,sheets.read
-read column A,sheets.read
-read cell B12,sheets.read
-read the sales data,sheets.read
-read the inventory sheet,sheets.read
-read the customer log,sheets.read
-read the first 50 rows,sheets.read
-read the quarterly expenses,sheets.read
-read the evaluation sheet,sheets.read
-read the revenue figures,sheets.read
-read the tracking sheet,sheets.read
-read the project metrics,sheets.read
-read the latest entries,sheets.read
-read rows 10 through 20,sheets.read
-read the price column,sheets.read
+how much did we spend on marketing in the budget spreadsheet,sheets.read
+read revenue figures from the sheet,sheets.read
+look at sales data in the spreadsheet,sheets.read
+what is the total in the budget sheet,sheets.read
+read values from the revenue spreadsheet,sheets.read
+look up the numbers in the sales sheet,sheets.read
+how many rows are in the customer spreadsheet,sheets.read
+check numbers in the inventory spreadsheet,sheets.read
+read cell B4 from the spreadsheet,sheets.read
+what is the revenue in column C of the sheet,sheets.read
+inspect data in the budget spreadsheet,sheets.read
+get values from the quarterly financial sheet,sheets.read
+look up Q3 sales in the spreadsheet,sheets.read
+read data from the expense tracker sheet,sheets.read
+check total expenses in the sheet,sheets.read
 read the survey results,sheets.read
 read the transaction history,sheets.read
 read the hiring scores,sheets.read
@@ -3403,41 +3403,41 @@ make a change to the transaction figures,sheets.update
 make a change to the contact details,sheets.update
 make a change to the shipment status,sheets.update
 make a change to the spreadsheet formulas,sheets.update
-send Ali in Slack,slack.send
-send Ahmed in Slack,slack.send
-send Sarah in Slack,slack.send
-send the backend team in Slack,slack.send
-send the engineering channel in Slack,slack.send
-send the general channel in Slack,slack.send
-send the design group in Slack,slack.send
-send my team lead in Slack,slack.send
-send the client channel in Slack,slack.send
-send the support channel in Slack,slack.send
-send Pawan in Slack,slack.send
-send Hasnain in Slack,slack.send
-send the release channel in Slack,slack.send
-send the product team in Slack,slack.send
-send the finance group in Slack,slack.send
-send the dev channel in Slack,slack.send
-send the announcement channel in Slack,slack.send
-send my colleague in Slack,slack.send
-send the project team in Slack,slack.send
-send the operations group in Slack,slack.send
-post Ali to the channel,slack.send
-post Ahmed to the channel,slack.send
-post Sarah to the channel,slack.send
-post the backend team to the channel,slack.send
-post the engineering channel to the channel,slack.send
-post the general channel to the channel,slack.send
-post the design group to the channel,slack.send
-post my team lead to the channel,slack.send
-post the client channel to the channel,slack.send
-post the support channel to the channel,slack.send
-post Pawan to the channel,slack.send
-post Hasnain to the channel,slack.send
-post the release channel to the channel,slack.send
-post the product team to the channel,slack.send
-post the finance group to the channel,slack.send
+say hello to arsalan on slack,slack.send
+say hi to arsalan on slack,slack.send
+send hello to arsalan on slack,slack.send
+send hi to arsalan on slack,slack.send
+tell arsalan on slack hello,slack.send
+message arsalan on slack saying hello,slack.send
+send a message to arsalan on slack saying hello,slack.send
+dm arsalan on slack saying hello,slack.send
+send a dm to arsalan on slack,slack.send
+send a message to arsalan on slack,slack.send
+say good morning to arsalan on slack,slack.send
+say thanks to ali on slack,slack.send
+message sarah on slack: see you at the meeting,slack.send
+send a message to john on slack,slack.send
+tell omer on slack that the deployment is done,slack.send
+dm fatima on slack about the project,slack.send
+send hello to team on slack,slack.send
+post hello to the general channel on slack,slack.send
+write to arsalan on slack: hello,slack.send
+send a greeting to arsalan on slack,slack.send
+send hello to hassan on slack,slack.send
+say hello to alex on slack,slack.send
+tell david on slack: check this out,slack.send
+message arsalan on slack,slack.send
+dm arsalan on slack,slack.send
+send arsalan a message on slack,slack.send
+send arsalan a dm on slack,slack.send
+tell arsalan on slack hi,slack.send
+say congrats to arsalan on slack,slack.send
+send a quick message to arsalan on slack,slack.send
+send slack message to arsalan saying hello,slack.send
+drop a message to arsalan on slack,slack.send
+notify arsalan on slack saying hello,slack.send
+ping arsalan on slack saying hello,slack.send
+ping arsalan on slack,slack.send
 post the dev channel to the channel,slack.send
 post the announcement channel to the channel,slack.send
 post my colleague to the channel,slack.send
@@ -3603,41 +3603,41 @@ put the announcement channel in the conversation,slack.send
 put my colleague in the conversation,slack.send
 put the project team in the conversation,slack.send
 put the operations group in the conversation,slack.send
-search Slack for the deployment,slack.search
-search Slack for the outage,slack.search
-search Slack for the database migration,slack.search
-search Slack for the API,slack.search
-search Slack for the client,slack.search
-search Slack for the release,slack.search
-search Slack for the incident,slack.search
-search Slack for the project kickoff,slack.search
-search Slack for the deadline,slack.search
-search Slack for the design review,slack.search
-search Slack for the security alert,slack.search
-search Slack for the bug,slack.search
-search Slack for the new pricing,slack.search
-search Slack for the server restart,slack.search
-search Slack for the hiring plan,slack.search
-search Slack for the roadmap,slack.search
-search Slack for the integration,slack.search
-search Slack for the meeting time,slack.search
-search Slack for the database error,slack.search
-search Slack for today's updates,slack.search
-find messages about the deployment,slack.search
-find messages about the outage,slack.search
-find messages about the database migration,slack.search
-find messages about the API,slack.search
-find messages about the client,slack.search
-find messages about the release,slack.search
-find messages about the incident,slack.search
-find messages about the project kickoff,slack.search
-find messages about the deadline,slack.search
-find messages about the design review,slack.search
-find messages about the security alert,slack.search
-find messages about the bug,slack.search
-find messages about the new pricing,slack.search
-find messages about the server restart,slack.search
-find messages about the hiring plan,slack.search
+is there any message from arsalan on slack,slack.search
+is there any message from asralan on slack?,slack.search
+are there any messages from arsalan on slack,slack.search
+did arsalan send any message on slack,slack.search
+did arsalan message me on slack,slack.search
+check if arsalan sent any message on slack,slack.search
+check messages from arsalan on slack,slack.search
+check slack for messages from arsalan,slack.search
+search slack for arsalan latest message,slack.search
+search arsalan dm for latest message,slack.search
+check arsalan dm for latest message,slack.search
+check arsalan dm on slack,slack.search
+any new messages from arsalan on slack,slack.search
+check latest message from arsalan on slack,slack.search
+find latest message from arsalan on slack,slack.search
+search slack for messages from ali,slack.search
+is there any message from sarah on slack,slack.search
+did john message me on slack,slack.search
+check if alex sent a message on slack,slack.search
+check latest message from fatima on slack,slack.search
+search ali dm for latest message,slack.search
+check david dm on slack,slack.search
+any new messages from omer on slack,slack.search
+see if hassan sent any message on slack,slack.search
+look for messages from arsalan on slack,slack.search
+search slack for recent message from arsalan,slack.search
+check unread messages from arsalan on slack,slack.search
+did anyone message me on slack,slack.search
+is there any unread message on slack,slack.search
+search my slack messages,slack.search
+find recent slack message from team,slack.search
+check slack for unread chats,slack.search
+is there any new chat from arsalan,slack.search
+did arsalan post any message on slack,slack.search
+search slack for latest update from arsalan,slack.search
 find messages about the roadmap,slack.search
 find messages about the integration,slack.search
 find messages about the meeting time,slack.search
@@ -5200,26 +5200,26 @@ give David's message in Slack a laughing reaction,slack.reaction
 react with checkmark to Fatima's message in Slack,slack.reaction
 react to the Slack thread about the hiring update with eyes,slack.reaction
 react with rocket to the Slack post about the product roadmap,slack.reaction
-hello,general
-"hello, how are you?",general
-how are you?,general
-how are you doing?,general
-how are you doing today?,general
-"hello, how are you doing?",general
-"hi, how are you?",general
-"hi there, how are you?",general
-"hey, how are you doing?",general
-how is it going?,general
-how are things going with you?,general
-how is your day going?,general
-how are things today?,general
-"good morning, how are you?",general
-"good morning, hope you are having a good day",general
-"good afternoon, how are you?",general
-"good evening, how are you doing?",general
-hi there,general
-hello there,general
-hey there,general
+can you help me write python code to reverse a string,general
+tell me a joke,general
+can you tell me a joke,general
+who is the president of France,general
+how do I write a python function to reverse a string,general
+can you write a poem about artificial intelligence,general
+what is the speed of light,general
+explain quantum computing in simple terms,general
+tell me a fun fact,general
+how does photosynthesis work,general
+can you explain how neural networks work,general
+write a python script to sort a list,general
+what is the distance to the moon,general
+who wrote Hamlet,general
+tell me something interesting,general
+how do I make a chocolate cake,general
+what is the tallest mountain in the world,general
+help me write a greeting speech,general
+what are some good tips for time management,general
+solve this math problem: 24 * 15,general
 greetings,general
 hey assistant,general
 hello assistant,general
@@ -5425,6 +5425,6 @@ let us do this,general
 "hi, I need some guidance",general
 "hey there, I have a question",general
 "hello, are you available?",general
-"what's time?", general
-"what time is it?",general
-"do you know?",general
+what's time?,general
+what time is it?,general
+do you know?,general

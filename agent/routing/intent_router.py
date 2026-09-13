@@ -11,7 +11,13 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import make_pipeline
 
 from agent.metrics import CallMetrics
-from agent.routing.reference_detector import extract_message_text, has_conversational_reference, is_domain_ambiguous
+from agent.routing.reference_detector import (
+    extract_message_text,
+    has_conversational_reference,
+    is_domain_ambiguous,
+    detect_explicit_domains,
+    clean_conversational_prefix,
+)
 from agent.routing.query_generator import generate_routing_query
 
 
@@ -67,6 +73,7 @@ ACTION_MCP_TOOL_NAMES = {
 }
 
 training_data = pd.read_csv(DATA_FILE).dropna(subset=["text", "intent"])
+training_data["intent"] = training_data["intent"].astype(str).str.strip()
 model = make_pipeline(TfidfVectorizer(), MultinomialNB())
 model.fit(training_data["text"], training_data["intent"])
 
@@ -86,7 +93,11 @@ def get_candidate_intents(message: str, available_domains: set[str], top_k: int 
     if top_k <= 0 or not message:
         return []
 
-    probabilities = model.predict_proba([message])[0]
+    cleaned = clean_conversational_prefix(message)
+    explicit_domains = detect_explicit_domains(cleaned) & available_domains
+    target_domains = explicit_domains if explicit_domains else available_domains
+
+    probabilities = model.predict_proba([cleaned])[0]
     candidates = [
         {
             "intent": intent,
@@ -94,13 +105,21 @@ def get_candidate_intents(message: str, available_domains: set[str], top_k: int 
         }
         for intent, probability in zip(model.classes_, probabilities)
         if (
-            _domain_for_intent(intent) in available_domains
+            _domain_for_intent(intent) in target_domains
             or _domain_for_intent(intent) == "general"
             or intent in {"general", "general.conversation", "out_of_scope"}
         )
     ]
 
-    return sorted(candidates, key=lambda candidate: candidate["probability"], reverse=True)[:top_k]
+    sorted_candidates = sorted(candidates, key=lambda candidate: candidate["probability"], reverse=True)[:top_k]
+
+    if explicit_domains and sorted_candidates:
+        domain_total = sum(c["probability"] for c in sorted_candidates)
+        if domain_total > 0:
+            for c in sorted_candidates:
+                c["probability"] = float(c["probability"] / domain_total)
+
+    return sorted_candidates
 
 
 def get_mcp_tool_names(intent: str) -> set[str]:

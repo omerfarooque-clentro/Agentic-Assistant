@@ -98,3 +98,59 @@ def is_domain_ambiguous(text: str) -> bool:
 
     return False
 
+
+DOMAIN_KEYWORD_MAP = {
+    "slack": "slack",
+    "mail": "email",
+    "email": "email",
+    "emails": "email",
+    "gmail": "email",
+    "inbox": "email",
+    "calendar": "calendar",
+    "cal": "calendar",
+    "meeting": "calendar",
+    "meetings": "calendar",
+    "doc": "docs",
+    "docs": "docs",
+    "document": "docs",
+    "documents": "docs",
+    "sheet": "sheets",
+    "sheets": "sheets",
+    "spreadsheet": "sheets",
+    "spreadsheets": "sheets",
+    "web": "research",
+    "web search": "research",
+    "search web": "research",
+    "google": "research",
+    "tavily": "research",
+    "internet": "research",
+}
+
+POLITE_PREFIX_PATTERN = re.compile(
+    r"^(?:hey\s+(?:assistant|bot|there)?[\s,]*|hi\s+(?:assistant|there)?[\s,]*|hello\s+(?:assistant|there)?[\s,]*|good\s+(?:morning|afternoon|evening)[\s,]*|please[\s,]*|can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|would\s+you\s+(?:please\s+)?|i\s+need\s+you\s+to\s+|help\s+me\s+(?:to\s+)?)+",
+    re.IGNORECASE,
+)
+
+
+def detect_explicit_domains(text: str) -> set[str]:
+    """Detect canonical service domains explicitly referenced in query text."""
+    if not text or not isinstance(text, str):
+        return set()
+    cleaned = strip_message_envelope(text).strip().lower()
+    matched = set()
+    for kw, domain in DOMAIN_KEYWORD_MAP.items():
+        if re.search(rf"\b{re.escape(kw)}\b", cleaned):
+            matched.add(domain)
+    return matched
+
+
+def clean_conversational_prefix(text: str) -> str:
+    """Strip leading conversational pleasantries before vectorization."""
+    if not text or not isinstance(text, str):
+        return text or ""
+    cleaned = strip_message_envelope(text).strip()
+    subbed = POLITE_PREFIX_PATTERN.sub("", cleaned).strip()
+    # Don't strip if nothing substantial remains (e.g. query was just "hello" or "can you help me")
+    return subbed if len(subbed) >= 3 else cleaned
+
+
