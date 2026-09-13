@@ -505,38 +505,47 @@ class TestRouterDecisionLogicAllIntents(unittest.TestCase):
         self.assertEqual(res["status"], "ambiguous")
 
     # --------------------------------------------------------------------------
-    # 4.5 general / out_of_scope remapped to research.search — confident,
-    #     ambiguous, and unavailable
+    # 4.5 out_of_scope remapped to research.search and general routing
     # --------------------------------------------------------------------------
     @patch("agent.routing.intent_router.get_candidate_intents")
     @patch("agent.routing.intent_router.generate_routing_query")
-    def test_general_and_out_of_scope_remap_confident_and_unavailable(self, mock_query_gen, mock_get_candidates):
-        for source_intent in ("general", "out_of_scope"):
-            with self.subTest(source_intent=source_intent):
-                mock_query_gen.return_value = _query("Explain gravity")
-                other = "out_of_scope" if source_intent == "general" else "general"
-                mock_get_candidates.return_value = [
-                    {"intent": source_intent, "probability": 0.90},
-                    {"intent": other, "probability": 0.05},
-                ]
+    def test_out_of_scope_remap_confident_and_unavailable(self, mock_query_gen, mock_get_candidates):
+        mock_query_gen.return_value = _query("Explain gravity")
+        mock_get_candidates.return_value = [
+            {"intent": "out_of_scope", "probability": 0.90},
+            {"intent": "general", "probability": 0.05},
+        ]
 
-                res_available = route_intent("Explain gravity", available_domains={"research"})
-                self.assertEqual(res_available["intent"], "research.search")
-                self.assertEqual(res_available["domain"], "research")
-                self.assertEqual(res_available["status"], "confident")
+        res_available = route_intent("Explain gravity", available_domains={"research"})
+        self.assertEqual(res_available["intent"], "research.search")
+        self.assertEqual(res_available["domain"], "research")
+        self.assertEqual(res_available["status"], "confident")
 
-                res_unavailable = route_intent("Explain gravity", available_domains={"email"})
-                self.assertEqual(res_unavailable["intent"], "research.search")
-                self.assertEqual(res_unavailable["domain"], "research")
-                self.assertEqual(res_unavailable["status"], "unavailable")
+        res_unavailable = route_intent("Explain gravity", available_domains={"email"})
+        self.assertEqual(res_unavailable["intent"], "research.search")
+        self.assertEqual(res_unavailable["domain"], "research")
+        self.assertEqual(res_unavailable["status"], "unavailable")
 
     @patch("agent.routing.intent_router.get_candidate_intents")
     @patch("agent.routing.intent_router.generate_routing_query")
-    def test_general_remap_ambiguous(self, mock_query_gen, mock_get_candidates):
+    def test_general_intent_routes_to_general(self, mock_query_gen, mock_get_candidates):
+        mock_query_gen.return_value = _query("hello, how are you?")
+        mock_get_candidates.return_value = [
+            {"intent": "general", "probability": 0.91},
+            {"intent": "out_of_scope", "probability": 0.05},
+        ]
+        result = route_intent("hello, how are you?", available_domains={"research"})
+        self.assertEqual(result["intent"], "general")
+        self.assertEqual(result["domain"], "general")
+        self.assertEqual(result["status"], "confident")
+
+    @patch("agent.routing.intent_router.get_candidate_intents")
+    @patch("agent.routing.intent_router.generate_routing_query")
+    def test_out_of_scope_remap_ambiguous(self, mock_query_gen, mock_get_candidates):
         mock_query_gen.return_value = _query("Something vague and open-ended")
         mock_get_candidates.return_value = [
-            {"intent": "general", "probability": 0.55},
-            {"intent": "out_of_scope", "probability": 0.50},  # margin 0.05
+            {"intent": "out_of_scope", "probability": 0.55},
+            {"intent": "email.send", "probability": 0.50},  # margin 0.05
         ]
         result = route_intent("Something vague and open-ended", available_domains={"research"})
         self.assertEqual(result["intent"], "research.search")
@@ -601,13 +610,10 @@ class TestRouterDecisionLogicAllIntents(unittest.TestCase):
         self.assertEqual(result["status"], "unavailable")
 
     @patch("agent.routing.intent_router.get_candidate_intents")
-    @patch("agent.routing.intent_router.generate_routing_query")
-    def test_empty_string_message(self, mock_query_gen, mock_get_candidates):
-        mock_query_gen.return_value = _query("")
+    def test_empty_string_message(self, mock_get_candidates):
         mock_get_candidates.return_value = []
         result = route_intent("", available_domains={"email"})
         self.assertEqual(result["status"], "unavailable")
-        mock_query_gen.assert_called_once_with("")
 
     @patch("agent.routing.intent_router.get_candidate_intents")
     @patch("agent.routing.intent_router.generate_routing_query")
@@ -619,7 +625,7 @@ class TestRouterDecisionLogicAllIntents(unittest.TestCase):
             {"intent": "calendar.create", "probability": 0.10},
         ]
 
-        messages = [MagicMock(content="Hi"), MagicMock(content="Check my calendar for tomorrow")]
+        messages = [MagicMock(content="Hi"), MagicMock(content="Check my calendar for that tomorrow")]
         result = route_intent(messages, available_domains={"calendar"})
 
         mock_query_gen.assert_called_once_with(messages)
@@ -627,11 +633,9 @@ class TestRouterDecisionLogicAllIntents(unittest.TestCase):
         self.assertEqual(result["status"], "confident")
 
     @patch("agent.routing.intent_router.get_candidate_intents")
-    @patch("agent.routing.intent_router.generate_routing_query")
-    def test_accepts_message_dict_input(self, mock_query_gen, mock_get_candidates):
+    def test_accepts_message_dict_input(self, mock_get_candidates):
         """Some callers pass a raw {'text': ...} dict instead of a string or message list."""
         message = {"text": "is there any message from dev-learning channel?"}
-        mock_query_gen.return_value = _query("is there any message from dev-learning channel?")
         mock_get_candidates.return_value = [
             {"intent": "slack.history", "probability": 0.75},
             {"intent": "slack.search", "probability": 0.20},
@@ -639,7 +643,6 @@ class TestRouterDecisionLogicAllIntents(unittest.TestCase):
 
         result = route_intent(message, available_domains={"slack"})
 
-        mock_query_gen.assert_called_once_with(message)
         self.assertEqual(result["intent"], "slack.history")
         self.assertEqual(result["domain"], "slack")
         self.assertEqual(result["status"], "confident")

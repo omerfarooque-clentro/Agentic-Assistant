@@ -366,7 +366,7 @@ per run (state schema in `agent/graph/state.py`, node functions in
   conditional edge (`scoped_should_continue`) that goes to `tools` (execute),
   `approval` (interrupt for state-changing actions), or `end`.
 - After tool execution, control returns to the same domain agent (tool loop)
-  until the model stops calling tools, then flows to `thread_naming → END`.
+  until the model stops calling tools, then flows to `END`.
 - The LLM used for both the general agent and each scoped domain agent is
   **Groq** (`openai/gpt-oss-120b`) with an automatic fallback to **Google
   Gemini** (`gemini-2.5-flash`) via LangChain's `.with_fallbacks(...)`
@@ -437,15 +437,14 @@ shared `approval` node instead of the domain's `ToolNode`. That node:
 - On resume with `{"approved": true/false}`, either lets execution fall
   through to the correct `{domain}_tools` node (via `approval_result`,
   which reads `state["details"]["domain"]`) or replaces the pending AI
-  message with a rejection notice and routes to `thread_naming → END`.
+  message with a rejection notice and routes to `END`.
 
 ### Conversations & threads
 
 `conversations/models.py` is intentionally simple:
 
-- `Thread` — one per conversation, owned by a user, auto-named ("New
-  Thread" until the graph's `thread_naming_node` generates a real name once
-  the conversation has more than one exchange). `updated_at` uses Django's
+- `Thread` — one per conversation, owned by a user, defaults to "New
+  Thread". `updated_at` uses Django's
   `auto_now=True`, and `ThreadListView` (`conversations/views.py`) orders
   the sidebar by `-updated_at, -id` — so a thread only actually sorts to
   the top when something explicitly calls `.save()` on it after the

@@ -975,6 +975,20 @@
         event.preventDefault();
         const errTarget = document.querySelector('#form-error');
         if (errTarget) errTarget.textContent = '';
+
+        const submitBtn = regForm.querySelector('button[type="submit"]');
+        const progressEl = document.querySelector('#register-progress');
+        const formInputs = regForm.querySelectorAll('input, button');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Start workspace <span>-></span>';
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('is-loading');
+          submitBtn.innerHTML = '<span class="btn-spinner"></span> Creating workspace… <span>⏳</span>';
+        }
+        if (progressEl) progressEl.classList.remove('hidden');
+        formInputs.forEach(el => { if (el !== submitBtn) el.disabled = true; });
+
         try {
           const data = await api('/registration/', {
             method: 'POST',
@@ -1021,6 +1035,13 @@
             window.location = '/signin/';
           }
         } catch (error) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('is-loading');
+            submitBtn.innerHTML = originalBtnHtml;
+          }
+          if (progressEl) progressEl.classList.add('hidden');
+          formInputs.forEach(el => el.disabled = false);
           showError(error);
         }
       });
@@ -1038,7 +1059,16 @@
           if (errEl) errEl.textContent = '';
 
           const emailInput = document.querySelector('#input-recovery-email');
+          const submitBtn = formEmail.querySelector('button[type="submit"]');
+          const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Continue to Recovery OTP <span>-></span>';
           recoveryEmail = emailInput ? emailInput.value.trim() : '';
+
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Checking account… <span>⏳</span>';
+          }
+          if (emailInput) emailInput.disabled = true;
 
           try {
             await api('/api/auth/forgot-password/', {
@@ -1053,6 +1083,12 @@
             const displayEmail = document.querySelector('#display-recovery-email');
             if (displayEmail) displayEmail.value = recoveryEmail;
           } catch (error) {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (emailInput) emailInput.disabled = false;
             if (errEl) errEl.textContent = error.message;
           }
         });
@@ -1076,7 +1112,16 @@
           if (errEl) errEl.textContent = '';
 
           const otpInput = document.querySelector('#input-recovery-otp');
+          const submitBtn = formOtp.querySelector('button[type="submit"]');
+          const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Verify OTP <span>-></span>';
           recoveryOtp = otpInput ? otpInput.value.trim() : '';
+
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Verifying OTP… <span>⏳</span>';
+          }
+          if (otpInput) otpInput.disabled = true;
 
           try {
             await api('/api/auth/verify-otp/', {
@@ -1089,6 +1134,12 @@
             document.querySelector('#stage-otp').classList.add('hidden');
             document.querySelector('#stage-password').classList.remove('hidden');
           } catch (error) {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (otpInput) otpInput.disabled = false;
             if (errEl) errEl.textContent = error.message;
           }
         });
@@ -1101,6 +1152,8 @@
         const confirmInput = document.querySelector('#input-confirm-password');
         const genBtn = document.querySelector('#btn-generate-reset-password');
         const toggleBtn = document.querySelector('#btn-toggle-new-password');
+        const submitBtn = formReset.querySelector('button[type="submit"]');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Update Password & Rotate OTP <span>-></span>';
 
         if (genBtn && pwdInput && confirmInput) {
           genBtn.addEventListener('click', () => {
@@ -1136,6 +1189,14 @@
             if (errEl) errEl.textContent = 'Passwords do not match.';
             return;
           }
+
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Updating password & rotating OTP… <span>⏳</span>';
+          }
+          if (pwdInput) pwdInput.disabled = true;
+          if (confirmInput) confirmInput.disabled = true;
 
           try {
             const data = await api('/api/auth/reset-password/', {
@@ -1219,7 +1280,18 @@
           const errEl = document.querySelector('#rotate-otp-error');
           if (errEl) errEl.textContent = '';
           const pwdInput = document.querySelector('#input-rotate-otp-password');
+          const submitBtn = formRotateOtp.querySelector('button[type="submit"]');
+          const progressEl = document.querySelector('#rotate-otp-progress');
+          const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Generate New Recovery Code <span>→</span>';
           const password = pwdInput ? pwdInput.value : '';
+
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Generating Key… <span>⏳</span>';
+          }
+          if (pwdInput) pwdInput.disabled = true;
+          if (progressEl) progressEl.classList.remove('hidden');
 
           try {
             const data = await api('/api/auth/otp-generate/', {
@@ -1227,9 +1299,22 @@
               body: JSON.stringify({ password })
             });
 
-            if (pwdInput) pwdInput.value = '';
+            if (pwdInput) {
+              pwdInput.value = '';
+              pwdInput.disabled = false;
+            }
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (progressEl) progressEl.classList.add('hidden');
+
             const resultBox = document.querySelector('#settings-otp-result');
-            if (resultBox) resultBox.classList.remove('hidden');
+            if (resultBox) {
+              resultBox.classList.remove('hidden');
+              resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
 
             const codeEl = document.querySelector('#settings-new-code');
             if (codeEl) codeEl.textContent = data.recovery_code || '';
@@ -1254,6 +1339,13 @@
               };
             }
           } catch (error) {
+            if (pwdInput) pwdInput.disabled = false;
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (progressEl) progressEl.classList.add('hidden');
             if (errEl) errEl.textContent = error.message;
           }
         });
@@ -1273,6 +1365,9 @@
         const genBtn = document.querySelector('#btn-gen-settings-pass');
         const successEl = document.querySelector('#change-pass-success');
         const errEl = document.querySelector('#change-pass-error');
+        const submitBtn = formChangePass.querySelector('button[type="submit"]');
+        const progressEl = document.querySelector('#change-pass-progress');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Update Password <span>→</span>';
 
         if (radioPass && radioOtp) {
           radioPass.addEventListener('change', () => {
@@ -1311,6 +1406,13 @@
             return;
           }
 
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            submitBtn.innerHTML = '<span class="btn-spinner"></span> Updating… <span>⏳</span>';
+          }
+          if (progressEl) progressEl.classList.remove('hidden');
+
           try {
             const data = await api('/api/auth/change-password/', {
               method: 'POST',
@@ -1326,6 +1428,13 @@
             if (curOtpInput) curOtpInput.value = '';
             if (newPassInput) newPassInput.value = '';
             if (confirmPassInput) confirmPassInput.value = '';
+
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (progressEl) progressEl.classList.add('hidden');
 
             if (successEl) {
               successEl.textContent = data.detail || 'Password updated successfully.';
@@ -1357,6 +1466,12 @@
               }
             }
           } catch (error) {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('is-loading');
+              submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (progressEl) progressEl.classList.add('hidden');
             if (errEl) errEl.textContent = error.message;
           }
         });
@@ -1366,7 +1481,7 @@
     
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
-      const state = { threadId: null, threads: [], initialThreadPicked: false, connectedServices: new Set(), messageCount: 0, sending: false, pendingApproval: null, streamRequestId: 0, abortController: null };
+      const state = { threadId: null, threads: [], initialThreadPicked: false, connectedServices: new Set(), messageCount: 0, sending: false, pendingApproval: null, streamRequestId: 0, abortController: null, sessionTokens: 0 };
       const transcript = document.querySelector('#transcript');
       const input = document.querySelector('#message-input');
       const title = document.querySelector('#thread-title');
@@ -1381,6 +1496,12 @@
       document.querySelector('#user-label').textContent = currentUser;
       const avatar = document.querySelector('#user-avatar');
       if (avatar) avatar.textContent = currentUser.charAt(0).toUpperCase();
+
+      const updateSessionTokens = (count) => {
+        state.sessionTokens = (state.sessionTokens || 0) + (Number(count) || 0);
+        const el = document.querySelector('#session-tokens');
+        if (el) el.textContent = state.sessionTokens.toLocaleString();
+      };
 
       const showBanner = (message, retry) => {
         bannerMsg.textContent = message;
@@ -1427,7 +1548,106 @@
       };
       document.querySelectorAll('[data-integration]').forEach(button => button.onclick = async () => { const service = button.dataset.integration; try { const data = await api(`/api/integrations/${service}/connect/`); window.location.href = data.authorization_url; } catch (error) { showBanner(error.message); } });
 
-      const addMessage = (role, content, pending = false) => {
+      const renderMetricsBadge = (metrics) => {
+        if (!metrics || typeof metrics !== 'object') return '';
+        const latency = metrics.latency_s != null ? metrics.latency_s : (metrics.latency_ms ? (metrics.latency_ms / 1000).toFixed(2) : '1.0');
+        const totalTokens = metrics.total_tokens || ((metrics.input_tokens || 0) + (metrics.output_tokens || 0));
+        const inputTokens = metrics.input_tokens || 0;
+        const outputTokens = metrics.output_tokens || 0;
+        const cachedTokens = metrics.cached_tokens || 0;
+        const contextLimit = metrics.context_limit || 128000;
+        const contextPct = metrics.context_used_pct != null ? metrics.context_used_pct : Math.min(100, ((totalTokens / contextLimit) * 100).toFixed(2));
+        const rawModel = metrics.model || 'openai/gpt-oss-120b';
+        const modelClean = rawModel.split('/').pop();
+        const calls = metrics.llm_calls || (metrics.breakdown ? metrics.breakdown.length : 1);
+        const breakdown = metrics.breakdown || [];
+
+        let breakdownHtml = '';
+        if (breakdown.length > 0) {
+          breakdownHtml = `
+            <div class="metrics-breakdown-section">
+              <div class="metrics-subheading">Pipeline Execution Breakdown</div>
+              <div class="metrics-breakdown-list">
+                ${breakdown.map((item, idx) => `
+                  <div class="metrics-breakdown-item">
+                    <div class="item-title">
+                      <span class="step-num">${idx + 1}</span>
+                      <span class="step-name">${escapeHtml(item.name || 'LLM Call')}</span>
+                      <span class="step-model">${escapeHtml(item.model ? item.model.split('/').pop() : '')}</span>
+                    </div>
+                    <div class="item-stats">
+                      <span>${(item.total_tokens || ((item.input_tokens || 0) + (item.output_tokens || 0))).toLocaleString()} tok</span>
+                      <span class="dot">•</span>
+                      <span>${item.latency_ms ? item.latency_ms + 'ms' : (item.latency_s ? item.latency_s + 's' : '')}</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="message-metrics" tabindex="0" role="region" aria-label="Token and performance metrics">
+            <div class="metrics-badge">
+              <span class="metric-icon">⚡</span>
+              <span class="metric-time">${latency}s</span>
+              <span class="metric-dot">•</span>
+              <span class="metric-count">${totalTokens.toLocaleString()} tok</span>
+            </div>
+            <div class="metrics-popover">
+              <div class="popover-header">
+                <div class="popover-title"><span>⚡</span> Turn Performance & Tokens</div>
+                <span class="popover-model-badge">${escapeHtml(modelClean)}</span>
+              </div>
+              <div class="popover-stats-grid">
+                <div class="stat-card">
+                  <span class="stat-label">Response Latency</span>
+                  <span class="stat-value">${latency}s</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Total Tokens</span>
+                  <span class="stat-value highlight">${totalTokens.toLocaleString()}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Input (Prompt)</span>
+                  <span class="stat-value">${inputTokens.toLocaleString()}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Output (Gen)</span>
+                  <span class="stat-value">${outputTokens.toLocaleString()}</span>
+                </div>
+              </div>
+              ${cachedTokens > 0 ? `
+                <div class="cached-tokens-row">
+                  <span>⚡ Prompt Cache Hit</span>
+                  <span class="cache-val">${cachedTokens.toLocaleString()} tokens cached</span>
+                </div>
+              ` : ''}
+              <div class="context-window-wrap">
+                <div class="context-window-header">
+                  <span>Context Window Utilization</span>
+                  <span class="context-percent">${contextPct}% of ${(contextLimit / 1000).toFixed(0)}k limit</span>
+                </div>
+                <div class="context-progress-bar">
+                  <div class="context-progress-fill" style="width: ${Math.max(1.5, Math.min(100, contextPct))}%"></div>
+                </div>
+                <div class="context-window-meta">
+                  <span>${totalTokens.toLocaleString()} used</span>
+                  <span>${contextLimit.toLocaleString()} capacity</span>
+                </div>
+              </div>
+              ${breakdownHtml}
+              <div class="popover-footer">
+                <span>LLM Calls: <strong>${calls}</strong></span>
+                <span class="cache-tag">Zero-cost reference router</span>
+              </div>
+            </div>
+          </div>
+        `;
+      };
+
+      const addMessage = (role, content, pending = false, metrics = null) => {
         const item = document.createElement('article');
         item.className = `message ${role} ${pending ? 'pending' : ''}`;
         item.innerHTML = `<span class="message-label">${role === 'user' ? 'You' : 'Ops agent'}</span><div class="message-content"></div>`;
@@ -1456,6 +1676,12 @@
             textWrap.className = 'markdown-body';
             textWrap.innerHTML = renderMarkdown(text);
             body.appendChild(textWrap);
+          }
+          if (metrics && typeof metrics === 'object') {
+            const metricsWrap = document.createElement('div');
+            metricsWrap.className = 'message-metrics-container';
+            metricsWrap.innerHTML = renderMetricsBadge(metrics);
+            item.appendChild(metricsWrap);
           }
         }
         transcript.appendChild(item);
@@ -1733,6 +1959,17 @@
             return;
           }
 
+          // Handle live thread title updates
+          if (data.type === 'thread_name' && data.thread_name) {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            if (data.thread_name !== 'New Thread') {
+              title.textContent = data.thread_name;
+              const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || currentThreadId}"] .thread-item-title`);
+              if (item) item.textContent = data.thread_name;
+            }
+            return;
+          }
+
           // Handle token streaming - transition from status to actual response
           if (data.type === 'token') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
@@ -1740,7 +1977,7 @@
             hasReceivedTokens = true;
             assistantText += safeText(token);
             pending.classList.remove('pending');
-            body.textContent = assistantText;
+            body.textContent = assistantText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
             transcript.scrollTop = transcript.scrollHeight;
             return;
           }
@@ -1779,11 +2016,22 @@
           if (data.type === 'completed' || status === 'completed') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
             completedHandled = true;
-            const finalText = safeText(typeof response === 'string' ? response : response && typeof response === 'object' ? (response.content || response.text || JSON.stringify(response)) : assistantText);
+            const rawResponse = typeof response === 'string' ? response : response && typeof response === 'object' ? (response.content || response.text || JSON.stringify(response)) : assistantText;
+            const finalText = safeText(rawResponse).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
             assistantText = finalText;
             pending.remove();
-            addMessage('agent', assistantText);
-            if (state.messageCount >= 3) syncThreadName();
+            const metrics = data.metrics || null;
+            if (metrics && metrics.total_tokens) {
+              updateSessionTokens(metrics.total_tokens);
+            }
+            addMessage('agent', assistantText, false, metrics);
+            if (data.thread_name && data.thread_name !== 'New Thread') {
+              title.textContent = data.thread_name;
+              const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || currentThreadId}"] .thread-item-title`);
+              if (item) item.textContent = data.thread_name;
+            } else if (state.messageCount >= 2) {
+              syncThreadName();
+            }
             return 'completed';
           }
 
@@ -1955,6 +2203,11 @@
           state.pendingApproval = null;
           refreshComposerState();
           addMessage('agent', data.result || (value ? 'Approved — sending now.' : 'Cancelled.'));
+          if (data.thread_name && data.thread_name !== 'New Thread') {
+            title.textContent = data.thread_name;
+            const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);
+            if (item) item.textContent = data.thread_name;
+          }
           setTimeout(() => { if (card && card.isConnected) card.remove(); }, 600);
         } catch (error) {
           card.classList.remove('is-busy');

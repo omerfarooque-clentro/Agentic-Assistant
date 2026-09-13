@@ -1,4 +1,4 @@
-"""Production-oriented, tool-agnostic intent routing for the agent."""
+"""Production-oriented, tool-agnostic intent routing with adaptive reference detection."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import make_pipeline
+
+from agent.metrics import CallMetrics
+from agent.routing.reference_detector import extract_message_text, has_conversational_reference
 from agent.routing.query_generator import generate_routing_query
 
 
@@ -33,14 +36,14 @@ ACTION_MCP_TOOL_NAMES = {
     "docs.create": {"create_doc"},
     "docs.update": {"modify_doc_text", "find_and_replace_doc", "batch_update_doc"},
     "docs.summarize": {"get_doc_content", "get_doc_as_markdown"},
-    "sheets.read": {"read_sheet_values", "get_spreadsheet_info", },
+    "sheets.read": {"read_sheet_values", "get_spreadsheet_info"},
     "sheets.write": {"modify_sheet_values", "append_table_rows"},
     "sheets.update": {"modify_sheet_values", "append_table_rows"},
     "slack.send": {
         "slack_send_message",
         "slack_create_canvas",
         "slack_update_canvas",
-        "resolve_slack_id"
+        "resolve_slack_id",
     },
     "slack.draft": {"slack_send_message_draft", "resolve_slack_id"},
     "slack.reaction": {"slack_add_reaction", "resolve_slack_id"},
@@ -61,7 +64,6 @@ ACTION_MCP_TOOL_NAMES = {
         "slack_search_public_and_private",
     },
     "research.search": {"tavily_search"},
-
 }
 
 training_data = pd.read_csv(DATA_FILE).dropna(subset=["text", "intent"])
@@ -73,27 +75,29 @@ def _domain_for_intent(intent: str) -> str:
     """Return the availability domain for an intent."""
     return intent.split(".", 1)[0]
 
+
 class CandidateIntent(TypedDict):
     intent: str
     probability: float
 
 
-def get_candidate_intents(message: str,available_domains: set[str],top_k: int = 3,) -> list[CandidateIntent]:
-    
+def get_candidate_intents(message: str, available_domains: set[str], top_k: int = 3) -> list[CandidateIntent]:
     """Return the highest-probability intents allowed by the available domains."""
-    if top_k <= 0:
+    if top_k <= 0 or not message:
         return []
 
     probabilities = model.predict_proba([message])[0]
     candidates = [
         {
-            "intent": intent, 
-            "probability": float(probability)
+            "intent": intent,
+            "probability": float(probability),
         }
-
         for intent, probability in zip(model.classes_, probabilities)
-
-        if (_domain_for_intent(intent) in available_domains or intent in {"general", "out_of_scope"})
+        if (
+            _domain_for_intent(intent) in available_domains
+            or _domain_for_intent(intent) == "general"
+            or intent in {"general", "general.conversation", "out_of_scope"}
+        )
     ]
 
     return sorted(candidates, key=lambda candidate: candidate["probability"], reverse=True)[:top_k]
@@ -110,17 +114,41 @@ class RoutingResult(TypedDict):
     confidence: float
     margin: float
     status: str
+    call_metrics: CallMetrics | None
+
+
+def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
+    """Classify intent adaptively using rule-based reference detection to eliminate redundant LLM calls."""
+    if isinstance(message, (list, tuple)):
+        message_list = list(message)
+    elif message:
+        message_list = [message]
+    else:
+        message_list = []
+
+    latest_text = extract_message_text(message_list[-1]) if message_list else ""
+    call_metrics: CallMetrics | None = None
+    routed_query = latest_text
+
+    has_ref = has_conversational_reference(latest_text)
+    is_multi_turn = len(message_list) > 1
+
+    if is_multi_turn and has_ref:
+        rewrite_result = generate_routing_query(message)
+        routed_query = rewrite_result.get("query", latest_text)
+        call_metrics = rewrite_result.get("metrics")
     
+    candidates = get_candidate_intents(routed_query, available_domains=available_domains, top_k=2)
 
-def route_intent(message: str, available_domains: set[str]) -> RoutingResult:
-    """Classify a message and report confidence, ambiguity, and availability."""
-
-    query = generate_routing_query(message)
-
-    message = query['query']
-    print(f"Routing message: {message}")
-
-    candidates = get_candidate_intents(message, available_domains=available_domains, top_k=2)
+    # Disambiguation fallback: if direct classification on multi-turn was ambiguous, try rewriting
+    if is_multi_turn and not has_ref and call_metrics is None:
+        if not candidates or candidates[0]["probability"] < CONFIDENCE_THRESHOLD:
+            rewrite_result = generate_routing_query(message)
+            rewritten_text = rewrite_result.get("query", "")
+            if rewritten_text and rewritten_text != routed_query:
+                routed_query = rewritten_text
+                call_metrics = rewrite_result.get("metrics")
+                candidates = get_candidate_intents(routed_query, available_domains=available_domains, top_k=2)
 
     if not candidates:
         return {
@@ -129,28 +157,27 @@ def route_intent(message: str, available_domains: set[str]) -> RoutingResult:
             "confidence": 0.0,
             "margin": 0.0,
             "status": "unavailable",
+            "call_metrics": call_metrics,
         }
-    
-    
+
     prediction = candidates[0]["intent"]
     confidence = candidates[0]["probability"]
     second_probability = candidates[1]["probability"] if len(candidates) > 1 else 0.0
     margin = confidence - second_probability
-   
-    if prediction in {"general", "out_of_scope"}:
+
+    if prediction in {"out_of_scope"}:
         prediction = "research.search"
-   
+
     domain = _domain_for_intent(prediction)
 
-    if domain not in available_domains:
+    if domain == "general":
+        status = "confident" if confidence >= CONFIDENCE_THRESHOLD else "ambiguous"
+    elif domain not in available_domains:
         status = "unavailable"
     elif confidence >= CONFIDENCE_THRESHOLD and margin >= MARGIN_THRESHOLD:
         status = "confident"
     else:
         status = "ambiguous"
-
-    print(f"Routing result for message: {message}")
-    print(f"Prediction: {prediction}, Domain: {domain}, Confidence: {confidence:.2f}, Margin: {margin:.2f}, Status: {status}")
 
     return {
         "intent": prediction,
@@ -158,6 +185,5 @@ def route_intent(message: str, available_domains: set[str]) -> RoutingResult:
         "confidence": confidence,
         "margin": margin,
         "status": status,
+        "call_metrics": call_metrics,
     }
-
- 

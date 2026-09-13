@@ -5200,3 +5200,231 @@ give David's message in Slack a laughing reaction,slack.reaction
 react with checkmark to Fatima's message in Slack,slack.reaction
 react to the Slack thread about the hiring update with eyes,slack.reaction
 react with rocket to the Slack post about the product roadmap,slack.reaction
+hello,general
+"hello, how are you?",general
+how are you?,general
+how are you doing?,general
+how are you doing today?,general
+"hello, how are you doing?",general
+"hi, how are you?",general
+"hi there, how are you?",general
+"hey, how are you doing?",general
+how is it going?,general
+how are things going with you?,general
+how is your day going?,general
+how are things today?,general
+"good morning, how are you?",general
+"good morning, hope you are having a good day",general
+"good afternoon, how are you?",general
+"good evening, how are you doing?",general
+hi there,general
+hello there,general
+hey there,general
+greetings,general
+hey assistant,general
+hello assistant,general
+hope you are doing well,general
+nice to meet you,general
+pleased to meet you,general
+howdy,general
+what is up?,general
+how is everything going?,general
+how have you been?,general
+are you having a good day?,general
+good day to you,general
+"hey, good to see you",general
+hi friend,general
+hello my friend,general
+just wanted to say hello,general
+just saying hi,general
+"checking in, how are you?",general
+"hey, hope all is well",general
+good morning assistant,general
+good afternoon assistant,general
+good evening assistant,general
+"hi, hope you are ready to help",general
+"hello, hope you are doing great",general
+"hey, how has your day been?",general
+how are you feeling today?,general
+"hello, how have things been?",general
+"hi there, hope you are well",general
+"hello, glad to be working with you",general
+"hey, great to connect with you",general
+morning,general
+afternoon,general
+evening,general
+yo assistant,general
+what operations tasks can you assist me with?,general
+what operations tasks can you do?,general
+what operations tasks do you handle?,general
+what tasks can you assist me with?,general
+what tasks are you able to perform?,general
+what can you do for me?,general
+what can you do in this workspace?,general
+what can you do?,general
+what are your capabilities?,general
+what are you capable of doing?,general
+tell me your capabilities,general
+tell me what you can do,general
+show me what you can do,general
+explain what you can do,general
+what features do you have?,general
+what features are supported?,general
+what features are currently available?,general
+what tools are available?,general
+what tools are connected?,general
+what tools do you have access to?,general
+what tools can I use with you?,general
+what tools do you support?,general
+list all available tools,general
+list the tools you have,general
+list your connected tools,general
+list available integrations,general
+tell me the available tools,general
+tell me which tools are connected,general
+which integrations are connected?,general
+which integrations are currently available?,general
+which services can I use?,general
+which services are enabled?,general
+which tools are online?,general
+which apps are connected?,general
+what services are connected right now?,general
+what integrations are active?,general
+what tools are active in this session?,general
+how can you assist me today?,general
+how can you help me today?,general
+how can you help me with my work?,general
+how does this assistant work?,general
+how does this workspace work?,general
+give me an overview of your abilities,general
+give me an overview of your features,general
+give me an overview of your tools,general
+give me an overview of available tools,general
+what kind of operations can you perform?,general
+what kind of work can you do for me?,general
+what kind of assistance do you provide?,general
+explain your features to me,general
+explain your capabilities to me,general
+explain your tools to me,general
+can you list your tools?,general
+can you list your capabilities?,general
+can you tell me what you can do?,general
+what is this assistant capable of?,general
+what is your scope of work?,general
+what are you able to help with?,general
+what are you able to do?,general
+what are the supported integrations?,general
+what are the available services?,general
+show available tools,general
+show connected tools,general
+show active integrations,general
+display available tools,general
+what services are currently integrated?,general
+can you explain your available features?,general
+give me a summary of your capabilities,general
+what operations tasks are within your scope?,general
+who are you?,general
+who created you?,general
+what is your name?,general
+what is your role here?,general
+what is your purpose?,general
+what kind of assistant are you?,general
+are you an ai?,general
+are you an operations assistant?,general
+describe your role,general
+describe your features,general
+describe your capabilities,general
+describe your tools,general
+guide me on what you can do,general
+how should I use you?,general
+how do I get started with you?,general
+how to use this assistant,general
+what instructions do you follow?,general
+what guidelines do you operate under?,general
+what are your limitations?,general
+what can you not do?,general
+what should I know before using you?,general
+teach me how to interact with you,general
+can you give me an example of how to use you?,general
+give me some tips on using you effectively,general
+what kind of requests can I send you?,general
+what type of commands do you understand?,general
+how do I ask you to do something?,general
+where do you get your information from?,general
+do you have access to my workspace?,general
+what permissions do you have?,general
+are you connected to my accounts?,general
+how do I configure new tools?,general
+can you explain your architecture?,general
+tell me a bit about yourself,general
+introduce yourself to me,general
+please give me a quick introduction,general
+can you introduce yourself?,general
+who am I talking to?,general
+what is your job?,general
+what are you designed to do?,general
+how do you assist with operations?,general
+what is an operations agent?,general
+explain how you process my requests,general
+what is your workflow?,general
+are my integrations working properly?,general
+how do you help me stay organized?,general
+what makes you different from a general chatbot?,general
+are you ready to take commands?,general
+thank you,general
+thank you so much,general
+thank you very much,general
+thanks a lot,general
+thanks for your help,general
+thanks for the explanation,general
+thank you for clarifying that,general
+"thanks, that was really helpful",general
+appreciate your help,general
+much appreciated,general
+"that is great, thank you",general
+"awesome, thanks",general
+"perfect, thank you",general
+"sounds good, thanks",general
+"got it, thank you",general
+"understood, thanks",general
+that makes sense,general
+"ok, sounds good",general
+"alright, thank you",general
+thanks assistant,general
+you are awesome,general
+you are very helpful,general
+good job,general
+"well done, thanks",general
+have a great day,general
+have a good one,general
+have a wonderful day,general
+see you later,general
+talk to you later,general
+goodbye,general
+bye for now,general
+catch you later,general
+"that is all for now, thanks",general
+"nothing else for today, thank you",general
+"I am good for now, thanks",general
+"that answers my question, thank you",general
+no further questions,general
+"everything looks good, thanks",general
+let us chat for a second,general
+can we talk?,general
+I am just thinking out loud,general
+are you ready?,general
+let us get started,general
+ready when you are,general
+I am ready to begin,general
+let us work together,general
+can you assist me with something?,general
+I have a general question,general
+could you help me out?,general
+let us do this,general
+"hello, could you help me?",general
+"hi, I need some guidance",general
+"hey there, I have a question",general
+"hello, are you available?",general
+"what's time?", general
+"what time is it?",general
+"do you know?",general

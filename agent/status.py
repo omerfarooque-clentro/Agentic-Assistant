@@ -31,8 +31,4 @@ NODE_STATUS_MAP = {
         "status": "tool_calling",
         "message": "Working with Slack…",
     },
-    "thread_naming": {
-        "status": "generating",
-        "message": "Finalizing…",
-    },
 }

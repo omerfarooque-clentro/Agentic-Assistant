@@ -32,7 +32,7 @@ FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "YOUR_GENERATED_BA
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
+ALLOWED_HOSTS =  [] #os.getenv("ALLOWED_HOSTS", "").split(",")
 
 
 # Application definition

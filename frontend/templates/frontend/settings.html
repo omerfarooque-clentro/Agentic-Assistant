@@ -114,14 +114,22 @@
           <label>Verify Current Password
             <input name="password" id="input-rotate-otp-password" type="password" required placeholder="Enter current password">
           </label>
-          <button class="primary-button" type="submit" style="margin-top:6px;">
-            Generate New Recovery Code <span>→</span>
+          <button class="primary-button" id="btn-rotate-otp-submit" type="submit" style="margin-top:6px;">
+            <span>Generate New Recovery Code</span> <span>→</span>
           </button>
+          <div id="rotate-otp-progress" class="form-progress-indicator hidden">
+            <span class="btn-spinner"></span>
+            <span>Rotating emergency recovery key and updating cryptographic credentials…</span>
+          </div>
           <p id="rotate-otp-error" class="form-error"></p>
         </form>
 
         <!-- Result Box when rotated -->
         <div id="settings-otp-result" class="hidden" style="margin-top:14px;">
+          <div class="success-toast-banner">
+            <span>✓</span>
+            <span>New Emergency Recovery Key active! Save or download it below.</span>
+          </div>
           <div class="otp-rotation-banner">
             <span class="badge-status-old">OLD CODE INVALID ❌</span>
             <span class="badge-status-new">NEW CODE ACTIVE ✅</span>
@@ -187,9 +195,13 @@
             <input name="confirm_password" id="input-change-confirm-pass" type="password" minlength="8" required placeholder="Re-type new password">
           </label>
 
-          <button class="primary-button" type="submit" style="margin-top:6px;">
-            Update Password <span>→</span>
+          <button class="primary-button" id="btn-change-pass-submit" type="submit" style="margin-top:6px;">
+            <span>Update Password</span> <span>→</span>
           </button>
+          <div id="change-pass-progress" class="form-progress-indicator hidden">
+            <span class="btn-spinner"></span>
+            <span>Updating password and re-securing credentials…</span>
+          </div>
           <p id="change-pass-error" class="form-error"></p>
           <p id="change-pass-success" class="form-success hidden"></p>
         </form>
