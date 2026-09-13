@@ -6,8 +6,6 @@ from typing import TypedDict
 
 CONTEXT_WINDOW_LIMIT: int = 128_000
 DEFAULT_MODEL: str = "openai/gpt-oss-120b"
-DEFAULT_FAST_MODEL: str = "llama-3.1-8b-instant"
-
 
 class CallMetrics(TypedDict, total=False):
     name: str

@@ -300,6 +300,9 @@ async def new_chat_view(request):
                     await Message.objects.acreate(thread=thread, role="agent", content="An unexpected error occurred during processing, please try again.")
                     await thread.asave(update_fields=["updated_at"]) 
                     return
+                if chunk_type == "thread_name":
+                    yield f"data: {json.dumps({'type': 'thread_name', 'thread_id': chunk['thread_id'], 'thread_name': chunk['thread_name']})}\n\n"
+                    continue
                 if chunk_type != "completed":
                     print(f"new_chat event_stream: ignoring unexpected chunk type={chunk_type} for thread {thread.id}")
                     continue
@@ -308,8 +311,9 @@ async def new_chat_view(request):
                 final_content = extract_text_content(messages[-1].content) if messages else ""
                 
                 await Message.objects.acreate(thread=thread, role="agent", content=final_content)
-                await thread.asave(update_fields=["updated_at"]) 
-                yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'metrics': chunk.get('metrics', {})})}\n\n"
+                await thread.asave(update_fields=["updated_at"])
+                await thread.arefresh_from_db(fields=["name", "updated_at"])
+                yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
                 return
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

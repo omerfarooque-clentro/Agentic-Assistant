@@ -77,4 +77,6 @@ RULES:
 - Resolve references ('it', 'that', 'them', 'previous one', 'the same') using recent conversation.
 - If multiple steps exist, output the FIRST immediate action.
 - Preserve all names, dates, filters, and constraints.
-- Output ONLY the rewritten task. Do not explain or add commentary."""
+- Output ONLY the rewritten task. Do not explain or add commentary.
+- Example: search web for fifa match or send slack message to X.
+"""

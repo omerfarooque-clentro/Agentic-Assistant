@@ -1794,6 +1794,216 @@
       const hideBanner = () => banner.classList.add('hidden');
       bannerDismiss.onclick = hideBanner;
 
+      // Single source of truth for whether the composer should accept input —
+      // it must stay locked while a message is sending, while an approval is
+      // still pending (a new chat message would race the paused, interrupted
+      // graph run), and while the browser is offline.
+      const refreshComposerState = () => {
+        const busy = state.sending || !!state.pendingApproval || !navigator.onLine;
+        input.disabled = busy;
+        sendButton.disabled = busy;
+        if (!navigator.onLine) {
+          composerNote.textContent = "You're offline — reconnect to send messages";
+        } else if (state.pendingApproval) {
+          composerNote.textContent = 'Review the action above before continuing';
+        } else {
+          const count = state.connectedServices.size;
+          composerNote.textContent = count
+            ? `Enter to send • ${count} tool${count === 1 ? '' : 's'} connected`
+            : 'Enter to send • No tools connected yet — try Gmail first';
+        }
+      };
+
+      const loadIntegrations = async () => {
+        try {
+          const data = await api('/api/integrations/status/');
+          state.connectedServices = new Set((data.integrations || []).filter(item => item.enabled).map(item => item.service));
+          ['gmail', 'calendar', 'docs', 'sheets', 'slack'].forEach(service => {
+            const dot = document.querySelector(`#${service}-dot`);
+            const stateEl = document.querySelector(`#${service}-state`);
+            const connected = state.connectedServices.has(service);
+            if (dot) {
+              dot.classList.toggle('dot-on', connected);
+              dot.classList.toggle('dot-off', !connected);
+            }
+            if (stateEl) {
+              stateEl.textContent = connected ? 'Connected' : 'Connect';
+              stateEl.classList.toggle('off', !connected);
+            }
+          });
+          refreshComposerState();
+        } catch (error) {
+          console.warn('Could not load integrations', error);
+        }
+      };
+
+      document.querySelectorAll('[data-integration]').forEach(button => {
+        button.onclick = async () => {
+          const service = button.dataset.integration;
+          try {
+            const data = await api(`/api/integrations/${service}/connect/`);
+            window.location.href = data.authorization_url;
+          } catch (error) {
+            showBanner(error.message);
+          }
+        };
+      });
+
+      const renderMetricsBadge = (metrics) => {
+        if (!metrics || typeof metrics !== 'object') return '';
+        const latency = metrics.latency_s != null ? metrics.latency_s : (metrics.latency_ms ? (metrics.latency_ms / 1000).toFixed(2) : '1.0');
+        const totalTokens = metrics.total_tokens || ((metrics.input_tokens || 0) + (metrics.output_tokens || 0));
+        const inputTokens = metrics.input_tokens || 0;
+        const outputTokens = metrics.output_tokens || 0;
+        const cachedTokens = metrics.cached_tokens || 0;
+        const contextLimit = metrics.context_limit || 128000;
+        const contextPct = metrics.context_used_pct != null ? metrics.context_used_pct : Math.min(100, ((totalTokens / contextLimit) * 100).toFixed(2));
+        const rawModel = metrics.model || 'openai/gpt-oss-120b';
+        const modelClean = rawModel.split('/').pop();
+        const calls = metrics.llm_calls || (metrics.breakdown ? metrics.breakdown.length : 1);
+        const breakdown = metrics.breakdown || [];
+
+        let breakdownHtml = '';
+        if (breakdown.length > 0) {
+          breakdownHtml = `
+            <div class="metrics-breakdown-section">
+              <div class="metrics-subheading">Pipeline Execution Breakdown</div>
+              <div class="metrics-breakdown-list">
+                ${breakdown.map((item, idx) => `
+                  <div class="metrics-breakdown-item">
+                    <div class="item-title">
+                      <span class="step-num">${idx + 1}</span>
+                      <span class="step-name">${escapeHtml(item.name || 'LLM Call')}</span>
+                      <span class="step-model">${escapeHtml(item.model ? item.model.split('/').pop() : '')}</span>
+                    </div>
+                    <div class="item-stats">
+                      <span>${(item.total_tokens || ((item.input_tokens || 0) + (item.output_tokens || 0))).toLocaleString()} tok</span>
+                      <span class="dot">•</span>
+                      <span>${item.latency_ms ? item.latency_ms + 'ms' : (item.latency_s ? item.latency_s + 's' : '')}</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="message-metrics" tabindex="0" role="region" aria-label="Token and performance metrics">
+            <div class="metrics-badge" role="button" tabindex="0" title="Click to inspect Turn Performance & Tokens">
+              <span class="metric-icon">⚡</span>
+              <span class="metric-time">${latency}s</span>
+              <span class="metric-dot">•</span>
+              <span class="metric-count">${totalTokens.toLocaleString()} tok</span>
+              <span class="hud-expand-caret">▾</span>
+            </div>
+            <div class="metrics-popover">
+              <div class="popover-header">
+                <div class="popover-title"><span>⚡</span> Turn Performance & Tokens</div>
+                <span class="popover-model-badge">${escapeHtml(modelClean)}</span>
+              </div>
+              <div class="popover-stats-grid">
+                <div class="stat-card">
+                  <span class="stat-label">Response Latency</span>
+                  <span class="stat-value">${latency}s</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Total Tokens</span>
+                  <span class="stat-value highlight">${totalTokens.toLocaleString()}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Input (Prompt)</span>
+                  <span class="stat-value">${inputTokens.toLocaleString()}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Output (Gen)</span>
+                  <span class="stat-value">${outputTokens.toLocaleString()}</span>
+                </div>
+              </div>
+              ${cachedTokens > 0 ? `
+                <div class="cached-tokens-row">
+                  <span>⚡ Prompt Cache Hit</span>
+                  <span class="cache-val">${cachedTokens.toLocaleString()} tokens cached</span>
+                </div>
+              ` : ''}
+              <div class="context-window-wrap">
+                <div class="context-window-header">
+                  <span>Context Window Utilization</span>
+                  <span class="context-percent">${contextPct}% of ${(contextLimit / 1000).toFixed(0)}k limit</span>
+                </div>
+                <div class="context-progress-bar">
+                  <div class="context-progress-fill" style="width: ${Math.max(1.5, Math.min(100, contextPct))}%"></div>
+                </div>
+                <div class="context-window-meta">
+                  <span>${totalTokens.toLocaleString()} used</span>
+                  <span>${contextLimit.toLocaleString()} capacity</span>
+                </div>
+              </div>
+              ${breakdownHtml}
+              <div class="popover-footer">
+                <span>LLM Calls: <strong>${calls}</strong></span>
+                <span class="cache-tag">Zero-cost reference router</span>
+              </div>
+            </div>
+          </div>
+        `;
+      };
+
+      const addMessage = (role, content, pending = false, metrics = null) => {
+        const item = document.createElement('article');
+        item.className = `message ${role} ${pending ? 'pending' : ''}`;
+        item.innerHTML = `<span class="message-label">${role === 'user' ? 'You' : 'Ops agent'}</span><div class="message-content"></div>`;
+        const body = item.querySelector('.message-content');
+        const text = safeText(content);
+        if (pending) {
+          body.innerHTML = '<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>Processing request…</span></div>';
+        } else if (role === 'user') {
+          body.textContent = text;
+        } else {
+          const weatherData = parseWeatherData(text);
+          if (weatherData) {
+            const cardWrap = document.createElement('div');
+            cardWrap.innerHTML = renderWeatherCard(weatherData);
+            if (cardWrap.firstElementChild) {
+              body.appendChild(cardWrap.firstElementChild);
+            }
+            if (weatherData.restMarkdown) {
+              const textWrap = document.createElement('div');
+              textWrap.className = 'markdown-body';
+              textWrap.innerHTML = renderMarkdown(weatherData.restMarkdown);
+              body.appendChild(textWrap);
+            }
+          } else {
+            const textWrap = document.createElement('div');
+            textWrap.className = 'markdown-body';
+            textWrap.innerHTML = renderMarkdown(text);
+            body.appendChild(textWrap);
+          }
+          if (metrics && typeof metrics === 'object') {
+            recordTurnMetrics(metrics, state.lastUserQuery || 'Agent Response', item);
+            const metricsWrap = document.createElement('div');
+            metricsWrap.className = 'message-metrics-container';
+            metricsWrap.innerHTML = renderMetricsBadge(metrics);
+            const badgeEl = metricsWrap.querySelector('.metrics-badge');
+            if (badgeEl) {
+              badgeEl.onclick = (e) => {
+                e.stopPropagation();
+                const metricsContainer = badgeEl.closest('.message-metrics');
+                if (metricsContainer) {
+                  const wasOpen = metricsContainer.classList.contains('is-open');
+                  document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+                  if (!wasOpen) metricsContainer.classList.add('is-open');
+                }
+              };
+            }
+            item.appendChild(metricsWrap);
+          }
+        }
+        transcript.appendChild(item);
+        transcript.scrollTop = transcript.scrollHeight;
+        state.messageCount += 1;
+        return item;
+      };
 
       const addApprovalCard = approval => {
         const domain = (approval && approval.domain) || 'email';
@@ -2147,6 +2357,10 @@
             pending.remove();
             const metrics = data.metrics || null;
             addMessage('agent', assistantText, false, metrics);
+            if (!state.threadId && data.thread_id) {
+              state.threadId = data.thread_id;
+              loadThreads();
+            }
             if (data.thread_name && data.thread_name !== 'New Thread') {
               title.textContent = data.thread_name;
               const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || currentThreadId}"] .thread-item-title`);
@@ -2257,6 +2471,8 @@
             if (!completedHandled && assistantText) {
               pending.remove();
               addMessage('agent', assistantText);
+            } else if (!completedHandled) {
+              pending.remove();
             }
             break;
           }
