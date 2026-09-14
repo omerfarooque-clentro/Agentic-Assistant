@@ -2,7 +2,8 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from .prompts import get_system_prompt
 from .titles import TITLE_INSTRUCTION
-from agent.graph.state import AgentState
+if TYPE_CHECKING:
+    from agent.graph.state import AgentState
 
 
 RECENT_CONTEXT_MESSAGES = 4
@@ -32,6 +33,19 @@ def messages_for_llm(state: AgentState, domain: str | None = None):
     system_prompt = get_system_prompt(target_domain, available_domains=available_domains)
     if state.get("needs_title"):
         system_prompt = f"{system_prompt}{TITLE_INSTRUCTION}"
+
+    plan = state.get("plan", [])
+    if plan and any(isinstance(s, dict) and s.get("status") in ("in_progress", "pending") for s in plan):
+        plan_summary = "\n".join(
+            f"- Step {s.get('id', i+1)}: [{s.get('domain')}] {s.get('description')} (status: {s.get('status')})"
+            for i, s in enumerate(plan)
+        )
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            f"ACTIVE WORKFLOW PLAN:\n{plan_summary}\n"
+            f"You are executing the step for domain '{target_domain}'. "
+            "Use context, links, IDs, and outputs from previous steps in this conversation to perform your action."
+        )
 
     latest_human_index = max(
         (index for index, message in enumerate(messages) if isinstance(message, HumanMessage)),

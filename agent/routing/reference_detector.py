@@ -12,10 +12,11 @@ REFERENCE_PATTERN = re.compile(
 )
 
 # Short imperative follow-up triggers that depend on previous assistant context
-SHORT_ACTION_TRIGGERS = {"yes", "send", "email", "share", "post", "cancel", "confirm", "reply", "forward"}
+SHORT_ACTION_TRIGGERS = {"yes", "send", "email", "mail", "share", "post", "cancel", "confirm", "reply", "forward", "dispatch"}
 
 EXPLICIT_DOMAIN_KEYWORDS = {
-    "slack", "mail", "email", "emails", "gmail", "calendar", "cal", "meeting", "meetings", "event", "events",
+    "slack", "mail", "mial", "email", "emails", "gmail", "calendar", "calander", "calender", "cal", "meeting", "meetings", "event", "events",
+    "schedule", "interview", "appointment", "availability", "availbility", "freebusy",
     "doc", "docs", "document", "documents", "sheet", "sheets", "spreadsheet", "spreadsheets",
     "web", "search web", "web search", "wb saerch", "google", "tavily", "internet", "browse",
 }
@@ -65,6 +66,12 @@ def extract_message_text(message: Any, strip_envelope: bool = False) -> str:
     return strip_message_envelope(raw) if strip_envelope else raw
 
 
+AFFIRMATIVE_FOLLOWUPS = {
+    "yes", "yep", "yeah", "ok", "okay", "sure", "sure go ahead", "go ahead",
+    "do it", "confirm", "proceed", "approved", "looks good",
+}
+
+
 def has_conversational_reference(text: str) -> bool:
     """Check whether a user message contains pronouns or references requiring context resolution."""
     if not text or not isinstance(text, str):
@@ -73,9 +80,18 @@ def has_conversational_reference(text: str) -> bool:
     cleaned = strip_message_envelope(text).strip().lower()
     words = cleaned.split()
 
-    # Check for short follow-up commands like "send it", "email that", "do it"
-    if len(words) <= 4 and any(trigger in words for trigger in SHORT_ACTION_TRIGGERS):
-        return True
+    # Check for short affirmative confirmations
+    if len(words) <= 4:
+        if cleaned in AFFIRMATIVE_FOLLOWUPS or any(term in cleaned for term in ["go ahead", "do it", "looks good"]):
+            return True
+        if any(w in {"yes", "yep", "yeah", "sure", "proceed", "confirm"} for w in words):
+            return True
+
+    # Check isolated directive from large payloads
+    directive = extract_action_directive(text)
+    if directive != text:
+        if has_conversational_reference(directive):
+            return True
 
     return bool(REFERENCE_PATTERN.search(cleaned))
 
@@ -102,14 +118,26 @@ def is_domain_ambiguous(text: str) -> bool:
 DOMAIN_KEYWORD_MAP = {
     "slack": "slack",
     "mail": "email",
+    "mial": "email",
     "email": "email",
     "emails": "email",
     "gmail": "email",
     "inbox": "email",
     "calendar": "calendar",
+    "calander": "calendar",
+    "calender": "calendar",
     "cal": "calendar",
     "meeting": "calendar",
     "meetings": "calendar",
+    "schedule": "calendar",
+    "scheduling": "calendar",
+    "interview": "calendar",
+    "appointment": "calendar",
+    "availability": "calendar",
+    "availbility": "calendar",
+    "freebusy": "calendar",
+    "event": "calendar",
+    "events": "calendar",
     "doc": "docs",
     "docs": "docs",
     "document": "docs",
@@ -131,16 +159,73 @@ POLITE_PREFIX_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+EMAIL_ADDRESS_PATTERN = re.compile(
+    r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
+)
+
+ACTION_VERB_PATTERN = re.compile(
+    r"\b(send|dispatch|email|mail|forward|post|share|schedule|draft|create|search)\b",
+    re.IGNORECASE,
+)
+
+CLOSING_DIRECTIVE_PATTERN = re.compile(
+    r"(?:please\s+|now\s+|kindly\s+|also\s+|aslo\s+|and\s+)?\b(send|dispatch|email|mail|forward|post|share|schedule|draft)\b\s+(?:it|this|that|them|meesage|message|mail|draft)?\s*(?:to|on|via|in)?\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|#?[a-zA-Z0-9_\-\.]+)?",
+    re.IGNORECASE,
+)
+
+
+def extract_action_directive(text: str) -> str:
+    """Extract opening or closing action command from multi-line payloads (e.g. email drafts with closing directives)."""
+    if not text or not isinstance(text, str):
+        return text or ""
+
+    cleaned = strip_message_envelope(text).strip()
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    if not lines:
+        return cleaned
+
+    # Only attempt directive isolation if message is truly multi-line and large (> 100 chars)
+    # A single-line user prompt must NEVER be truncated by directive slicing
+    if len(lines) <= 1 or len(cleaned) < 100:
+        return cleaned
+
+    # 1. Check closing lines (tail) in reverse order (e.g. "... send it to shifa quick", "dispatch it")
+    for line in reversed(lines[-3:]):
+        match = CLOSING_DIRECTIVE_PATTERN.search(line)
+        if match:
+            # If the line itself is concise (< 90 chars), return the whole line
+            if len(line) <= 90:
+                return line
+            # Otherwise extract the matching action phrase and any trailing context
+            start_pos = match.start()
+            return line[start_pos:].strip()
+
+    # 2. Check opening lines (head) (e.g. "Send email to Shifa with the following draft:")
+    for line in lines[:2]:
+        match = CLOSING_DIRECTIVE_PATTERN.search(line)
+        if match and len(line) <= 90:
+            return line
+
+    return cleaned
+
 
 def detect_explicit_domains(text: str) -> set[str]:
     """Detect canonical service domains explicitly referenced in query text."""
     if not text or not isinstance(text, str):
         return set()
     cleaned = strip_message_envelope(text).strip().lower()
+
     matched = set()
+
+    # Check for direct email addresses (e.g. user@domain.com)
+    if EMAIL_ADDRESS_PATTERN.search(cleaned):
+        matched.add("email")
+
+    # Scan the full message text for any explicit domain keywords
     for kw, domain in DOMAIN_KEYWORD_MAP.items():
         if re.search(rf"\b{re.escape(kw)}\b", cleaned):
             matched.add(domain)
+
     return matched
 
 
@@ -152,5 +237,20 @@ def clean_conversational_prefix(text: str) -> str:
     subbed = POLITE_PREFIX_PATTERN.sub("", cleaned).strip()
     # Don't strip if nothing substantial remains (e.g. query was just "hello" or "can you help me")
     return subbed if len(subbed) >= 3 else cleaned
+
+
+def is_compound_multi_domain(text: str, available_domains: set[str] | None = None) -> bool:
+    """Detect if a user message contains actions across multiple distinct service domains."""
+    if not text or not isinstance(text, str):
+        return False
+    domains = detect_explicit_domains(text)
+    if available_domains is not None:
+        domains = domains.intersection(available_domains)
+    if len(domains) >= 2:
+        # Check for multi-action conjunctions/connectors or clause separators
+        if re.search(r"\b(and|then|after|also|aslo|plus)\b|[,;\n]", text, re.IGNORECASE):
+            return True
+    return False
+
 
 

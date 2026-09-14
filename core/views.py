@@ -382,6 +382,8 @@ async def agent_chat_view(request, thread_id):
                 messages = chunk["result"].get("messages", [])
                 raw_content = extract_text_content(messages[-1].content) if messages else ""
                 final_content, suggested_title = extract_title_from_text(raw_content)
+                if not final_content.strip():
+                    final_content = "I processed your request. Let me know if there’s anything else you’d like to do!"
 
                 resolved_title = chunk.get("thread_name") or suggested_title
 
@@ -424,6 +426,8 @@ async def tool_approval_view(request, thread_id):
     if not serializer.is_valid():
         return JsonResponse(serializer.errors, status=400)
     approved = serializer.validated_data["approved"]
+    modified_args = serializer.validated_data.get("modified_args") or {}
+    instruction = serializer.validated_data.get("instruction") or ""
 
     try:
         thread = await Thread.objects.aget(id=thread_id, user=user)
@@ -434,9 +438,14 @@ async def tool_approval_view(request, thread_id):
     if not message:
         return JsonResponse({"detail": "No user message found for this thread."}, status=404)
 
-    approval, created = await Approval.objects.aget_or_create(message=message, thread=thread, defaults={"approved": approved})
-    if not created:
-        return JsonResponse({"detail": "Approval decision already made for this thread."}, status=400)
+    if instruction:
+        message = await Message.objects.acreate(thread=thread, role="user", content=instruction)
+        approval = await Approval.objects.acreate(message=message, thread=thread, approved=False)
+    else:
+        approval, created = await Approval.objects.aget_or_create(message=message, thread=thread, defaults={"approved": approved})
+        if not created:
+            approval.approved = approved
+            await approval.asave(update_fields=["approved"])
 
     config = {
         "configurable": {
@@ -453,7 +462,9 @@ async def tool_approval_view(request, thread_id):
     result = await app.ainvoke(
         Command(
             resume={
-                "approved": approved
+                "approved": approved,
+                "modified_args": modified_args,
+                "instruction": instruction,
             }
         ),
         config=config,
@@ -461,21 +472,56 @@ async def tool_approval_view(request, thread_id):
 
     print(f"i am approve_email_view and i resumed thread {thread.id} with final response: {result['messages'][-1].content!r}")
 
-    raw_message = extract_text_content(result["messages"][-1].content)
+    from langchain_core.messages import ToolMessage
+    from agent.metrics import aggregate_turn_metrics
+
+    state = await app.aget_state(config)
+    messages = result.get("messages", [])
+    raw_message = extract_text_content(messages[-1].content) if messages else ""
     message, suggested_title = extract_title_from_text(raw_message)
+
+    approval_metrics = aggregate_turn_metrics(
+        call_metrics=result.get("call_metrics", []),
+        start_time=time.perf_counter(),
+        messages=result.get("messages", []),
+    )
+
+    if state.interrupts:
+        if message.strip():
+            await Message.objects.acreate(
+                thread=thread,
+                role="agent",
+                content=message,
+                metrics=approval_metrics,
+            )
+            await thread.asave(update_fields=["updated_at"])
+
+        return JsonResponse({
+            "status": "approval_required",
+            "approval": state.interrupts[0].value,
+            "result": message if message.strip() else None,
+            "thread_id": int(thread.id),
+            "thread_name": thread.name,
+            "metrics": approval_metrics,
+        })
+
+    if not message.strip():
+        tool_err = None
+        for msg in reversed(messages):
+            if isinstance(msg, ToolMessage):
+                if getattr(msg, "status", None) == "error" or "Error calling tool" in str(msg.content):
+                    tool_err = str(msg.content)
+                break
+        if tool_err:
+            message = f"Action failed: {tool_err}"
+        else:
+            message = "Action executed successfully." if approved else "Action cancelled."
 
     if suggested_title and thread.name == "New Thread":
         thread.name = suggested_title
         await thread.asave(update_fields=["name", "updated_at"])
     else:
         await thread.asave(update_fields=["updated_at"])
-
-    from agent.metrics import aggregate_turn_metrics
-    approval_metrics = aggregate_turn_metrics(
-        call_metrics=result.get("call_metrics", []),
-        start_time=time.perf_counter(),
-        messages=result.get("messages", []),
-    )
 
     await Message.objects.acreate(
         thread=thread,
@@ -485,6 +531,7 @@ async def tool_approval_view(request, thread_id):
     )
 
     return JsonResponse({
+        "status": "completed",
         "result": message,
         "thread_id": int(thread.id),
         "thread_name": thread.name,

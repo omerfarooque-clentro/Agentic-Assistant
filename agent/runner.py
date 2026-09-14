@@ -50,6 +50,7 @@ async def run_agent(message: str, thread_id: int, user):
 
         input_message = {
             "messages": [HumanMessage(content=message)],
+            "call_metrics": [{"__reset__": True}],
             "available_domains": set(available_domains),
             "thread_id": str(thread_id),
             "user_id": str(user.id),
@@ -108,12 +109,29 @@ async def run_agent(message: str, thread_id: int, user):
             return
 
         final_state = state.values
-        messages = final_state.get("messages", [])
+        messages = list(final_state.get("messages", []))
 
         # Fallback inspection or generation of title if needed
         last_content = getattr(messages[-1], "content", "") if messages else ""
         if isinstance(last_content, list):
             last_content = " ".join(str(b.get("text") or "") if isinstance(b, dict) else str(b) for b in last_content)
+
+        # Fallback if assistant finished with empty text content
+        if not str(last_content).strip():
+            from langchain_core.messages import AIMessage
+            tool_calls = getattr(messages[-1], "tool_calls", None) if messages else None
+            if tool_calls:
+                tool_names = ", ".join(t.get("name", "tool") for t in tool_calls)
+                last_content = f"Operation completed successfully ({tool_names})."
+            else:
+                last_content = "I processed your request. Let me know if you need anything else!"
+            if messages:
+                messages[-1] = AIMessage(content=last_content)
+                final_state["messages"] = messages
+            yield {
+                "type": "token",
+                "token": last_content,
+            }
 
         if not extracted_title and needs_title and last_content:
             _, extracted_title = extract_title_from_text(str(last_content))

@@ -47,23 +47,28 @@ CONNECTED_TOOLS = {
     "research": "Web Search / Tavily (live search)",
 }
 
-# Monolithic fallback containing all domains for general agent or backwards compatibility
+GENERAL_SYSTEM_PROMPT = """You are a personal operations assistant.
+You are currently providing conversational responses, operational assistance, explanations, or general guidance.
+RULES:
+- Respond in plain, helpful, conversational text.
+- Do not attempt to format or emit tool or function calls in this conversational mode.
+- If the user asks about available capabilities or tools, summarize what is connected.
+- Be friendly, professional, and concise.
+"""
+
+# Monolithic fallback containing all domains for backwards compatibility
 SYSTEM_PROMPT = f"{BASE_SYSTEM_PROMPT}\n\n" + "\n\n".join(DOMAIN_PROMPTS.values())
 
 
 def get_system_prompt(domain: str | None = None, available_domains: set[str] | list[str] | None = None) -> str:
     """Return a domain-scoped system prompt with stable base prefix for prompt caching."""
     if not domain or domain == "general":
-        if not available_domains:
-            return BASE_SYSTEM_PROMPT
-
-        active = [CONNECTED_TOOLS[d] for d in available_domains if d in CONNECTED_TOOLS]
+        active = [CONNECTED_TOOLS[d] for d in (available_domains or []) if d in CONNECTED_TOOLS]
         if not active:
-            return BASE_SYSTEM_PROMPT
-
+            return GENERAL_SYSTEM_PROMPT
         tools_str = ", ".join(active)
         return (
-            f"{BASE_SYSTEM_PROMPT}\n\n"
+            f"{GENERAL_SYSTEM_PROMPT}\n\n"
             f"AVAILABLE TOOLS: {tools_str}.\n"
             "If asked about tools or capabilities, state what is available and be helpful."
         )
@@ -74,12 +79,23 @@ def get_system_prompt(domain: str | None = None, available_domains: set[str] | l
     return BASE_SYSTEM_PROMPT
 
 
-QUERY_GENERATOR_PROMPT = """Rewrite the user request into ONE short, self-contained actionable task.
+QUERY_GENERATOR_PROMPT = """Rewrite the user request into an actionable task or multi-step workflow plan.
 RULES:
 - Resolve references ('it', 'that', 'them', 'previous one', 'the same') using recent conversation.
-- If multiple steps exist, output the FIRST immediate action.
-- Preserve all names, dates, filters, and constraints.
-- When user asks to check messages/mentions without specifying domain (e.g. 'check latest message from arsalan'), resolve to Slack search (e.g. 'search slack for arsalan latest message') or Gmail if email is implied.
-- Output ONLY the rewritten task. Do not explain or add commentary.
-- Example: search web for fifa match or search slack for arsalan latest message or send slack message to X.
+- Preserve all names, dates, email addresses, meeting times, filters, and constraints.
+- When user asks to check messages/mentions without specifying domain, resolve to Slack search or Gmail.
+- If the request involves multiple distinct actions across different domains (e.g., calendar + email, docs + slack, research + email):
+  Output a sequential workflow plan using the PLAN: format:
+  PLAN:
+  1. [domain] actionable task for step 1
+  2. [domain] actionable task for step 2
+  Valid domain tags: [email], [calendar], [docs], [sheets], [slack], [research].
+- If only a single action is requested, output:
+  QUERY: <short self-contained task>
+- Output ONLY QUERY: ... or PLAN: ... with no explanation or conversational commentary.
+- Examples:
+  QUERY: search web for fifa match
+  PLAN:
+  1. [calendar] schedule technical interview tomorrow at 9:00 PM
+  2. [email] send interview link to omer.farooque@yahoo.com
 """

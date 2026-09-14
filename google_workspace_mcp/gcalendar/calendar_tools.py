@@ -637,7 +637,7 @@ async def _create_event_impl(
     calendar_id: str = "primary",
     description: Optional[str] = None,
     location: Optional[str] = None,
-    attendees: Optional[List[str]] = None,
+    attendees: Optional[Union[List[str], List[Dict[str, Any]]]] = None,
     timezone: Optional[str] = None,
     attachments: Optional[List[str]] = None,
     add_google_meet: bool = False,
@@ -693,8 +693,9 @@ async def _create_event_impl(
             event_body["start"]["timeZone"] = timezone
         if "dateTime" in event_body["end"]:
             event_body["end"]["timeZone"] = timezone
-    if attendees:
-        event_body["attendees"] = [{"email": email} for email in attendees]
+    normalized_attendees = _normalize_attendees(attendees)
+    if normalized_attendees is not None:
+        event_body["attendees"] = normalized_attendees
 
     # Handle reminders
     if reminders is not None or not use_default_reminders:
@@ -871,27 +872,59 @@ async def _create_event_impl(
 
 
 def _normalize_attendees(
-    attendees: Optional[Union[List[str], List[Dict[str, Any]]]],
+    attendees: Optional[Union[str, List[str], List[Dict[str, Any]]]],
 ) -> Optional[List[Dict[str, Any]]]:
     """
     Normalize attendees input to list of attendee objects.
 
     Accepts either:
+    - String: "user@example.com" or "user@example.com, other@example.com" or JSON array
     - List of email strings: ["user@example.com", "other@example.com"]
     - List of attendee objects: [{"email": "user@example.com", "responseStatus": "accepted"}]
-    - Mixed list of both formats
+    - Mixed list of formats
 
     Returns list of attendee dicts with at minimum 'email' key.
     """
-    if attendees is None:
+    if not attendees:
+        return None
+
+    # Handle string inputs (JSON array string or comma-separated emails)
+    if isinstance(attendees, str):
+        attendees_str = attendees.strip()
+        if not attendees_str:
+            return None
+        if attendees_str.startswith("[") and attendees_str.endswith("]"):
+            try:
+                parsed = json.loads(attendees_str)
+                if isinstance(parsed, list):
+                    attendees = parsed
+                else:
+                    attendees = [attendees_str]
+            except Exception:
+                attendees = [e.strip() for e in attendees_str.split(",") if e.strip()]
+        else:
+            attendees = [e.strip() for e in attendees_str.split(",") if e.strip()]
+
+    if not isinstance(attendees, (list, tuple, set)):
+        logger.warning(
+            f"[_normalize_attendees] Invalid attendees type {type(attendees).__name__}, skipping"
+        )
         return None
 
     normalized = []
     for att in attendees:
         if isinstance(att, str):
-            normalized.append({"email": att})
-        elif isinstance(att, dict) and "email" in att:
-            normalized.append(att)
+            email = att.strip()
+            if email:
+                normalized.append({"email": email})
+        elif isinstance(att, dict):
+            email = att.get("email")
+            if email and isinstance(email, str) and email.strip():
+                normalized.append(att)
+            else:
+                logger.warning(
+                    f"[_normalize_attendees] Attendee dict missing or empty 'email': {att}, skipping"
+                )
         else:
             logger.warning(
                 f"[_normalize_attendees] Invalid attendee format: {att}, skipping"

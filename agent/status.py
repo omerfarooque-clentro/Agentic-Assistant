@@ -1,34 +1,47 @@
 NODE_STATUS_MAP = {
     "nlp": {
         "status": "thinking",
-        "message": "Understanding your request…",
+        "agent": "Planner",
+        "message": "⚡ Personal Ops: Planning workflow…",
+    },
+    "advance_plan": {
+        "status": "thinking",
+        "agent": "Planner",
+        "message": "⚡ Personal Ops: Coordinating next step…",
     },
     "general_agent": {
         "status": "thinking",
-        "message": "Thinking…",
+        "agent": "Personal Ops",
+        "message": "⚡ Personal Ops: Formulating response…",
     },
     "research_agent": {
         "status": "searching",
-        "message": "Looking up information…",
+        "agent": "Research Agent",
+        "message": "🔍 Research Agent: Searching web sources…",
     },
     "email_agent": {
         "status": "tool_calling",
-        "message": "Working with email…",
+        "agent": "Email Agent",
+        "message": "✉️ Email Agent: Processing Gmail action…",
     },
     "calendar_agent": {
         "status": "tool_calling",
-        "message": "Working with calendar…",
+        "agent": "Calendar Agent",
+        "message": "📅 Calendar Agent: Managing schedule…",
     },
     "docs_agent": {
         "status": "tool_calling",
-        "message": "Working with documents…",
+        "agent": "Docs Agent",
+        "message": "📄 Docs Agent: Working on documents…",
     },
     "sheets_agent": {
         "status": "tool_calling",
-        "message": "Working with spreadsheets…",
+        "agent": "Sheets Agent",
+        "message": "📊 Sheets Agent: Inspecting spreadsheet…",
     },
     "slack_agent": {
         "status": "tool_calling",
-        "message": "Working with Slack…",
+        "agent": "Slack Agent",
+        "message": "💬 Slack Agent: Interacting with Slack…",
     },
 }

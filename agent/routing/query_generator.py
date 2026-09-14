@@ -13,9 +13,15 @@ from agent.metrics import CallMetrics, extract_call_metrics
 from agent.routing.reference_detector import extract_message_text, has_conversational_reference
 
 
+class ParsedPlanStep(TypedDict):
+    domain: str
+    query: str
+
+
 class ParsedRoutingQuery(TypedDict):
     type: str
     query: str
+    steps: list[ParsedPlanStep]
     metrics: CallMetrics | None
 
 
@@ -81,6 +87,33 @@ def generate_routing_query(messages: Any, available_domains: set[str] | None = N
 
         raw_content = str(getattr(response, "content", "")).strip()
 
+        # Check for PLAN:
+        plan_match = re.search(r"PLAN:\s*(.*)", raw_content, re.IGNORECASE | re.DOTALL)
+        if plan_match:
+            plan_lines = plan_match.group(1).strip().splitlines()
+            parsed_steps: list[ParsedPlanStep] = []
+            for line in plan_lines:
+                line_match = re.match(r"^\d+\.\s*\[(\w+)\]\s*(.*)", line.strip())
+                if line_match:
+                    domain = line_match.group(1).lower().strip()
+                    step_query = line_match.group(2).strip()
+                    if available_domains is None or domain in available_domains:
+                        parsed_steps.append({"domain": domain, "query": step_query})
+            if len(parsed_steps) >= 2:
+                call_metrics = extract_call_metrics(
+                    response=response,
+                    step_name="Planner (Call #1)",
+                    latency_ms=elapsed_ms,
+                    model_name=getattr(llm, "model_name"),
+                    prompt_text_or_messages=formatted_prompt,
+                )
+                return {
+                    "type": "MULTI",
+                    "query": parsed_steps[0]["query"],
+                    "steps": parsed_steps,
+                    "metrics": call_metrics,
+                }
+
         # Clean any formatting prefixes like QUERY: <text>
         query_match = re.search(r"QUERY:\s*(.*)", raw_content, re.IGNORECASE | re.DOTALL)
         extracted_query = (query_match.group(1).strip() if query_match else raw_content).strip('"`\'')
@@ -94,8 +127,8 @@ def generate_routing_query(messages: Any, available_domains: set[str] | None = N
             prompt_text_or_messages=formatted_prompt,
         )
 
-        return {"type": "SINGLE", "query": extracted_query, "metrics": call_metrics}
+        return {"type": "SINGLE", "query": extracted_query, "steps": [], "metrics": call_metrics}
     except Exception:
         fallback_query = heuristic_disambiguate_query(current_message_text, available_domains)
         print(f"Fallback routing query: {fallback_query}")
-        return {"type": "SINGLE", "query": fallback_query, "metrics": None}
+        return {"type": "SINGLE", "query": fallback_query, "steps": [], "metrics": None}

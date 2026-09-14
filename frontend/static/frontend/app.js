@@ -1103,6 +1103,91 @@
     return fields ? `<dl class="approval-fields">${fields}</dl>` : '';
   };
 
+  const renderApprovalEditFields = approval => {
+    const domain = (approval && approval.domain) || 'general';
+    const args = (approval && approval.args) || {};
+    let fieldsHtml = '';
+
+    if (domain === 'email') {
+      const toVal = Array.isArray(args.to) ? args.to.join(', ') : (args.to || '');
+      fieldsHtml = `
+        <div class="approval-field-group">
+          <label>Recipient(s)</label>
+          <input type="text" class="approval-edit-input" data-arg-key="to" data-original-val="${escapeHtml(toVal)}" value="${escapeHtml(toVal)}" placeholder="recipient@example.com">
+        </div>
+        <div class="approval-field-group">
+          <label>Subject</label>
+          <input type="text" class="approval-edit-input" data-arg-key="subject" data-original-val="${escapeHtml(args.subject || '')}" value="${escapeHtml(args.subject || '')}" placeholder="Email subject">
+        </div>
+        <div class="approval-field-group">
+          <label>Body</label>
+          <textarea class="approval-edit-textarea" data-arg-key="body" data-original-val="${escapeHtml(args.body || '')}" rows="4" placeholder="Email body content">${escapeHtml(args.body || '')}</textarea>
+        </div>`;
+    } else if (domain === 'slack') {
+      fieldsHtml = `
+        <div class="approval-field-group">
+          <label>Channel / User</label>
+          <input type="text" class="approval-edit-input" data-arg-key="channel" data-original-val="${escapeHtml(args.channel || '')}" value="${escapeHtml(args.channel || '')}" placeholder="#general">
+        </div>
+        <div class="approval-field-group">
+          <label>Message</label>
+          <textarea class="approval-edit-textarea" data-arg-key="message" data-original-val="${escapeHtml(args.message || '')}" rows="3" placeholder="Message to send">${escapeHtml(args.message || '')}</textarea>
+        </div>`;
+    } else if (domain === 'calendar') {
+      const attendeesVal = Array.isArray(args.attendees) ? args.attendees.map(a => (typeof a === 'string' ? a : a.email || '')).join(', ') : (args.attendees || '');
+      fieldsHtml = `
+        <div class="approval-field-group">
+          <label>Event Title</label>
+          <input type="text" class="approval-edit-input" data-arg-key="summary" data-original-val="${escapeHtml(args.summary || '')}" value="${escapeHtml(args.summary || '')}" placeholder="Meeting title">
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div class="approval-field-group">
+            <label>Start Time</label>
+            <input type="text" class="approval-edit-input" data-arg-key="start_time" data-original-val="${escapeHtml(args.start_time || '')}" value="${escapeHtml(args.start_time || '')}" placeholder="YYYY-MM-DDTHH:MM:SS">
+          </div>
+          <div class="approval-field-group">
+            <label>End Time</label>
+            <input type="text" class="approval-edit-input" data-arg-key="end_time" data-original-val="${escapeHtml(args.end_time || '')}" value="${escapeHtml(args.end_time || '')}" placeholder="YYYY-MM-DDTHH:MM:SS">
+          </div>
+        </div>
+        <div class="approval-field-group">
+          <label>Location</label>
+          <input type="text" class="approval-edit-input" data-arg-key="location" data-original-val="${escapeHtml(args.location || '')}" value="${escapeHtml(args.location || '')}" placeholder="Meeting link or location">
+        </div>
+        <div class="approval-field-group">
+          <label>Attendees</label>
+          <input type="text" class="approval-edit-input" data-arg-key="attendees" data-original-val="${escapeHtml(attendeesVal)}" value="${escapeHtml(attendeesVal)}" placeholder="alice@example.com, bob@example.com">
+        </div>
+        <div class="approval-field-group">
+          <label>Description</label>
+          <textarea class="approval-edit-textarea" data-arg-key="description" data-original-val="${escapeHtml(args.description || '')}" rows="2" placeholder="Event notes">${escapeHtml(args.description || '')}</textarea>
+        </div>`;
+    } else if (domain === 'docs') {
+      const content = args.content || args.text || args.body || args.insert_text || '';
+      fieldsHtml = `
+        <div class="approval-field-group">
+          <label>Document Title</label>
+          <input type="text" class="approval-edit-input" data-arg-key="title" data-original-val="${escapeHtml(args.title || '')}" value="${escapeHtml(args.title || '')}" placeholder="Document Title">
+        </div>
+        <div class="approval-field-group">
+          <label>Content</label>
+          <textarea class="approval-edit-textarea" data-arg-key="content" data-original-val="${escapeHtml(content)}" rows="4" placeholder="Document content">${escapeHtml(content)}</textarea>
+        </div>`;
+    } else {
+      const entries = Object.entries(args).filter(([key]) => !SKIPPED_APPROVAL_KEYS.has(key));
+      fieldsHtml = entries.map(([key, val]) => {
+        const strVal = stringifyApprovalValue(val);
+        return `
+          <div class="approval-field-group">
+            <label>${APPROVAL_FIELD_LABELS[key] || titleCase(key)}</label>
+            <input type="text" class="approval-edit-input" data-arg-key="${escapeHtml(key)}" data-original-val="${escapeHtml(strVal)}" value="${escapeHtml(strVal)}">
+          </div>`;
+      }).join('');
+    }
+
+    return fieldsHtml;
+  };
+
   window.PersonalOps = {
     parseWeatherData,
     renderWeatherCard,
@@ -2287,27 +2372,104 @@
         return item;
       };
 
+      const morphCardToCompleted = (card, approved, instruction, modifiedArgs) => {
+        if (!card || !card.isConnected) return;
+        card.classList.remove('is-busy');
+        card.classList.add('is-completed');
+        if (!approved && !instruction) {
+          card.classList.add('is-cancelled');
+        }
+        const editToggle = card.querySelector('.approval-edit-toggle-bar');
+        if (editToggle) editToggle.remove();
+        const editDrawer = card.querySelector('.approval-edit-drawer');
+        if (editDrawer) editDrawer.remove();
+        const instructWrap = card.querySelector('.approval-instruction-wrap');
+        if (instructWrap) instructWrap.remove();
+
+        const actions = card.querySelector('.approval-actions');
+        if (actions) {
+          const badgeText = approved 
+            ? (modifiedArgs ? 'Approved with edits' : 'Approved & Executed')
+            : (instruction ? 'Revised by instruction' : 'Cancelled');
+          const badgeClass = approved ? 'badge-executed' : (instruction ? 'badge-revised' : 'badge-cancelled');
+          const icon = approved ? '✓' : (instruction ? '✎' : '✕');
+          actions.innerHTML = `<div class="approval-resolved-badge ${badgeClass}"><span class="badge-icon">${icon}</span> <span>${escapeHtml(badgeText)}</span></div>`;
+        }
+      };
+
       const addApprovalCard = approval => {
         const domain = (approval && approval.domain) || 'email';
         const meta = DOMAIN_META[domain] || { icon: '⚙️', label: titleCase(domain) };
         const card = document.createElement('div');
         card.className = 'approval-card';
+        card.dataset.domain = domain;
         const heading = approval && approval.is_duplicate
           ? `Re-run this ${meta.label.toLowerCase()} action?`
           : (approval && approval.message) || `Approve ${meta.label.toLowerCase()} action`;
         card.innerHTML = `
+          <div class="approval-progress-track"><div class="approval-progress-fill"></div></div>
           <div style="flex:1; min-width:0;">
             <div class="approval-header">
               <span class="approval-badge">${meta.icon} Waiting on you — ${meta.label}</span>
             </div>
             <h3>${escapeHtml(heading)}</h3>
             ${renderApprovalBody(approval || {})}
+            <div class="approval-edit-toggle-bar">
+              <button type="button" class="btn-approval-toggle-edit" data-action="toggle-edit">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                <span>Edit fields</span>
+              </button>
+            </div>
+            <div class="approval-edit-drawer hidden">
+              ${renderApprovalEditFields(approval || {})}
+            </div>
+            <div class="approval-instruction-wrap">
+              <input type="text" class="approval-instruction-input" placeholder="Or instruct agent to revise (e.g. change time, revise text)...">
+              <button type="button" class="btn-instruct-action" data-action="instruct">
+                <span>Instruct Agent</span>
+              </button>
+            </div>
             <div class="approval-status hidden" aria-live="polite"></div>
           </div>
           <div class="approval-actions">
-            <button class="btn btn-primary" data-action="approve">Approve</button>
-            <button class="btn btn-ghost" data-action="cancel">Cancel</button>
+            <button class="btn btn-primary btn-approve" data-action="approve">
+              <span>Approve</span>
+            </button>
+            <button class="btn btn-ghost btn-cancel" data-action="cancel">
+              <span>Cancel</span>
+            </button>
           </div>`;
+
+        const toggleBtn = card.querySelector('[data-action="toggle-edit"]');
+        const editDrawer = card.querySelector('.approval-edit-drawer');
+        if (toggleBtn && editDrawer) {
+          toggleBtn.onclick = () => {
+            const isHidden = editDrawer.classList.toggle('hidden');
+            const span = toggleBtn.querySelector('span');
+            if (span) span.textContent = isHidden ? 'Edit fields' : 'Hide edit fields';
+          };
+        }
+
+        const instructBtn = card.querySelector('[data-action="instruct"]');
+        const instructInput = card.querySelector('.approval-instruction-input');
+        if (instructBtn && instructInput) {
+          const triggerInstruction = () => {
+            const instruction = instructInput.value.trim();
+            if (!instruction) {
+              instructInput.focus();
+              return;
+            }
+            approve(false, card, instruction);
+          };
+          instructBtn.onclick = triggerInstruction;
+          instructInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              triggerInstruction();
+            }
+          };
+        }
+
         const approveButton = card.querySelector('[data-action="approve"]');
         const cancelButton = card.querySelector('[data-action="cancel"]');
         approveButton.onclick = () => approve(true, card);
@@ -2907,6 +3069,11 @@
         state.threadId = null;
         state.messageCount = 0;
         state.sending = false;
+        state.sessionTurns = [];
+        state.sessionTokens = 0;
+        state.sessionStats = { promptTokens: 0, completionTokens: 0, cachedTokens: 0, totalTokens: 0, llmCalls: 0, domains: {} };
+        const sessionCountEl = document.querySelector('#session-tokens');
+        if (sessionCountEl) sessionCountEl.textContent = '0';
         title.textContent = getDynamicGreeting();
         renderWelcomeState();
         document.querySelectorAll('.thread-item').forEach(item => item.classList.remove('active'));
@@ -2915,43 +3082,167 @@
       };
       document.querySelector('#logout').onclick = () => { localStorage.removeItem('ops_access'); localStorage.removeItem('ops_refresh'); localStorage.removeItem('ops_user'); window.location = '/signin/'; };
 
-      async function approve(value, card) {
+      async function approve(value, card, instruction = null) {
         if (!card || card.dataset.busy === 'true' || state.pendingApproval !== card) return;
         const actions = card.querySelector('.approval-actions');
         const status = card.querySelector('.approval-status');
+        const instructBtn = card.querySelector('[data-action="instruct"]');
+        const approveBtn = card.querySelector('[data-action="approve"]');
+        const cancelBtn = card.querySelector('[data-action="cancel"]');
+        const domain = card.dataset.domain || 'general';
+        const meta = DOMAIN_META[domain] || { icon: '⚙️', label: titleCase(domain) };
+
         card.dataset.busy = 'true';
-        actions.querySelectorAll('button').forEach(button => button.disabled = true);
         card.classList.add('is-busy');
+
+        // Disable input edits and instruction fields so parameters cannot be changed mid-flight
+        card.querySelectorAll('.approval-edit-input, .approval-instruction-input').forEach(input => input.disabled = true);
+
+        // Targeted button loading state
+        if (instruction && instructBtn) {
+          instructBtn.classList.add('btn-loading');
+          instructBtn.disabled = true;
+          const label = instructBtn.querySelector('span');
+          if (label) label.textContent = 'Revising…';
+          if (approveBtn) approveBtn.disabled = true;
+          if (cancelBtn) cancelBtn.disabled = true;
+        } else if (value && approveBtn) {
+          approveBtn.classList.add('btn-loading');
+          approveBtn.disabled = true;
+          const label = approveBtn.querySelector('span');
+          if (label) label.textContent = 'Approving…';
+          if (cancelBtn) cancelBtn.disabled = true;
+          if (instructBtn) instructBtn.disabled = true;
+        } else if (!value && cancelBtn) {
+          cancelBtn.classList.add('btn-loading');
+          cancelBtn.disabled = true;
+          const label = cancelBtn.querySelector('span');
+          if (label) label.textContent = 'Cancelling…';
+          if (approveBtn) approveBtn.disabled = true;
+          if (instructBtn) instructBtn.disabled = true;
+        }
+
+        // Animated stage progression
+        const stages = value
+          ? [
+              `Connecting to ${meta.label} service…`,
+              `Executing ${meta.label.toLowerCase()} action with verified parameters…`,
+              `Finalizing response & updating conversation…`
+            ]
+          : instruction
+          ? [
+              `Forwarding instruction to agent…`,
+              `Revising plan with new details…`,
+              `Generating updated response…`
+            ]
+          : [
+              `Cancelling action…`,
+              `Recording decision in thread…`
+            ];
+
+        let stageIdx = 0;
+        const renderStatusStage = (idx) => {
+          const text = stages[Math.min(idx, stages.length - 1)];
+          status.innerHTML = `<span class="status-pulse-dot"></span> <span class="status-text">${escapeHtml(text)}</span>`;
+        };
         status.classList.remove('hidden', 'status-error', 'status-success');
-        status.innerHTML = `<span class="spinner"></span> ${value ? 'Approving' : 'Cancelling'}…`;
+        renderStatusStage(0);
+
+        const stageInterval = setInterval(() => {
+          stageIdx++;
+          if (stageIdx < stages.length) {
+            renderStatusStage(stageIdx);
+          }
+        }, 1800);
+
+        // Gather modified args if approving
+        let modifiedArgs = null;
+        if (value) {
+          card.querySelectorAll('[data-arg-key]').forEach(input => {
+            const key = input.dataset.argKey;
+            const original = (input.dataset.originalVal ?? '').trim();
+            const current = input.value.trim();
+            if (current !== original) {
+              if (!modifiedArgs) modifiedArgs = {};
+              if (key === 'to' || key === 'attendees') {
+                modifiedArgs[key] = current.includes(',')
+                  ? current.split(',').map(s => s.trim()).filter(Boolean)
+                  : (current ? [current] : []);
+              } else {
+                modifiedArgs[key] = current;
+              }
+            }
+          });
+        }
+
         try {
           const threadId = state.threadId;
           if (!threadId) {
             throw new Error('This approval is no longer attached to an active thread.');
           }
-          const data = await api(`/api/thread/${threadId}/tool-approval/`, { method: 'POST', body: JSON.stringify({ approved: value }) });
+          const payload = { approved: value };
+          if (modifiedArgs && Object.keys(modifiedArgs).length > 0) {
+            payload.modified_args = modifiedArgs;
+          }
+          if (instruction) {
+            payload.instruction = instruction;
+          }
+
+          const data = await api(`/api/thread/${threadId}/tool-approval/`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          clearInterval(stageInterval);
+
           if (state.pendingApproval !== card) return;
           card.classList.remove('is-busy');
           status.classList.add('status-success');
-          status.textContent = value ? '✓ Approved — sending now.' : '✓ Cancelled.';
+          status.innerHTML = `<span class="status-icon">✓</span> <span class="status-text">${value 
+            ? (modifiedArgs ? 'Approved with edits — action executed.' : 'Approved — action executed.')
+            : (instruction ? 'Instruction processed by agent.' : 'Action cancelled.')}</span>`;
+          
           state.pendingApproval = null;
           refreshComposerState();
           const approvalMetrics = data.metrics || null;
           if (approvalMetrics && approvalMetrics.total_tokens) {
             updateSessionTokens(approvalMetrics.total_tokens);
           }
-          addMessage('agent', data.result || (value ? 'Approved — sending now.' : 'Cancelled.'), false, approvalMetrics);
+          if (data.status === 'approval_required' && data.approval) {
+            if (data.result) {
+              addMessage('agent', data.result, false, approvalMetrics);
+            }
+            if (data.thread_name && data.thread_name !== 'New Thread') {
+              title.textContent = data.thread_name;
+              const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);
+              if (item) item.textContent = data.thread_name;
+            }
+            morphCardToCompleted(card, value, instruction, modifiedArgs);
+            addApprovalCard(data.approval);
+            return;
+          }
+
+          addMessage('agent', data.result || (value ? 'Action executed successfully.' : (instruction ? `Instruction sent: "${instruction}"` : 'Cancelled.')), false, approvalMetrics);
           if (data.thread_name && data.thread_name !== 'New Thread') {
             title.textContent = data.thread_name;
             const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);
             if (item) item.textContent = data.thread_name;
           }
-          setTimeout(() => { if (card && card.isConnected) card.remove(); }, 600);
+          morphCardToCompleted(card, value, instruction, modifiedArgs);
         } catch (error) {
+          clearInterval(stageInterval);
           card.classList.remove('is-busy');
-          actions.querySelectorAll('button').forEach(button => button.disabled = false);
+          card.querySelectorAll('.approval-edit-input, .approval-instruction-input').forEach(input => input.disabled = false);
+          actions.querySelectorAll('button').forEach(button => {
+            button.classList.remove('btn-loading');
+            button.disabled = false;
+          });
+          if (instructBtn) {
+            instructBtn.classList.remove('btn-loading');
+            instructBtn.disabled = false;
+          }
+          status.classList.remove('status-success');
           status.classList.add('status-error');
-          status.textContent = `Couldn't record your decision — ${error.message}`;
+          status.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">Failed: ${escapeHtml(error.message)}</span>`;
           delete card.dataset.busy;
         }
       }

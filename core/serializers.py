@@ -16,6 +16,8 @@ class AgentChatSerializer(serializers.Serializer):
 
 class ApproveEmailSerializer(serializers.Serializer):
     approved = serializers.BooleanField()
+    modified_args = serializers.DictField(required=False, default=dict)
+    instruction = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class RegisterationSerializer(serializers.ModelSerializer):

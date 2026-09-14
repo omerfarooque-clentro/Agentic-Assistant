@@ -4,6 +4,7 @@ import asyncio
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from psycopg_pool import AsyncConnectionPool
+# pyrefly: ignore [missing-import]
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from agent.llm import bind_tools_with_fallback, llm
@@ -14,6 +15,7 @@ from agent.graph.nodes import (
     nlp_node,
     supervisor_router,
     scoped_should_continue,
+    advance_plan_node,
 )
 from agent.routing.intent_router import get_mcp_tool_names
 
@@ -95,8 +97,14 @@ def create_graph(tools_groups):
         return agent_node(state, llm, domain="general")
 
     graph.add_node("general_agent", general_agent)
-    graph.add_edge("general_agent", END)
+    graph.add_conditional_edges(
+        "general_agent",
+        lambda state: scoped_should_continue(state, "general"),
+        {"end": END, "advance_plan": "advance_plan"},
+    )
 
+    graph.add_node("advance_plan", advance_plan_node)
+    graph.add_edge("advance_plan", "nlp")
 
     approval_domains = [
         domain for domain in TOOL_NAMES_BY_DOMAIN if tools_groups.get(domain)
@@ -133,7 +141,7 @@ def create_graph(tools_groups):
         graph.add_node(agent_name, make_agent(domain_tools, domain))
         graph.add_node(tools_name, ToolNode(domain_tools, handle_tool_errors=True))
 
-        route_map = {"tools": tools_name, "end": END}
+        route_map = {"tools": tools_name, "end": END, "advance_plan": "advance_plan"}
         
         if domain in approval_domains:
             route_map["approval"] = "approval"

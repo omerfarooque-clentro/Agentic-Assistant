@@ -17,6 +17,9 @@ from agent.routing.reference_detector import (
     is_domain_ambiguous,
     detect_explicit_domains,
     clean_conversational_prefix,
+    extract_action_directive,
+    is_compound_multi_domain,
+    EMAIL_ADDRESS_PATTERN,
 )
 from agent.routing.query_generator import generate_routing_query
 
@@ -37,7 +40,7 @@ ACTION_MCP_TOOL_NAMES = {
     "calendar.search": {"get_events", "manage_event"},
     "calendar.update": {"manage_event", "get_events"},
     "calendar.delete": {"manage_event", "get_events"},
-    "calendar.availability": {"query_freebusy"},
+    "calendar.availability": {"query_freebusy", "get_events"},
     "docs.read": {"get_doc_content", "get_doc_as_markdown"},
     "docs.create": {"create_doc"},
     "docs.update": {"modify_doc_text", "find_and_replace_doc", "batch_update_doc"},
@@ -111,6 +114,14 @@ def get_candidate_intents(message: str, available_domains: set[str], top_k: int 
         )
     ]
 
+    # If an explicit domain was identified, prioritize its candidates over generic conversation
+    if explicit_domains:
+        domain_candidates = [
+            c for c in candidates if _domain_for_intent(c["intent"]) in explicit_domains
+        ]
+        if domain_candidates:
+            candidates = domain_candidates
+
     sorted_candidates = sorted(candidates, key=lambda candidate: candidate["probability"], reverse=True)[:top_k]
 
     if explicit_domains and sorted_candidates:
@@ -127,17 +138,43 @@ def get_mcp_tool_names(intent: str) -> set[str]:
     return set(ACTION_MCP_TOOL_NAMES.get(intent, set()))
 
 
-class RoutingResult(TypedDict):
+class RoutingResult(TypedDict, total=False):
     intent: str
     domain: str
     confidence: float
     margin: float
     status: str
     call_metrics: CallMetrics | None
+    plan: list | None
 
 
-def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
-    """Classify intent adaptively using rule-based reference detection to eliminate redundant LLM calls."""
+def resolve_active_plan(plan: list | None) -> RoutingResult | None:
+    """Check if an active multi-step plan has pending or in-progress steps."""
+    if not plan:
+        return None
+    pending_step = next(
+        (s for s in plan if isinstance(s, dict) and s.get("status") in ("pending", "in_progress")),
+        None,
+    )
+    if not pending_step:
+        return None
+
+    pending_step["status"] = "in_progress"
+    intent = pending_step.get("intent", "general")
+    domain = pending_step.get("domain", _domain_for_intent(intent))
+    return {
+        "intent": intent,
+        "domain": domain,
+        "confidence": 1.0,
+        "margin": 1.0,
+        "status": "confident",
+        "call_metrics": None,
+        "plan": plan,
+    }
+
+
+def preprocess_query(message: Any) -> tuple[list[Any], str, str]:
+    """Normalize input messages and extract plain text and action directives."""
     if isinstance(message, (list, tuple)):
         message_list = list(message)
     elif message:
@@ -146,29 +183,74 @@ def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
         message_list = []
 
     latest_text = extract_message_text(message_list[-1], strip_envelope=True) if message_list else ""
-    call_metrics: CallMetrics | None = None
     routed_query = latest_text
 
+    directive = extract_action_directive(latest_text)
+    if directive and directive != latest_text:
+        routed_query = directive
+
+    return message_list, latest_text, routed_query
+
+
+def determine_routing_strategy(
+    latest_text: str,
+    routed_query: str,
+    message_list: list[Any],
+    available_domains: set[str],
+) -> bool:
+    """Determine whether the query requires LLM query rewriting or multi-agent planning."""
     has_ref = has_conversational_reference(latest_text)
-    is_domain_ambig = is_domain_ambiguous(latest_text)
+    is_domain_ambig = is_domain_ambiguous(routed_query)
     is_multi_turn = len(message_list) > 1
+    is_compound = is_compound_multi_domain(latest_text, available_domains)
 
-    if (is_multi_turn and has_ref) or is_domain_ambig:
-        rewrite_result = generate_routing_query(message)
-        routed_query = rewrite_result.get("query", latest_text)
-        call_metrics = rewrite_result.get("metrics")
+    return (is_multi_turn and has_ref) or is_domain_ambig or is_compound
 
-    candidates = get_candidate_intents(routed_query, available_domains=available_domains, top_k=2)
 
-    # Disambiguation fallback: only trigger if no intent matched at all across available domains
-    if is_multi_turn and not has_ref and call_metrics is None and not candidates:
-        rewrite_result = generate_routing_query(message)
-        rewritten_text = rewrite_result.get("query", "")
-        if rewritten_text and rewritten_text != routed_query:
-            routed_query = rewritten_text
-            call_metrics = rewrite_result.get("metrics")
-            candidates = get_candidate_intents(routed_query, available_domains=available_domains, top_k=2)
+def rewrite_or_plan(
+    message: Any,
+    available_domains: set[str],
+    default_query: str,
+) -> tuple[str, CallMetrics | None, list[dict] | None]:
+    """Call LLM query generator to rewrite contextual queries or generate a multi-step workflow plan."""
+    rewrite_result = generate_routing_query(message, available_domains=available_domains)
+    call_metrics = rewrite_result.get("metrics")
 
+    # Multi-step workflow plan decomposition
+    if rewrite_result.get("type") == "MULTI" and rewrite_result.get("steps"):
+        generated_plan = []
+        for idx, step in enumerate(rewrite_result["steps"]):
+            s_domain = step["domain"]
+            s_query = step["query"]
+            s_candidates = get_candidate_intents(s_query, available_domains={s_domain})
+            s_intent = s_candidates[0]["intent"] if s_candidates else f"{s_domain}.default"
+            generated_plan.append({
+                "id": idx + 1,
+                "domain": s_domain,
+                "intent": s_intent,
+                "description": s_query,
+                "status": "in_progress" if idx == 0 else "pending",
+                "result_summary": None,
+            })
+        print(f"Generated multi-agent plan: {generated_plan}")
+        return rewrite_result["steps"][0]["query"], call_metrics, generated_plan
+
+    routed_query = rewrite_result.get("query", default_query)
+    return routed_query, call_metrics, None
+
+
+def classify_intent(query: str, available_domains: set[str]) -> list[CandidateIntent]:
+    """Classify the query using Naive Bayes vectorizer constrained to available domains."""
+    return get_candidate_intents(query, available_domains=available_domains, top_k=2)
+
+
+def validate_prediction(
+    candidates: list[CandidateIntent],
+    available_domains: set[str],
+    call_metrics: CallMetrics | None,
+    routed_query: str,
+) -> RoutingResult:
+    """Evaluate candidate intents against thresholds and compute prediction metadata."""
     if not candidates:
         return {
             "intent": "general",
@@ -197,6 +279,7 @@ def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
         status = "confident"
     else:
         status = "ambiguous"
+
     print(f"Routed query: {routed_query}, Candidates: {candidates}")
     return {
         "intent": prediction,
@@ -206,3 +289,46 @@ def route_intent(message: Any, available_domains: set[str]) -> RoutingResult:
         "status": status,
         "call_metrics": call_metrics,
     }
+
+
+def route_intent(message: Any, available_domains: set[str], plan: list | None = None) -> RoutingResult:
+    """Classify intent adaptively using rule-based reference detection and modular routing stages."""
+    # 1. Resolve active plan queue if pending steps exist
+    plan_result = resolve_active_plan(plan)
+    if plan_result:
+        return plan_result
+
+    # 2. Preprocess message and extract query text
+    message_list, latest_text, routed_query = preprocess_query(message)
+    call_metrics: CallMetrics | None = None
+
+    # 3. Determine whether rewriting / multi-step planning is required
+    should_rewrite = determine_routing_strategy(latest_text, routed_query, message_list, available_domains)
+    if should_rewrite:
+        routed_query, call_metrics, generated_plan = rewrite_or_plan(message, available_domains, routed_query)
+        if generated_plan:
+            first_step = generated_plan[0]
+            return {
+                "intent": first_step["intent"],
+                "domain": first_step["domain"],
+                "confidence": 1.0,
+                "margin": 1.0,
+                "status": "confident",
+                "call_metrics": call_metrics,
+                "plan": generated_plan,
+            }
+
+    # 4. Classify intent
+    candidates = classify_intent(routed_query, available_domains=available_domains)
+
+    # 5. Disambiguation fallback: only if no candidate matched in available domains for multi-turn
+    is_multi_turn = len(message_list) > 1
+    has_ref = has_conversational_reference(latest_text)
+    if is_multi_turn and not has_ref and call_metrics is None and not candidates:
+        rewritten_query, call_metrics, _ = rewrite_or_plan(message, available_domains, routed_query)
+        if rewritten_query and rewritten_query != routed_query:
+            routed_query = rewritten_query
+            candidates = classify_intent(routed_query, available_domains=available_domains)
+
+    # 6. Validate prediction and return result
+    return validate_prediction(candidates, available_domains, call_metrics, routed_query)

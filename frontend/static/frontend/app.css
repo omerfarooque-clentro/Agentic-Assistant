@@ -2126,6 +2126,8 @@ body:has(.app-shell) {
 
 /* ===== Approval Cards & Domain Specific HITL Actions ===== */
 .approval-card {
+  position: relative;
+  overflow: hidden;
   max-width: 680px;
   margin: 10px auto 20px;
   background: var(--panel);
@@ -2137,18 +2139,71 @@ body:has(.app-shell) {
   justify-content: space-between;
   gap: 20px;
   align-items: flex-start;
-  animation: fade-up .2s ease;
-  transition: opacity .15s ease, box-shadow .2s ease;
+  animation: fade-up .25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all .2s ease;
   box-shadow: 0 4px 16px -2px rgba(245, 158, 11, 0.08), var(--shadow-sm);
 }
 
 .approval-card:hover {
-  box-shadow: 0 8px 24px -2px rgba(245, 158, 11, 0.12), var(--shadow-md);
+  box-shadow: 0 8px 24px -2px rgba(245, 158, 11, 0.14), var(--shadow-md);
 }
 
+/* Domain-tailored accents */
+.approval-card[data-domain="calendar"] { border-left-color: #3b82f6; }
+.approval-card[data-domain="email"] { border-left-color: #ea4335; }
+.approval-card[data-domain="slack"] { border-left-color: #4a154b; }
+.approval-card[data-domain="docs"] { border-left-color: #2563eb; }
+.approval-card[data-domain="sheets"] { border-left-color: #10b981; }
+
+/* Active processing (non-freezing, dynamic glow) */
 .approval-card.is-busy {
-  opacity: .85;
-  pointer-events: none;
+  border-left-color: var(--primary, #3b82f6);
+  box-shadow: 0 6px 24px -2px rgba(59, 130, 246, 0.2), var(--shadow-md);
+}
+
+/* Top Shimmer Progress Track */
+.approval-progress-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: transparent;
+  overflow: hidden;
+  border-top-left-radius: var(--radius);
+  border-top-right-radius: var(--radius);
+  display: none;
+  z-index: 5;
+}
+
+.approval-card.is-busy .approval-progress-track {
+  display: block;
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.approval-progress-fill {
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--primary, #3b82f6), #8b5cf6, transparent);
+  border-radius: 2px;
+  animation: approval-shimmer-track 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes approval-shimmer-track {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+/* Resolved/Completed Audit States */
+.approval-card.is-completed {
+  border-left-color: var(--emerald, #10b981) !important;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.08), var(--shadow-sm);
+  background: var(--panel);
+}
+
+.approval-card.is-cancelled {
+  border-left-color: var(--muted) !important;
+  opacity: 0.75;
 }
 
 .approval-header {
@@ -2508,26 +2563,237 @@ body:has(.app-shell) {
   flex-direction: column;
   gap: 8px;
   flex-shrink: 0;
-  min-width: 110px;
+  min-width: 120px;
+}
+
+.btn-approve,
+.btn-cancel,
+.btn-instruct-action {
+  position: relative;
+  transition: all .2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-approve.btn-loading,
+.btn-cancel.btn-loading,
+.btn-instruct-action.btn-loading {
+  position: relative;
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.btn-loading .btn-spinner {
+  display: inline-block !important;
+  position: absolute;
+  right: 10px;
+  top: calc(50% - 6px);
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.btn-ghost.btn-loading .btn-spinner {
+  border-color: rgba(0, 0, 0, 0.15);
+  border-top-color: var(--ink);
 }
 
 .approval-status {
-  margin-top: 12px;
-  font: 600 11.5px var(--font-mono);
-  display: flex;
+  margin-top: 14px;
+  font: 500 12px/1.4 var(--font-mono, monospace);
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-hover);
+  border: 1px solid var(--line);
   color: var(--muted);
+  transition: all .2s ease;
+  width: fit-content;
+}
+
+.approval-status .status-pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary, #3b82f6);
+  box-shadow: 0 0 8px var(--primary, #3b82f6);
+  animation: status-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes status-pulse {
+  0%, 100% { transform: scale(0.85); opacity: 0.6; }
+  50% { transform: scale(1.35); opacity: 1; }
 }
 
 .approval-status.status-success {
+  background: var(--emerald-bg);
+  border-color: var(--emerald-line);
   color: var(--emerald-ink);
 }
 
 .approval-status.status-error {
-  color: var(--coral);
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: var(--coral, #ef4444);
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* Resolved/Completed Badges for Audit Trail */
+.approval-resolved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11.5px var(--font-mono);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  animation: fade-up .2s ease;
+}
+
+.approval-resolved-badge.badge-executed {
+  background: var(--emerald-bg);
+  border: 1px solid var(--emerald-line);
+  color: var(--emerald-ink);
+}
+
+.approval-resolved-badge.badge-revised {
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  color: #0891b2;
+}
+
+.approval-resolved-badge.badge-cancelled {
+  background: var(--panel-hover);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+/* Interactive Approval Card Field Editing & Instruction */
+.approval-edit-toggle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.btn-approval-toggle-edit {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: 600 11px var(--font-mono);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all .15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-approval-toggle-edit:hover {
+  background: var(--panel-hover);
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.approval-edit-drawer {
+  margin-top: 10px;
+  background: var(--panel-hover);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.approval-edit-drawer.hidden {
+  display: none;
+}
+
+.approval-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.approval-field-group label {
+  font: 700 10px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.approval-edit-input,
+.approval-edit-textarea {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.approval-edit-input:focus,
+.approval-edit-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.approval-instruction-wrap {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.approval-instruction-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-hover);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+  transition: border-color .15s ease;
+}
+
+.approval-instruction-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btn-instruct-action {
+  font: 600 11.5px Manrope, sans-serif;
+  padding: 6px 12px;
+  white-space: nowrap;
+  background: var(--panel-hover);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.btn-instruct-action:hover {
+  background: var(--panel);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .spinner {
@@ -3418,16 +3684,23 @@ body:has(.app-shell) {
    ========================================================================== */
 
 .btn-spinner {
+  display: none;
   width: 13px;
   height: 13px;
   flex: 0 0 auto;
   border: 2px solid rgba(255, 255, 255, 0.35);
   border-top-color: #ffffff;
   border-radius: 50%;
-  display: inline-block;
   animation: btn-spin 0.65s linear infinite;
   margin-right: 8px;
   vertical-align: middle;
+}
+
+.btn-loading .btn-spinner,
+.is-loading .btn-spinner,
+.form-progress-indicator:not(.hidden) .btn-spinner,
+.loading-line .btn-spinner {
+  display: inline-block !important;
 }
 
 .btn-spinner.spinner-dark {

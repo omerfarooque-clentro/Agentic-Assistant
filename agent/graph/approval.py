@@ -70,20 +70,44 @@ def approval_node(state):
         sent_tool_call_ids.add(tool_id)
 
     decision_details = decision if isinstance(decision, dict) else {}
+    modified_args = decision_details.get("modified_args")
+    instruction = decision_details.get("instruction")
+
     state_update = {
         "approved": is_approved,
         "details": {**decision_details, "domain": domain},
         "is_re_send": is_duplicate and is_approved,
     }
 
-    # Keep the original tool-call AI message as the latest message on approval,
-    # otherwise ToolNode has no pending tool call to execute.
-    if not is_approved:
-        state_update["messages"] = [
-            AIMessage(
-                content=f"Human approval rejected for {domain} action '{tool_name}'."
-            )
-        ]
+    # If approved with modified arguments from user, patch tool_call args for ToolNode execution
+    if is_approved:
+        if modified_args and isinstance(modified_args, dict):
+            merged_args = {**args, **modified_args}
+            updated_call = {**tool_call, "args": merged_args}
+            updated_tool_calls = [
+                updated_call if call.get("id") == tool_id else call
+                for call in tool_calls
+            ]
+            state_update["messages"] = [
+                last_message.model_copy(update={"tool_calls": updated_tool_calls})
+            ]
+    else:
+        if instruction:
+            from langchain_core.messages import HumanMessage
+            state_update["messages"] = [
+                AIMessage(
+                    content=f"Human approval paused for {domain} action '{tool_name}' with revisions requested."
+                ),
+                HumanMessage(
+                    content=f"Revisions requested: {instruction}"
+                )
+            ]
+        else:
+            state_update["messages"] = [
+                AIMessage(
+                    content=f"Human approval rejected for {domain} action '{tool_name}'."
+                )
+            ]
 
     return state_update
 

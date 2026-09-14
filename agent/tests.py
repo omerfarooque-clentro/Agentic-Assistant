@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from agent.llm.messages import MAX_TOOL_MESSAGE_CHARS, messages_for_llm
 from agent.routing.query_generator import has_conversational_reference
 from agent.routing.intent_router import route_intent
-from agent.llm.prompts import get_system_prompt, BASE_SYSTEM_PROMPT
+from agent.llm.prompts import get_system_prompt, BASE_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT
 
 
 class MessagesForLlmTests(TestCase):
@@ -48,7 +48,7 @@ class MessagesForLlmTests(TestCase):
         self.assertNotIn("SPREADSHEET GUIDELINES", email_messages[0].content)
 
         general_messages = messages_for_llm(state, domain="general")
-        self.assertEqual(general_messages[0].content, BASE_SYSTEM_PROMPT)
+        self.assertEqual(general_messages[0].content, GENERAL_SYSTEM_PROMPT)
 
     def test_general_prompt_with_available_domains(self):
         state = {

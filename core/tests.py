@@ -385,3 +385,138 @@ class FormatUserAgentMessageTests(SimpleTestCase):
         self.assertIn("(Timezone: UTC)", result_empty)
 
 
+from unittest.mock import patch, AsyncMock, MagicMock
+from conversations.models import Thread, Message, Approval
+from langchain_core.messages import AIMessage, ToolMessage
+
+
+class ToolApprovalViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="approval_user",
+            email="approval@example.com",
+            password="StrongPassword123!"
+        )
+        self.client = APIClient()
+        token = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+        self.thread = Thread.objects.create(user=self.user, name="Meeting Thread")
+        self.user_msg = Message.objects.create(thread=self.thread, role="user", content="Schedule meeting")
+
+    def test_unauthenticated_request_rejected(self):
+        unauth_client = APIClient()
+        response = unauth_client.post(f"/api/thread/{self.thread.id}/tool-approval/", {"approved": True}, format="json")
+        self.assertEqual(response.status_code, 401)
+
+    def test_method_not_allowed(self):
+        response = self.client.get(f"/api/thread/{self.thread.id}/tool-approval/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_nonexistent_thread_returns_404(self):
+        response = self.client.post("/api/thread/999999/tool-approval/", {"approved": True}, format="json")
+        self.assertEqual(response.status_code, 404)
+
+    def test_no_user_message_returns_404(self):
+        empty_thread = Thread.objects.create(user=self.user, name="Empty Thread")
+        response = self.client.post(f"/api/thread/{empty_thread.id}/tool-approval/", {"approved": True}, format="json")
+        self.assertEqual(response.status_code, 404)
+
+    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("core.views.get_user_tools", new_callable=AsyncMock)
+    @patch("core.views.create_graph")
+    def test_successful_tool_approval(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        mock_app = MagicMock()
+        mock_app.ainvoke = AsyncMock(return_value={
+            "messages": [AIMessage(content="Event scheduled successfully!")],
+            "call_metrics": [],
+        })
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_app.aget_state = AsyncMock(return_value=mock_state)
+        mock_create_graph.return_value = mock_app
+
+        response = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": True},
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "completed")
+        self.assertEqual(data["result"], "Event scheduled successfully!")
+        self.assertEqual(data["thread_id"], self.thread.id)
+
+        # Verify Message saved in DB
+        agent_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        self.assertIsNotNone(agent_msg)
+        self.assertEqual(agent_msg.content, "Event scheduled successfully!")
+
+    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("core.views.get_user_tools", new_callable=AsyncMock)
+    @patch("core.views.create_graph")
+    def test_tool_approval_with_rejection(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        mock_app = MagicMock()
+        mock_app.ainvoke = AsyncMock(return_value={
+            "messages": [AIMessage(content="")],
+            "call_metrics": [],
+        })
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_app.aget_state = AsyncMock(return_value=mock_state)
+        mock_create_graph.return_value = mock_app
+
+        response = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": False},
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "completed")
+        self.assertEqual(data["result"], "Action cancelled.")
+
+        agent_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        self.assertIsNotNone(agent_msg)
+        self.assertEqual(agent_msg.content, "Action cancelled.")
+
+    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("core.views.get_user_tools", new_callable=AsyncMock)
+    @patch("core.views.create_graph")
+    def test_tool_approval_triggers_subsequent_interrupt(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        """When tool resumption hits another interrupt, assistant explanation must be saved to DB and returned."""
+        explanation = "I encountered an attendee email format issue. Let me reschedule for 9:00 PM."
+        mock_app = MagicMock()
+        mock_app.ainvoke = AsyncMock(return_value={
+            "messages": [AIMessage(content=explanation)],
+            "call_metrics": [],
+        })
+        mock_interrupt = MagicMock()
+        mock_interrupt.value = {
+            "domain": "calendar",
+            "tool_name": "manage_event",
+            "args": {"summary": "2nd Interview"},
+        }
+        mock_state = MagicMock()
+        mock_state.interrupts = [mock_interrupt]
+        mock_app.aget_state = AsyncMock(return_value=mock_state)
+        mock_create_graph.return_value = mock_app
+
+        response = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": True},
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "approval_required")
+        self.assertEqual(data["result"], explanation)
+        self.assertEqual(data["approval"]["domain"], "calendar")
+        self.assertEqual(data["approval"]["tool_name"], "manage_event")
+
+        # Crucial check: message MUST be persisted in the database so it doesn't vanish on reload
+        agent_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        self.assertIsNotNone(agent_msg)
+        self.assertEqual(agent_msg.content, explanation)
+
+
+

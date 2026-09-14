@@ -1,14 +1,12 @@
 # 🤖 Agentic Assistant
 
-[#agentic-assistant](#agentic-assistant)
+A **Django + LangGraph personal operations agent** that orchestrates email, calendars, Google Docs & Sheets, Slack, and web research — dynamically scoped per user to only the integrations and tools that user has connected and authorized.
 
-A **Django + LangGraph personal ops agent** that reads and sends email, manages calendars, reads/writes Google Docs and Sheets, and reads/sends Slack messages — scoped per user to only the integrations that user has actually connected.
-
-> **Core idea:** classify what the user wants *before* the LLM ever sees a tool. Route to a small, exact set of MCP tools instead of binding the entire tool catalog on every turn — and require human approval before any state-changing action actually executes.
+> **Core Philosophy:** Classify intent and decompose workflows *before* the model ever binds a tool. Route to a minimized, exact set of MCP tools rather than dumping an entire catalog into the context window — and mandate explicit human approval before any state-changing action executes.
 
 ---
 
-## Snapshot
+## 📸 Snapshot
 
 <img width="1362" height="642" alt="image" src="https://github.com/user-attachments/assets/61b21cd8-4027-4e7f-8073-6bf9112f3f72" />
 
@@ -16,455 +14,390 @@ A **Django + LangGraph personal ops agent** that reads and sends email, manages 
 
 ## 📑 Table of Contents
 
-[#table-of-contents](#table-of-contents)
-
-- [Features](#-features)
-- [Why Two LLM Calls Per Turn](#-why-two-llm-calls-per-turn)
-- [⚡ Latest Update: Metrics, Auto-Naming & Routing Efficiency](#-latest-update-metrics-auto-naming--routing-efficiency)
-- [Architecture](#️-architecture)
-- [Authentication & Account Recovery](#-authentication--account-recovery)
-- [Integrations & MCP Clients](#-integrations--mcp-clients)
-- [Intent Routing](#-intent-routing)
-- [Slack ID Resolution](#-slack-id-resolution)
-- [LangGraph Flow](#-langgraph-flow)
-- [Streaming](#-streaming)
-- [Human-in-the-Loop Approval](#-human-in-the-loop-approval)
-- [Project Layout](#-project-layout)
-- [Setup](#-setup)
-- [Environment Variables](#-environment-variables)
-- [API Surface](#-api-surface)
-- [Known Limitations / Open Items](#️-known-limitations--open-items)
-- [What This Project Demonstrates](#-what-this-project-demonstrates)
+- [✨ Key Capabilities](#-key-capabilities)
+- [🏗️ System Architecture](#️-system-architecture)
+- [🧠 Adaptive Intent Routing & Modular Pipeline](#-adaptive-intent-routing--modular-pipeline)
+- [🔄 Multi-Agent Sequential Workflows](#-multi-agent-sequential-workflows)
+- [🛡️ Human-in-the-Loop (HITL) Safety & Approval](#️-human-in-the-loop-hitl-safety--approval)
+- [🔁 Resilient Multi-Provider LLM Orchestration](#-resilient-multi-provider-llm-orchestration)
+- [📊 Observability & Token Intelligence HUD](#-observability--token-intelligence-hud)
+- [🔐 Authentication & Zero-Knowledge Credential Recovery](#-authentication--zero-knowledge-credential-recovery)
+- [🔌 Integrations & MCP Client Service](#-integrations--mcp-client-service)
+- [💬 Slack Identity Resolution Cache](#-slack-identity-resolution-cache)
+- [📡 Real-Time SSE Streaming](#-real-time-sse-streaming)
+- [📁 Project Layout](#-project-layout)
+- [🚀 Quickstart & Setup](#-quickstart--setup)
+- [🔧 Environment Configuration](#-environment-configuration)
+- [🔌 API Surface](#-api-surface)
+- [⚠️ Known Considerations](#️-known-considerations)
 
 ---
 
-## ✨ Features
-
-[#-features](#-features)
+## ✨ Key Capabilities
 
 ### 🧭 Intent-Scoped Tool Routing
+- Classifies requests into one of 21 granular intents across 6 domains (`email`, `calendar`, `docs`, `sheets`, `slack`, `research`).
+- Dynamically derives exact MCP tool allowlists per turn. If a user only needs to search emails, send/delete tools are completely excluded from the model context.
+- Users only ever access tools for integrations they have actively connected and authenticated.
 
-[#-intent-scoped-tool-routing](#-intent-scoped-tool-routing)
+### 🔄 Multi-Agent Workflow Decomposition
+- Detects compound multi-domain requests (e.g. *"Check my calendar for tomorrow and email my availability to omer@example.com"*).
+- Decomposes requests into a structured multi-step execution plan across distinct domain agents (`calendar` ➔ `email`), maintaining intermediate context and advancing state seamlessly.
 
-- Classifies the user's request into one of 21 fine-grained intents across six domains (email, calendar, docs, sheets, slack, research) before any tool is bound to the model.
-- Only the exact MCP tools needed for that intent are exposed — never the full domain's tool list, and never another domain's tools.
-- A user only ever sees tools for services they've actually connected and enabled.
+### 🛡️ Interactive Human-in-the-Loop Approval
+- State-altering operations (sending emails, scheduling meetings, updating spreadsheets, posting Slack messages) trigger a durable graph interrupt.
+- Renders rich, interactive approval cards in the UI allowing users to:
+  - **Approve & Execute** with verified parameters.
+  - **Edit parameters in-place** before executing (e.g. modifying meeting times or email recipients).
+  - **Provide natural language revision instructions** to steer the agent.
+  - **Cancel** safely with zero state mutations.
 
-### ✅ Human-in-the-Loop Approval
+### ⚡ Zero-Cost Reference Resolution
+- Rule-based anaphora detector identifies whether a query relies on prior conversational turns (`"it"`, `"that"`, `"send it to him"`).
+- Standalone queries bypass the query-rewriting LLM call entirely, conserving tokens and cutting latency in half.
 
-[#-human-in-the-loop-approval-1](#-human-in-the-loop-approval-1)
-
-- Every state-changing action (send email, post to Slack, edit a doc/sheet, create a calendar event) pauses the graph and waits for explicit human approval before executing.
-- Read-only actions (search, get, list) execute immediately, no approval needed.
-- Approval state is checkpointed to Postgres, so a pause survives across the request/response boundary.
-
-### 🔁 Multi-Provider LLM with Fallback
-
-[#-multi-provider-llm-with-fallback](#-multi-provider-llm-with-fallback)
-
-- Primary model: Groq (`gpt-oss-120b`). Automatic fallback to Google Gemini (`gemini-2.5-flash`) if the primary call fails mid-run.
-- Tools are bound to both providers up front, so a fallback doesn't mean losing tool access.
-
-### 🔐 Credential-Based Account Recovery
-
-[#-credential-based-account-recovery](#-credential-based-account-recovery)
-
-- No emailed/SMS'd OTP for password recovery — a single high-entropy recovery credential, downloaded once at registration, rotates every time it's used.
-- JWT-based auth throughout, with proactive token refresh on the frontend.
-
-### 📡 Real-Time Streaming
-
-[#-real-time-streaming](#-real-time-streaming)
-
-- The entire agent run streams over Server-Sent Events: live status updates ("Working with email…"), token-by-token model output, approval prompts, and the final result — all in one connection.
+### 📊 Comprehensive Observability HUD
+- Real-time token tracking (prompt tokens, output tokens, cached tokens, latency per call) persisted per turn in PostgreSQL.
+- Interactive Session Intelligence HUD with compact/expanded modes, step breakdowns, and turn navigation.
 
 ---
 
-## 🧠 Why Two LLM Calls Per Turn
-
-[#-why-two-llm-calls-per-turn](#-why-two-llm-calls-per-turn)
-
-A single-shot classifier can't resolve conversational context. Given:
+## 🏗️ System Architecture
 
 ```
-human: what's the weather today?
-agent: <weather answer>
-human: okay send it to arsalan and tell i...
+                               ┌───────────────────────────┐
+                               │       User Request        │
+                               └─────────────┬─────────────┘
+                                             │
+                                             ▼
+                             ┌───────────────────────────────┐
+                             │     Adaptive Preprocessing    │
+                             │  (Reference & Typo Detection) │
+                             └───────────────┬───────────────┘
+                                             │
+                       ┌─────────────────────┴─────────────────────┐
+                       │                                           │
+         [Compound / Contextual]                             [Standalone]
+                       ▼                                           ▼
+         ┌───────────────────────────┐               ┌───────────────────────────┐
+         │     Call #1: Planner      │               │     TF-IDF + Naive Bayes  │
+         │ (Sequential Workflow Plan)│               │    (Direct Fast Classifier)│
+         └─────────────┬─────────────┘               └─────────────┬─────────────┘
+                       │                                           │
+                       └─────────────────────┬─────────────────────┘
+                                             │
+                                             ▼
+                             ┌───────────────────────────────┐
+                             │       Supervisor Router       │
+                             │   (Domain & Tool Scoping)     │
+                             └───────────────┬───────────────┘
+                                             │
+                                             ▼
+                             ┌───────────────────────────────┐
+                             │   Domain Agent (Call #2)      │
+                             │ (Scoped strictly to exact MCP)│
+                             └───────────────┬───────────────┘
+                                             │
+                    ┌────────────────────────┴────────────────────────┐
+                    │                                                 │
+          [Read-Only Action]                                [Mutating Action]
+                    ▼                                                 ▼
+      ┌───────────────────────────┐                     ┌───────────────────────────┐
+      │   Execute Tool Directly   │                     │   HITL Approval Interrupt │
+      └─────────────┬─────────────┘                     │    (Durable PG Checkpoint)│
+                    │                                   └─────────────┬─────────────┘
+                    │                                                 │
+                    │                                          [User Decision]
+                    │                                                 │
+                    │                           ┌─────────────────────┴─────────────────────┐
+                    │                           │                                           │
+                    │                      [Approved]                                  [Cancelled]
+                    │                           ▼                                           ▼
+                    │               ┌───────────────────────┐                   ┌───────────────────────┐
+                    │               │  Execute Gated Tool   │                   │  Abort / Revert Plan  │
+                    │               └───────────┬───────────┘                   └───────────┬───────────┘
+                    │                           │                                           │
+                    └───────────────────────────┼───────────────────────────────────────────┘
+                                                │
+                                                ▼
+                                    ┌───────────────────────┐
+                                    │  More steps in plan?  │
+                                    └───────────┬───────────┘
+                                                │
+                                    ┌───────────┴───────────┐
+                                    │                       │
+                                  [Yes]                    [No]
+                                    ▼                       ▼
+                         ┌─────────────────────┐    ┌───────────────┐
+                         │ advance_plan node   │    │  Stream END   │
+                         │ (Next Domain Agent) │    └───────────────┘
+                         └─────────────────────┘
 ```
 
-A bag-of-words classifier looking only at the last message has no way to know "it" refers to the weather answer, or that "send to arsalan" means Slack rather than email.
+The execution loop runs asynchronously under ASGI and streams real-time updates over Server-Sent Events (SSE) via `agent/runner.py:run_agent`.
 
-So the first LLM call rewrites the message into a self-contained instruction before classification ever happens:
+---
+
+## 🧠 Adaptive Intent Routing & Modular Pipeline
+
+`route_intent()` in [`agent/routing/intent_router.py`](agent/routing/intent_router.py) is architected as a clean, single-responsibility pipeline:
 
 ```
-Raw:      "okay send it to arsalan and tell i..."
-Rewritten: "Inform Arsalan on Slack about the weather
-            forecast and that I will be working remotely."
+route_intent()
+│
+├── resolve_active_plan()            ── Check if an active workflow has pending steps
+├── preprocess_query()               ── Normalize messages, clean envelopes, isolate directives
+├── determine_routing_strategy()     ── Evaluate multi-turn references, ambiguity & compound indicators
+├── rewrite_or_plan()                ── Optional Call #1: Decompose compound tasks or resolve pronouns
+├── classify_intent()                ── Scikit-Learn TF-IDF + MultinomialNB vectorizer
+└── validate_prediction()            ── Confidence & margin thresholds against connected integrations
 ```
 
-Only *then* does the TF-IDF/Naive Bayes classifier predict intent — keeping its input clean, and keeping the tool-calling LLM call scoped to a handful of tools instead of the full catalog across five+ MCP servers.
+### Intent to MCP Tool Matrix
+
+| Domain | Intent | Selected MCP Tools |
+|---|---|---|
+| **`email`** | `email.search` | `search_gmail_messages`, `get_gmail_message_content`, `get_gmail_thread_content`, `send_gmail_message` |
+| | `email.read` | `get_gmail_message_content`, `get_gmail_thread_content`, `search_gmail_messages`, `send_gmail_message` |
+| | `email.send` | `send_gmail_message` |
+| | `email.draft` | `draft_gmail_message` |
+| | `email.forward` | `send_gmail_message` |
+| **`calendar`**| `calendar.create` | `manage_event` |
+| | `calendar.search` | `get_events`, `manage_event` |
+| | `calendar.update` | `manage_event`, `get_events` |
+| | `calendar.delete` | `manage_event`, `get_events` |
+| | `calendar.availability`| `query_freebusy`, `get_events` |
+| **`docs`** | `docs.read` / `docs.summarize` | `get_doc_content`, `get_doc_as_markdown` |
+| | `docs.create` | `create_doc` |
+| | `docs.update` | `modify_doc_text`, `find_and_replace_doc`, `batch_update_doc` |
+| **`sheets`** | `sheets.read` | `read_sheet_values`, `get_spreadsheet_info` |
+| | `sheets.write` / `sheets.update` | `modify_sheet_values`, `append_table_rows` |
+| **`slack`** | `slack.send` | `slack_send_message`, `slack_create_canvas`, `slack_update_canvas`, `resolve_slack_id` |
+| | `slack.draft` | `slack_send_message_draft`, `resolve_slack_id` |
+| | `slack.search` | `slack_search_public_and_private`, `slack_search_channels`, `slack_search_users`, `slack_read_user_profile` |
+| | `slack.history` | `slack_read_channel`, `slack_read_thread`, `slack_read_canvas`, `slack_read_file`, `slack_get_reactions` |
+| **`research`**| `research.search` | `tavily_search` |
 
 ---
 
-## ⚡ Latest Update: Metrics, Auto-Naming & Routing Efficiency
+## 🔄 Multi-Agent Sequential Workflows
 
-[#-latest-update-metrics-auto-naming--routing-efficiency](#-latest-update-metrics-auto-naming--routing-efficiency)
+When a user provides a complex or compound instruction, the agent automatically organizes it into a sequential plan.
 
-> Merged via PR #2, `feat/agent-metrics-and-ui-improvements` — a comprehensive upgrade covering token metrics, thread auto-naming, routing efficiency, and UI/DB stability fixes.
+**Example Turn:**
+> *"Check my calendar for tomorrow and email my availability to omer@example.com"*
 
-### 🧠 Zero-Cost Reference Detection
-
-[#-zero-cost-reference-detection](#-zero-cost-reference-detection)
-
-`agent/routing/reference_detector.py` is a new rule-based (no-LLM) gate in front of the query-rewrite call. It decides whether a message depends on prior conversational context — and therefore needs the rewrite LLM call — using two checks:
-
-- **Pronoun/anaphora regex** — `it, that, this, them, those, these, him, her, his, their, the same, previous, prior, earlier, above, again, instead, also, too, latter, former`.
-- **Short action-trigger check** — a message of 4 words or fewer containing a bare trigger word (`yes, send, email, share, post, cancel, confirm, reply, forward`) is treated as context-dependent even without an explicit pronoun (e.g. "yes, send it").
-
-```python
-def has_conversational_reference(text: str) -> bool:
-    cleaned = text.strip().lower()
-    words = cleaned.split()
-    if len(words) <= 4 and any(t in words for t in SHORT_ACTION_TRIGGERS):
-        return True
-    return bool(REFERENCE_PATTERN.search(cleaned))
-```
-
-If this returns `False`, the query-rewrite LLM call is skipped entirely and the message goes straight to intent classification — on *any* turn, not just the first message of a thread.
-
-### 📛 Multi-Tier Thread Auto-Naming
-
-[#-multi-tier-thread-auto-naming](#-multi-tier-thread-auto-naming)
-
-The previous dedicated "thread naming" graph node has been **removed** — `agent/graph/nodes.py` now routes straight to `END` instead. In its place:
-
-- `agent/llm/titles.py` appends a `THREAD_NAMING_RULE` instruction to a new thread's first prompt, asking the model to end its own reply with an inline `<suggested_title>...</suggested_title>` tag.
-- `StreamTitleFilter` (also in `titles.py`) strips that tag out of the token stream in real time — the user never sees the raw markup — while capturing the extracted title for the frontend.
-- If the model doesn't produce a usable tag, naming falls back through a fast, cheap LLM call, and finally to a heuristic (non-LLM) title derivation — so a thread always gets named without ever *requiring* an extra full-cost LLM round-trip.
-- A new `PATCH /api/thread/<id>/rename/` endpoint lets a user manually rename a thread, with inline-edit UI in the sidebar.
-
-Net effect: no separate LLM call dedicated purely to naming in the common case — the title rides along on the same response that's already being generated and streamed.
-
-### 📊 Modular Metrics Architecture
-
-[#-modular-metrics-architecture](#-modular-metrics-architecture)
-
-Token/latency tracking was extracted into its own package, `agent/metrics/`:
-
-- **`agent/metrics/collector.py`** — `extract_call_metrics()` reads each provider's real `usage_metadata` when available (input/output/cached tokens, model name), falling back to a character-based heuristic (`len(text) // 4`) when a provider doesn't return usage data. `aggregate_turn_metrics()` rolls per-call metrics up into one turn-level summary.
-- **`agent/metrics/types.py`** — typed `CallMetrics` / `TurnMetrics` structures plus context-window constants.
-- Metrics are persisted to the database per message (`conversations/migrations/0004_message_metrics.py` adds a `metrics` field to `Message`), not just held in memory for the current SSE stream — so historical turns retain their own token/latency data.
-
-### 🖥️ Session Intelligence HUD
-
-[#-session-intelligence-hud](#-session-intelligence-hud)
-
-The header's token pill was rebuilt into an interactive HUD rather than a static badge:
-
-- Compact and expanded view modes.
-- Per-turn navigation and a step-by-step breakdown (see each call in a turn individually, not just the turn total).
-- Theme-aware styling and dynamic viewport placement so the popover doesn't get clipped or overflow on smaller screens.
-
-### 🎯 Routing & Dataset Improvements
-
-[#-routing--dataset-improvements](#-routing--dataset-improvements)
-
-- `intent_data.CSV` diversity expanded, with **domain-aware candidate re-normalization** added to `intent_router.py` — candidate intent probabilities are re-weighted relative to the domains actually available to the user, rather than only using the raw top-2 confidence/margin check.
-- Duplicate/near-duplicate rows in the general-intent dataset were cleaned up.
-
-### 🧪 Test Coverage Added This Update
-
-[#-test-coverage-added-this-update](#-test-coverage-added-this-update)
-
-This update shipped alongside real new test coverage, not just features:
-
-| File | New tests |
-|---|---|
-| `agent/tests.py` *(new)* | Reference-detector envelope stripping, standalone-vs-reference routing behavior, metrics extraction structure, turn-metrics aggregation |
-| `conversations/tests.py` | Message creation with/without metrics, metrics field in serializer output, cross-user thread isolation, unauthenticated-request rejection, thread creation/listing API |
-| `accounts/tests.py` | Recovery-OTP formatting/normalization, hash/verify round-trip, legacy-fallback verification, secure password generation |
-
-This directly closes part of the coverage gap called out below — cross-user thread isolation and metrics-on-serializer behavior are now explicitly tested, which they weren't before.
+1. **Detection:** `is_compound_multi_domain()` identifies references to both `calendar` and `email`.
+2. **Decomposition:** Planner generates a structured execution queue:
+   - **Step 1 (`calendar`):** Inspect tomorrow's events and determine open slots via `get_events` / `query_freebusy`.
+   - **Step 2 (`email`):** Format availability and dispatch the email to `omer@example.com`.
+3. **Execution:** The `calendar_agent` runs first. Upon completing its retrieval, the graph transitions to `advance_plan`, records the availability summary, and transitions to the `email_agent`.
+4. **Safety:** The second step (sending the email) routes to human approval before dispatching.
 
 ---
 
-## 🏗️ Architecture
+## 🛡️ Human-in-the-Loop (HITL) Safety & Approval
 
-[#️-architecture](#️-architecture)
+Every state-mutating action pauses execution via a LangGraph interrupt and checkpoints conversation state to PostgreSQL.
 
-```
-User message
-   │
-   ▼
-NLP node ── LLM call: query rewrite / reference resolution
-   │           (skipped on standalone turns — see optimization above)
-   ▼
-Naive Bayes intent classifier (TF-IDF + MultinomialNB)
-   │           21 fine-grained intents across 6 domains
-   ▼
-Supervisor router
-   │           maps intent → domain-scoped subgraph, or falls back
-   │           to a general agent if the domain isn't enabled
-   ▼
-Domain agent ── LLM call: tool-calling, streamed token-by-token
-   │           only the exact MCP tools for this intent are bound
-   ▼
-Tool call?
-   ├─ no  → thread naming (inline) → END
-   ├─ yes, read-only        → execute → back to domain agent
-   └─ yes, write/send action → approval (interrupt) → human
-        approves/rejects → execute (or run is cancelled)
-```
-
-The entire run streams over one Server-Sent Events connection — `agent/runner.py: run_agent` is an async generator yielding `status`, `token`, `approval_required`, `completed`, and `error` events as the graph executes.
+### Interactive Approval Features
+- **Zero Default Spinners:** Clean button states with immediate visual feedback (`Approving…`, `Cancelling…`, `Revising…`) and animated progress track bars.
+- **In-Place Field Editing:** Expand the edit drawer on any approval card to alter action parameters directly (e.g. adjust start times, change subject line, edit message text) before approval.
+- **Revision Steering:** Type a conversational revision instruction (e.g. *"Make it 30 minutes earlier"* or *"Add Omer as an attendee"*), and the agent updates the proposed action while maintaining context.
 
 ---
 
-## 🔐 Authentication & Account Recovery
+## 🔁 Resilient Multi-Provider LLM Orchestration
 
-[#-authentication--account-recovery](#-authentication--account-recovery)
-
-Login is JWT-based. Password recovery does **not** use an emailed/SMS'd code — it's a single, static, high-entropy recovery credential (e.g. `PO-8F2K-M3NP-X94W`) the user downloads once and keeps safe.
-
-| Flow | What happens |
-|---|---|
-| **Registration** | Generates + hashes a recovery credential; returns it once, in the response, never stored in plaintext again |
-| **Forgot password** | 3-step wizard: verify email → verify credential → set new password + rotate to a new credential |
-| **In-app password change** | Accepts current password *or* a valid recovery credential; rotates the credential if the credential was used |
-| **Manual rotation** | Signed-in users can rotate their credential on demand, invalidating the old one |
-
-Tokens are encrypted at rest via `EncryptedTextField`.
+Configured in [`agent/llm/client.py`](agent/llm/client.py) with cross-provider fallbacks:
+- **Primary Frontier Model:** Groq (`openai/gpt-oss-120b`) for rapid tool orchestration and agent reasoning.
+- **Resilient Fallback:** Google Gemini (`gemini-2.5-flash`) seamlessly catches mid-run failures, rate limits, or network disconnections.
+- **Pre-bound Tools:** MCP tools are bound to both provider interfaces upfront, ensuring zero capability degradation during failover.
 
 ---
 
-## 🔌 Integrations & MCP Clients
+## 📊 Observability & Token Intelligence HUD
 
-[#-integrations--mcp-clients](#-integrations--mcp-clients)
-
-`MCPIntegration` is the source of truth for what a user can use — one row per `(user, service)`, storing OAuth tokens, scopes, and an `enabled` flag. Nothing downstream loads a tool for a service the user hasn't connected.
-
-- Google-backed tokens (Gmail, Calendar, Docs, Sheets) auto-refresh 2 minutes before expiry.
-- Slack tokens are validated via `auth.test` before use; a dead token disables the integration rather than failing mid-conversation.
-- Each Google Workspace product is its own MCP server; a vendored `google_workspace_mcp/` server runs separately and is reached over HTTP, not imported directly.
-
-**Tool discovery** is a two-step reduction: fetch only the user's enabled integrations' tools (concurrently), then bucket them by *domain* — so a user is never handed a large, mixed-domain tool list.
+Full observability without performance overhead:
+- **Real-Time Token Tracking:** Computes prompt, completion, cached token counts, and millisecond latency across both Call #1 and Call #2.
+- **Database Persistence:** Metrics are serialized and saved with each message record, enabling historical analysis across threads.
+- **Interactive UI HUD:** Real-time token counter in the navigation bar with expandable turn-by-turn breakdowns.
 
 ---
 
-## 🎯 Intent Routing
+## 🔐 Authentication & Zero-Knowledge Credential Recovery
 
-[#-intent-routing](#-intent-routing)
-
-A `TfidfVectorizer` + `MultinomialNB` pipeline predicts one of 21 intents across 6 domains, restricted to domains the user has actually enabled. Each prediction carries a **confidence** and **margin** score against fixed thresholds — low-confidence or ambiguous predictions fall back to a plain, tool-less general agent rather than guessing.
-
-Each intent maps to an **exact** allow-list of MCP tool names — e.g. `slack.send` can call the send/schedule/draft/reaction tools plus the Slack ID resolver, but never message-history tools.
-
----
-
-## 💬 Slack ID Resolution
-
-[#-slack-id-resolution](#-slack-id-resolution)
-
-Slack's write tools need a channel/user **ID**, not a name — but people say "#dev-learning" or "@alice." Resolution is cached:
-
-```
-"#dev-learning"
-     │
-     ▼
-Check SlackResource cache (per-user)
-     │
-     ├─ hit  → return cached ID
-     │
-     └─ miss → query Slack Web API → cache result → return ID
-```
-
-A given name is looked up against Slack at most once per user; every repeat send after that skips the API entirely.
+- **JWT Authentication:** Secure stateless access with automated proactive token refresh.
+- **Zero-Knowledge Recovery Key:** Avoids vulnerable SMS/Email OTPs. Users receive a high-entropy recovery credential (`PO-XXXX-XXXX-XXXX`) at registration.
+- **Cryptographic Rotation:** Using the recovery key automatically invalidates the old credential and issues a freshly hashed key.
+- **Encrypted Token Store:** OAuth access and refresh tokens are encrypted at rest using `django-cryptography` (`EncryptedTextField`).
 
 ---
 
-## 🕸️ LangGraph Flow
+## 🔌 Integrations & MCP Client Service
 
-[#-langgraph-flow](#-langgraph-flow)
-
-- Each domain agent re-derives its allowed tool names on every invocation from the current intent — so even inside an already-scoped subgraph, the model only sees tools relevant to *this* specific intent.
-- Conversation state is checkpointed to **Postgres**, which is what lets a human-approval interrupt pause mid-run and resume later against the same thread.
-- LLM calls use Groq with automatic Gemini fallback; tool bindings are set up for both providers up front.
-
----
-
-## 📡 Streaming
-
-[#-streaming](#-streaming)
-
-`run_agent` is an async generator streaming five event types over SSE:
-
-| Event | Purpose |
-|---|---|
-| `status` | Which node is active ("Understanding your request…") |
-| `token` | Streamed model output, chunk by chunk |
-| `approval_required` | A pending tool call, rendered as an approval card |
-| `completed` | Final state + usage metrics (see optimization section above) |
-| `error` | Any exception, including clean handling of client disconnects |
+User integrations are isolated in the `MCPIntegration` model:
+- **Google Workspace (Gmail, Calendar, Docs, Sheets):** Connects to the vendored `google_workspace_mcp/` server via Model Context Protocol (MCP) HTTP transport. Tokens automatically refresh 2 minutes prior to expiration.
+- **Slack:** Validates tokens on startup using `auth.test`.
+- **Tavily:** Built-in web research capability for current events and knowledge retrieval.
 
 ---
 
-## ✅ Human-in-the-Loop Approval
+## 💬 Slack Identity Resolution Cache
 
-[#-human-in-the-loop-approval-2](#-human-in-the-loop-approval-2)
+Slack APIs require opaque channel and user IDs (`C01234567`, `U01234567`) rather than human handles (`#announcements`, `@omer`).
+The `SlackResource` cache provides per-user identity mapping:
+- Checks local database cache for names and handles.
+- Resolves cache misses through Slack Web API and stores the mapping.
+- Subsequent references execute with zero external API calls.
 
-Gated actions (send/draft email, calendar mutations, Docs/Sheets writes, Slack send/draft/canvas) route to a shared approval node that interrupts the graph and surfaces the pending action. On resume, the action either executes or is replaced with a rejection notice — read-only actions never gate.
+---
+
+## 📡 Real-Time SSE Streaming
+
+The `POST /api/chat/` and `POST /api/thread/<id>/chat/` endpoints stream Server-Sent Events:
+
+| Event Type | Payload Data | Description |
+|---|---|---|
+| `status` | `{ "step": "...", "label": "..." }` | Current processing state ("Consulting Calendar…") |
+| `token` | `{ "token": "..." }` | Real-time token-by-token response streaming |
+| `approval_required` | `{ "thread_id": 96, "interrupt": { ... } }` | Render interactive approval card for mutating action |
+| `thread_name` | `{ "thread_name": "Project Discussion" }` | Real-time thread title derivation |
+| `completed` | `{ "result": { ... }, "metrics": { ... } }` | Final response state and turn metrics summary |
+| `error` | `{ "message": "..." }` | Structured error messages with graceful disconnect handling |
 
 ---
 
 ## 📁 Project Layout
 
-[#-project-layout](#-project-layout)
-
 ```
-accounts/         Custom User model + recovery-credential utilities
-agent/
-  graph/          LangGraph state, nodes, builder, approval logic
-  integrations/   OAuth connect/callback/disconnect, token refresh
-  llm/            LLM clients (Groq + Gemini fallback), prompts
-  models.py       MCPIntegration (per-user OAuth per service)
-  routing/        Query rewriter + TF-IDF/NaiveBayes classifier
-  status.py       Node → status-message map for the SSE stream
-  tools/          Domain registry, tool discovery/grouping
-  runner.py       Async-generator entry point for streaming
-config/           Django settings, ASGI/WSGI, URLconf
-conversations/    Thread / Message / Approval models + APIs
-core/             Auth views, chat + approval endpoints, tests
-frontend/         Server-rendered dashboard/settings/login UI
-google_workspace_mcp/  Vendored Google Workspace MCP server
-mcp_clients/      Per-service MCP server configs
-scripts/          Ad-hoc NLP router testing
+Agentic-Assistant/
+├── accounts/                  # Custom User model & recovery credential security
+├── agent/
+│   ├── graph/                 # LangGraph state, nodes, approval logic, and builders
+│   ├── integrations/          # OAuth flows, token validation & refresh
+│   ├── llm/                   # Multi-provider clients, fallbacks, prompts & titles
+│   ├── metrics/               # Turn & call metric aggregators and token calculators
+│   ├── routing/               # Intent router, reference detector & query generator
+│   ├── tools/                 # MCP grouping, Slack resolver & tool discovery
+│   ├── models.py              # Per-user MCPIntegration schema
+│   ├── runner.py              # Streaming execution orchestrator (ASGI SSE)
+│   └── status.py              # Node-to-status messaging map
+├── config/                    # Django core, ASGI application & URL routing
+├── conversations/             # Thread, Message, and Approval models & REST APIs
+├── core/                      # Authentication endpoints, chat serializers, views
+├── frontend/                  # Modern server-rendered dashboard, templates & assets
+│   ├── static/frontend/       # Vanilla CSS design system & client-side app logic
+│   └── templates/frontend/    # Dashboard, auth, settings & integration UI
+└── google_workspace_mcp/      # Vendored Google Workspace MCP server
 ```
 
 ---
 
-## 🚀 Setup
+## 🚀 Quickstart & Setup
 
-[#-setup](#-setup)
+### Prerequisites
+- Python 3.10+
+- PostgreSQL database instance
+- Google Cloud Console & Slack App credentials
 
-The project targets **async execution** (LangGraph + Postgres checkpointer + SSE), so it runs under ASGI rather than the plain Django dev server.
-
+### 1. Environment Setup
 ```bash
-python -m venv .venv
-source .venv/bin/activate        # .venv\Scripts\activate on Windows
+git clone https://github.com/omerfarooque-clentro/Agentic-Assistant.git
+cd Agentic-Assistant
+
+python -m venv my_env
+source my_env/bin/activate  # On Windows: my_env\Scripts\activate
+
 pip install -r requirements.txt
-
-# Postgres must be reachable — the checkpointer depends on it.
-python manage.py migrate
-
-python -m uvicorn config.asgi:application --reload
 ```
 
-Gmail/Calendar/Docs/Sheets tools also require the vendored MCP server in `google_workspace_mcp/` running separately and reachable at the URLs below (default `http://127.0.0.1:8001/mcp`).
+### 2. Database Migration
+```bash
+# Ensure PostgreSQL is running and credentials match .env
+python manage.py migrate
+```
+
+### 3. Run Development Server
+```bash
+python -m uvicorn config.asgi:application --reload --port 8000
+```
 
 ---
 
-## 🔧 Environment Variables
+## 🔧 Environment Configuration
 
-[#-environment-variables](#-environment-variables)
+Create a `.env` file in the project root:
 
 ```env
-# Postgres (checkpointer + Django DB)
-DB_USER
-DB_PASSWORD
+# Database Configuration
+DB_NAME=agentic_assistant
+DB_USER=postgres
+DB_PASSWORD=your_postgres_password
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME
 
-# LLM providers
-GROQ_API_KEY
-GOOGLE_API_KEY
+# Security & Secrets
+DJANGO_SECRET_KEY=your_django_secret_key
+DJANGO_DEBUG=True
+FIELD_ENCRYPTION_KEY=your_32_byte_base64_encryption_key
 
-# Google OAuth
-GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET
-GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:8000/api/integrations/google/callback/
+# LLM Providers
+GROQ_API_KEY=gsk_...
+GOOGLE_API_KEY=AIzaSy...
 
-# Slack OAuth
-SLACK_CLIENT_ID
-SLACK_CLIENT_SECRET
-SLACK_OAUTH_REDIRECT_URI=http://127.0.0.1:8000/api/integrations/slack/callback/
+# Google OAuth (Gmail, Calendar, Docs, Sheets)
+GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_google_client_secret
 
-# MCP server endpoints
-GMAIL_MCP_URL
-CALENDAR_MCP_URL
-DOCS_MCP_URL
-SHEETS_MCP_URL
-SLACK_MCP_URL
-TAVILY_MCP_URL
-TAVILY_API_KEY
+# Slack App Integration
+SLACK_CLIENT_ID=your_slack_client_id
+SLACK_CLIENT_SECRET=your_slack_client_secret
+
+# Research & External APIs
+TAVILY_API_KEY=tvly-...
+
+# MCP Endpoints (Local or Remote)
+GMAIL_MCP_URL=http://127.0.0.1:8001/mcp
+CALENDAR_MCP_URL=http://127.0.0.1:8001/mcp
+DOCS_MCP_URL=http://127.0.0.1:8001/mcp
+SHEETS_MCP_URL=http://127.0.0.1:8001/mcp
 ```
 
 ---
 
 ## 🔌 API Surface
 
-[#-api-surface](#-api-surface)
+### Authentication & Account Security
+- `POST /login/` — Authenticate and issue JWT tokens.
+- `POST /registration/` — Create account and issue one-time recovery credential.
+- `POST /api/token/refresh/` — Proactively rotate expired access tokens.
+- `POST /forgot-password/` — Validate user identity for password reset.
+- `POST /verify-otp/` — Verify recovery credential.
+- `POST /reset-password-api/` — Set new password and rotate recovery credential.
+- `POST /otp-generate/` — Manually generate a fresh recovery key.
 
-```
-# Auth
-POST /login/
-POST /registration/
-POST /api/token/refresh/
+### Conversations & Messages
+- `GET /api/list_thread/` — Retrieve user threads with last message preview.
+- `GET /api/thread/<id>/messages/` — Fetch message history with turn metrics.
+- `PATCH /api/thread/<id>/rename/` — Inline thread title rename.
+- `DELETE /api/thread/<id>/delete/` — Delete thread and associated checkpoints.
 
-# Password recovery / change
-POST /forgot-password/          # check email exists
-POST /verify-otp/               # check recovery credential
-POST /reset-password-api/       # set new password, rotate credential
-POST /otp-generate/             # manually rotate credential
-POST /change-password/          # in-app change
+### Agent Streaming & Tool Approvals
+- `POST /api/chat/` — Initialize new conversation with live SSE stream.
+- `POST /api/thread/<id>/chat/` — Stream turn execution on existing thread.
+- `POST /api/thread/<id>/tool-approval/` — Submit approval, parameter edits, or rejection.
 
-# Threads & messages
-GET    /api/list_thread/
-GET    /api/thread/<thread_id>/messages/
-DELETE /api/thread/<thread_id>/delete/
-
-# Agent (SSE: status / token / approval_required / completed / error)
-POST /api/chat/
-POST /api/thread/<thread_id>/chat/
-POST /api/thread/<thread_id>/tool-approval/
-
-# Connected accounts
-GET  /api/integrations/status/
-GET  /api/integrations/<service>/connect/
-GET  /api/integrations/<service>/callback/
-POST /api/integrations/<service>/disconnect/
-```
+### Integrations
+- `GET /api/integrations/status/` — List connection status of all services.
+- `GET /api/integrations/<service>/connect/` — Begin OAuth handshake.
+- `GET /api/integrations/<service>/callback/` — Finalize OAuth credentials.
+- `POST /api/integrations/<service>/disconnect/` — Revoke and remove service credentials.
 
 ---
 
-## ⚠️ Known Limitations / Open Items
+## ⚠️ Known Considerations
 
-[#️-known-limitations--open-items](#️-known-limitations--open-items)
-
-- **No cross-domain fan-out.** A single turn can only route to one domain — a request like "check my calendar and email the summary" still has to be handled as separate turns.
-- **Test coverage is improving but still uneven.** Auth, JWT, routing-logic, reference-detector behavior, metrics extraction/aggregation, and thread/message isolation are now covered (see [Test Coverage Added This Update](#-test-coverage-added-this-update)). Still uncovered: async chat streaming end-to-end, token refresh, OAuth provider callbacks, approval resume, and the in-app password-change/OTP-rotation endpoints.
-- **Heuristic token estimation is a fallback, not the primary source.** `agent/metrics/collector.py` reads real provider `usage_metadata` when available, but falls back to a `len(text) // 4` character-based estimate for providers/responses that don't return usage data — so metrics accuracy varies by provider.
-- **`SlackResource` cache has no invalidation.** A renamed/deleted Slack channel or departed user still returns a stale cached ID until a lookup fails.
-- **Duplicate-approval tracking is in-process.** It's a plain Python set — doesn't persist across restarts or scale across multiple workers.
-- **`google_workspace_mcp/` is vendored, not pinned.** It's a full in-tree copy of a third-party project rather than a package dependency.
-- **Routing quality is dataset-bound.** The intent classifier is only as good as `intent_data.CSV` — expanding coverage and resolving near-duplicate phrasing across intents is the main lever for reducing ambiguous/unavailable fallbacks.
-
----
-
-## 📌 What This Project Demonstrates
-
-[#-what-this-project-demonstrates](#-what-this-project-demonstrates)
-
-```
-Django + LangGraph
-        │
-        ├── Intent classification (TF-IDF + NaiveBayes)
-        ├── Domain-scoped tool binding
-        ├── Multi-provider LLM w/ fallback
-        ├── Postgres-backed durable checkpointing
-        ├── Human-in-the-loop approval gates
-        ├── Real-time SSE streaming
-        └── Token/latency-aware optimization + observability
-```
-
-This project focuses on more than wiring up an LLM API call — it's an end-to-end agent system where **routing, tool safety, approval workflows, streaming, and cost-awareness work together**, not as separate bolted-on features.
+- **MCP Server Separation:** Google Workspace tools run through the vendored `google_workspace_mcp/` server reachable via HTTP MCP transport.
+- **In-Memory Duplicate Approval Cache:** Action duplicate tracking uses in-memory sets during a single runtime lifecycle.
+- **Slack ID Resolution:** Names mapped to IDs are cached in PostgreSQL; channel renames should be manually cleared if IDs become invalid.
