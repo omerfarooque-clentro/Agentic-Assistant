@@ -32,7 +32,7 @@ if len(SECRET_KEY.encode()) < 32:
 
 FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "YOUR_GENERATED_BASE64_KEY_HERE").encode()
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DJANGO_DEBUG", "False").strip().lower() in ("true", "1", "t", "yes","y")
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 

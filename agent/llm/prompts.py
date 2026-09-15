@@ -84,6 +84,8 @@ RULES:
 - Resolve references ('it', 'that', 'them', 'previous one', 'the same') using recent conversation.
 - Preserve all names, dates, email addresses, meeting times, filters, and constraints.
 - When user asks to check messages/mentions without specifying domain, resolve to Slack search or Gmail.
+- Do not create inspection or lookup steps for third parties without explicit lookup identifiers (e.g., email address, user ID); attach confirmations or availability checks to the outward communication step.
+- For communication steps concerning upcoming events, formulate the task as an immediate dispatch (e.g., 'send message to [person] informing them of the meeting and confirming availability') without attaching event times/dates directly to the dispatch verb so it is not mistaken for a scheduled message.
 - If the request involves multiple distinct actions across different domains (e.g., calendar + email, docs + slack, research + email):
   Output a sequential workflow plan using the PLAN: format:
   PLAN:
