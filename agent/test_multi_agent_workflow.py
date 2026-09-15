@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase, TestCase
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agent.graph.nodes import advance_plan_node, nlp_node, scoped_should_continue
+from agent.graph.nodes import advance_plan_node, agent_node, nlp_node, scoped_should_continue
 from agent.graph.state import AgentState
 from agent.routing.query_generator import ParsedPlanStep, generate_routing_query
 from agent.routing.reference_detector import is_compound_multi_domain
@@ -161,3 +161,55 @@ class MultiAgentGraphProgressionTests(SimpleTestCase):
         self.assertEqual(result["domain"], "email")
         self.assertEqual(result["intent"], "email.send")
         self.assertEqual(result["status"], "confident")
+
+    def test_agent_node_marks_final_plan_step_completed(self):
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = AIMessage(content="Email confirmation sent to omer.farooque@yahoo.com.")
+
+        state: AgentState = {
+            "messages": [HumanMessage(content="send link")],
+            "plan": [
+                {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule meeting", "status": "completed", "result_summary": "Done"},
+                {"id": 2, "domain": "email", "intent": "email.send", "description": "Send link", "status": "in_progress", "result_summary": None},
+            ],
+            "current_step_index": 1,
+            "domain": "email",
+        }
+        output = agent_node(state, mock_llm, domain="email")
+        self.assertIn("plan", output)
+        self.assertEqual(output["plan"][1]["status"], "completed")
+        self.assertIn("Email confirmation sent", output["plan"][1]["result_summary"])
+
+    def test_route_intent_does_not_hijack_when_all_steps_completed(self):
+        plan = [
+            {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule meeting", "status": "completed", "result_summary": "Done"},
+            {"id": 2, "domain": "email", "intent": "email.send", "description": "Send link", "status": "completed", "result_summary": "Sent"},
+        ]
+        # Query is a new search request; should NOT route to email or calendar
+        result = route_intent("search web tell me what's the weather hyderabad pakistan", available_domains={"calendar", "email", "research"}, plan=plan)
+        self.assertEqual(result["domain"], "research")
+        self.assertEqual(result["intent"], "research.search")
+
+    def test_route_intent_overrides_stale_plan_on_explicit_new_domain(self):
+        # Even if a plan step was left in_progress, an explicit command in another domain must not be hijacked
+        stale_plan = [
+            {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule meeting", "status": "completed", "result_summary": "Done"},
+            {"id": 2, "domain": "email", "intent": "email.send", "description": "Send link", "status": "in_progress", "result_summary": None},
+        ]
+        result = route_intent("search web for weather forecast in hyderabad", available_domains={"calendar", "email", "research"}, plan=stale_plan)
+        self.assertEqual(result["domain"], "research")
+        self.assertEqual(result["intent"], "research.search")
+
+    def test_nlp_node_resets_completed_plan_on_fresh_turn(self):
+        state: AgentState = {
+            "messages": [HumanMessage(content="search web for weather in hyderabad")],
+            "plan": [
+                {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule meeting", "status": "completed", "result_summary": "Done"},
+                {"id": 2, "domain": "email", "intent": "email.send", "description": "Send link", "status": "completed", "result_summary": "Sent"},
+            ],
+            "current_step_index": 1,
+        }
+        output = nlp_node(state, available_domains={"calendar", "email", "research"})
+        self.assertEqual(output["domain"], "research")
+        self.assertEqual(output["plan"], [])
+        self.assertEqual(output["current_step_index"], 0)

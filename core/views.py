@@ -459,6 +459,7 @@ async def tool_approval_view(request, thread_id):
     tools = await get_user_tools(user)
     app = create_graph(tools)
    
+    start_time = time.perf_counter()
     result = await app.ainvoke(
         Command(
             resume={
@@ -482,7 +483,7 @@ async def tool_approval_view(request, thread_id):
 
     approval_metrics = aggregate_turn_metrics(
         call_metrics=result.get("call_metrics", []),
-        start_time=time.perf_counter(),
+        start_time=start_time,
         messages=result.get("messages", []),
     )
 

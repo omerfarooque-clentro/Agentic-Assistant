@@ -115,7 +115,7 @@ class TestDomainAndToolDefinitions(unittest.TestCase):
             "calendar.search": {"get_events", "manage_event"},
             "calendar.update": {"manage_event", "get_events"},
             "calendar.delete": {"manage_event", "get_events"},
-            "calendar.availability": {"query_freebusy"},
+            "calendar.availability": {"query_freebusy", "get_events"},
         }
         for intent, expected_tools in calendar_intents.items():
             with self.subTest(intent=intent):
@@ -628,7 +628,7 @@ class TestRouterDecisionLogicAllIntents(unittest.TestCase):
         messages = [MagicMock(content="Hi"), MagicMock(content="Check my calendar for that tomorrow")]
         result = route_intent(messages, available_domains={"calendar"})
 
-        mock_query_gen.assert_called_once_with(messages)
+        mock_query_gen.assert_called_once_with(messages, available_domains={"calendar"})
         self.assertEqual(result["intent"], "calendar.search")
         self.assertEqual(result["status"], "confident")
 

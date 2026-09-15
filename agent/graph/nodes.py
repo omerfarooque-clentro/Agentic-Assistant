@@ -33,9 +33,20 @@ def nlp_node(state: AgentState, available_domains=()) -> dict[str, Any]:
         "routing_status": result["status"],
         "call_metrics": call_metrics,
     }
-    if "plan" in result:
-        output["plan"] = result["plan"]
-        output["current_step_index"] = state.get("current_step_index", 0)
+    if "plan" in result and result["plan"]:
+        has_active = any(
+            isinstance(s, dict) and s.get("status") in ("pending", "in_progress")
+            for s in result["plan"]
+        )
+        if has_active:
+            output["plan"] = result["plan"]
+            output["current_step_index"] = state.get("current_step_index", 0)
+        else:
+            output["plan"] = []
+            output["current_step_index"] = 0
+    else:
+        output["plan"] = []
+        output["current_step_index"] = 0
     return output
 
 
@@ -80,19 +91,41 @@ def agent_node(state: AgentState, llm_with_tools: Any, domain: str = "general") 
     response = llm_with_tools.invoke(messages)
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+    raw_metrics = state.get("call_metrics") or []
+    valid_calls = [m for m in raw_metrics if isinstance(m, dict) and not m.get("__reset__")]
+    call_count = len(valid_calls) + 1
+
     call_metric = extract_call_metrics(
         response=response,
-        step_name=f"{domain.capitalize()} Agent (Call #2)",
+        step_name=f"{domain.capitalize()} Agent (Call #{call_count})",
         latency_ms=elapsed_ms,
         model_name=getattr(llm_with_tools, "model_name", DEFAULT_MODEL),
         prompt_text_or_messages=messages,
     )
 
     updated_messages = state.get("messages", []) + [response]
-    return {
+    output: dict[str, Any] = {
         "messages": updated_messages,
         "call_metrics": [call_metric],
     }
+
+    # If the agent finished its turn without requesting tool execution,
+    # and no further pending steps remain in the plan, mark the in-progress step completed.
+    plan = state.get("plan")
+    if plan:
+        has_tool_calls = bool(getattr(response, "tool_calls", None))
+        has_pending = any(isinstance(s, dict) and s.get("status") == "pending" for s in plan)
+        if not has_tool_calls and not has_pending:
+            updated_plan = [dict(s) for s in plan]
+            for s in updated_plan:
+                if s.get("status") == "in_progress":
+                    s["status"] = "completed"
+                    content = getattr(response, "content", "")
+                    if isinstance(content, str):
+                        s["result_summary"] = content.strip()[:300]
+            output["plan"] = updated_plan
+
+    return output
 
 
 def supervisor_router(state: AgentState) -> str:

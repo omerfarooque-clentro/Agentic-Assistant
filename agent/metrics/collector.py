@@ -131,6 +131,11 @@ def aggregate_turn_metrics(
     total_cached = sum(m.get("cached_tokens", 0) for m in metrics_list)
     total_tokens = total_input + total_output
 
+    # Ensure latency accounts for cumulative call latency across steps/resumptions
+    call_latency_s = round(sum(m.get("latency_ms", 0) for m in metrics_list) / 1000, 2) if metrics_list else 0.0
+    if call_latency_s > 0 and elapsed_s < call_latency_s:
+        elapsed_s = call_latency_s
+
     active_model = (
         metrics_list[-1].get("model", DEFAULT_MODEL)
         if metrics_list
