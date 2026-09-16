@@ -86,6 +86,14 @@ def render_cards(approval, messages, modified_args=None, approved=True, instruct
                 card_domain = DOMAIN_BY_TOOL_NAME.get(getattr(m, "name", ""), "")
                 if card_domain:
                     break
+            if hasattr(m, "tool_calls") and m.tool_calls:
+                for tc in reversed(m.tool_calls):
+                    tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                    card_domain = DOMAIN_BY_TOOL_NAME.get(tc_name, "")
+                    if card_domain:
+                        break
+                if card_domain:
+                    break
     if not card_domain:
         card_domain = "general"
 

@@ -1,9 +1,11 @@
-from django.shortcuts import render
-from rest_framework import generics
-from .models import Thread
+from django.shortcuts import get_object_or_404, render
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
-from .serializer import ThreadSerializer, MessageSerializer
-from django.shortcuts import get_object_or_404
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .models import Thread
+from .serializer import MessageSerializer, ThreadSerializer
 
 class ThreadListView(generics.ListCreateAPIView):
     serializer_class = ThreadSerializer
@@ -36,11 +38,6 @@ class MessageListView(generics.ListCreateAPIView):
             user=self.request.user,
         )
         return thread.messages.order_by("created_at", "id")
-
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
 
 
 class ThreadRenameView(APIView):

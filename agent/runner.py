@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
@@ -118,7 +118,6 @@ async def run_agent(message: str, thread_id: int, user):
 
         # Fallback if assistant finished with empty text content
         if not str(last_content).strip():
-            from langchain_core.messages import AIMessage
             tool_calls = getattr(messages[-1], "tool_calls", None) if messages else None
             if tool_calls:
                 tool_names = ", ".join(t.get("name", "tool") for t in tool_calls)

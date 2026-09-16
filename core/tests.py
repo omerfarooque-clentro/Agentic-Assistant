@@ -10,6 +10,7 @@ from core.views import (
     verify_otp_view,
     reset_password_view,
     format_user_agent_message,
+    render_cards,
 )
 from core.serializers import (
     AgentChatSerializer,
@@ -517,6 +518,356 @@ class ToolApprovalViewTests(TestCase):
         agent_msg = Message.objects.filter(thread=self.thread, role="agent").last()
         self.assertIsNotNone(agent_msg)
         self.assertEqual(agent_msg.content, explanation)
+
+
+class ApprovalCardUnitTests(SimpleTestCase):
+    def test_render_cards_single_approved_extracts_tool_args(self):
+        approval = MagicMock(domain="calendar")
+        messages = [
+            AIMessage(
+                content="Scheduling your interview",
+                tool_calls=[
+                    {
+                        "name": "manage_event",
+                        "args": {"summary": "Technical Interview", "start_time": "2026-09-17T10:00:00Z"},
+                        "id": "call_unit_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        ]
+        card = render_cards(approval=approval, messages=messages, approved=True)
+        self.assertEqual(card["domain"], "calendar")
+        self.assertTrue(card["approved"])
+        self.assertEqual(card["status"], "completed")
+        self.assertEqual(card["heading"], "Calendar action")
+        self.assertEqual(card["args"], {"summary": "Technical Interview", "start_time": "2026-09-17T10:00:00Z"})
+
+    def test_render_cards_single_rejected_cancelled_status(self):
+        approval = MagicMock(domain="calendar")
+        messages = [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "manage_event", "args": {"summary": "Sync"}, "id": "call_unit_2", "type": "tool_call"}],
+            )
+        ]
+        card = render_cards(approval=approval, messages=messages, approved=False, instruction=None)
+        self.assertEqual(card["domain"], "calendar")
+        self.assertFalse(card["approved"])
+        self.assertEqual(card["status"], "cancelled")
+        self.assertEqual(card["heading"], "Calendar action")
+        self.assertEqual(card["args"], {"summary": "Sync"})
+
+    def test_render_cards_single_revised_instruction_status(self):
+        approval = MagicMock(domain="calendar")
+        messages = [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "manage_event", "args": {"summary": "Sync"}, "id": "call_unit_3", "type": "tool_call"}],
+            )
+        ]
+        card = render_cards(approval=approval, messages=messages, approved=False, instruction="Reschedule for 4pm")
+        self.assertEqual(card["domain"], "calendar")
+        self.assertFalse(card["approved"])
+        self.assertEqual(card["status"], "revised")
+        self.assertEqual(card["heading"], "Calendar action")
+        self.assertEqual(card["args"], {"summary": "Sync"})
+
+    def test_render_cards_modified_args_override(self):
+        approval = MagicMock(domain="email")
+        messages = [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "send_email", "args": {"recipient": "old@example.com", "body": "old"}, "id": "call_unit_4", "type": "tool_call"}],
+            )
+        ]
+        modified = {"recipient": "new@example.com", "body": "updated body"}
+        card = render_cards(approval=approval, messages=messages, modified_args=modified, approved=True)
+        self.assertEqual(card["domain"], "email")
+        self.assertEqual(card["args"], modified)
+
+    def test_render_cards_fallback_domain_from_tool_message(self):
+        approval = MagicMock(domain="")
+        messages = [
+            ToolMessage(name="manage_event", content="Event created successfully", tool_call_id="call_123")
+        ]
+        card = render_cards(approval=approval, messages=messages, approved=True)
+        self.assertEqual(card["domain"], "calendar")
+        self.assertEqual(card["heading"], "Calendar action")
+
+    def test_render_cards_fallback_unknown_domain_defaults_to_general(self):
+        approval = MagicMock(domain="")
+        messages = []
+        card = render_cards(approval=approval, messages=messages, approved=True)
+        self.assertEqual(card["domain"], "general")
+        self.assertEqual(card["heading"], "General action")
+
+
+class ApprovalCardPersistenceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="card_user",
+            email="cards@example.com",
+            password="StrongPassword123!"
+        )
+        self.client = APIClient()
+        token = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+        self.thread = Thread.objects.create(user=self.user, name="Multi Agent Thread")
+        self.user_msg = Message.objects.create(thread=self.thread, role="user", content="Schedule meeting and send email")
+
+    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("core.views.get_user_tools", new_callable=AsyncMock)
+    @patch("core.views.create_graph")
+    def test_single_approval_persists_card_record_in_db_and_response(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        """Single approval correctly attaches card_record to Message in DB and is retrievable via messages endpoint."""
+        tool_args = {"summary": "Weekly 1:1", "start_time": "2026-09-17T11:00:00Z"}
+        mock_app = MagicMock()
+        mock_app.ainvoke = AsyncMock(return_value={
+            "messages": [
+                AIMessage(
+                    content="Calendar event booked successfully!",
+                    tool_calls=[{"name": "manage_event", "args": tool_args, "id": "call_p_1", "type": "tool_call"}],
+                )
+            ],
+            "call_metrics": [],
+        })
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_app.aget_state = AsyncMock(return_value=mock_state)
+        mock_create_graph.return_value = mock_app
+
+        response = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": True},
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "completed")
+        self.assertIn("card_record", data)
+        self.assertEqual(data["card_record"]["domain"], "calendar")
+        self.assertEqual(data["card_record"]["status"], "completed")
+        self.assertTrue(data["card_record"]["approved"])
+        self.assertEqual(data["card_record"]["args"], tool_args)
+
+        # Verify database record has cards JSON
+        db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        self.assertIsNotNone(db_msg)
+        self.assertIsInstance(db_msg.cards, list)
+        self.assertEqual(len(db_msg.cards), 1)
+        self.assertEqual(db_msg.cards[0], data["card_record"])
+
+        # Verify GET /api/thread/<id>/messages/ serializes the cards array
+        msg_res = self.client.get(f"/api/thread/{self.thread.id}/messages/")
+        self.assertEqual(msg_res.status_code, 200)
+        msg_list = msg_res.json()
+        agent_msgs = [m for m in msg_list if m["role"] == "agent"]
+        self.assertEqual(len(agent_msgs), 1)
+        self.assertEqual(agent_msgs[0]["cards"], [data["card_record"]])
+
+    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("core.views.get_user_tools", new_callable=AsyncMock)
+    @patch("core.views.create_graph")
+    def test_single_rejection_persists_cancelled_card_in_db(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        """Action cancellation records status='cancelled' in card and persists to Message.cards."""
+        mock_app = MagicMock()
+        mock_app.ainvoke = AsyncMock(return_value={
+            "messages": [
+                AIMessage(
+                    content="Action cancelled.",
+                    tool_calls=[{"name": "manage_event", "args": {"summary": "Cancelled meeting"}, "id": "call_p_2", "type": "tool_call"}],
+                )
+            ],
+            "call_metrics": [],
+        })
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_app.aget_state = AsyncMock(return_value=mock_state)
+        mock_create_graph.return_value = mock_app
+
+        response = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": False},
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "completed")
+        self.assertEqual(data["card_record"]["status"], "cancelled")
+        self.assertFalse(data["card_record"]["approved"])
+
+        db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        self.assertEqual(db_msg.cards[0]["status"], "cancelled")
+        self.assertFalse(db_msg.cards[0]["approved"])
+
+    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("core.views.get_user_tools", new_callable=AsyncMock)
+    @patch("core.views.create_graph")
+    def test_single_revision_instruction_persists_revised_card_in_db(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        """Submitting revision instruction persists status='revised' in card."""
+        mock_app = MagicMock()
+        mock_app.ainvoke = AsyncMock(return_value={
+            "messages": [
+                AIMessage(
+                    content="I updated the time to 4:00 PM as requested.",
+                    tool_calls=[{"name": "manage_event", "args": {"summary": "1:1 meeting"}, "id": "call_p_3", "type": "tool_call"}],
+                )
+            ],
+            "call_metrics": [],
+        })
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_app.aget_state = AsyncMock(return_value=mock_state)
+        mock_create_graph.return_value = mock_app
+
+        response = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": False, "instruction": "Schedule at 4pm instead"},
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["card_record"]["status"], "revised")
+        self.assertFalse(data["card_record"]["approved"])
+
+        db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        self.assertEqual(db_msg.cards[0]["status"], "revised")
+
+    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("core.views.get_user_tools", new_callable=AsyncMock)
+    @patch("core.views.create_graph")
+    def test_single_approval_with_modified_args_persists_modified_args_in_card(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        """User modified field overrides are stored in card_record args."""
+        modified = {"summary": "Modified Interview Title", "start_time": "2026-09-17T16:00:00Z"}
+        mock_app = MagicMock()
+        mock_app.ainvoke = AsyncMock(return_value={
+            "messages": [AIMessage(content="Event created with edited fields.")],
+            "call_metrics": [],
+        })
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_app.aget_state = AsyncMock(return_value=mock_state)
+        mock_create_graph.return_value = mock_app
+
+        response = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": True, "modified_args": modified},
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["card_record"]["args"], modified)
+
+        db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        self.assertEqual(db_msg.cards[0]["args"], modified)
+
+    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("core.views.get_user_tools", new_callable=AsyncMock)
+    @patch("core.views.create_graph")
+    def test_multi_step_sequential_approval_workflow_persists_both_cards(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        """
+        Multi-step scenario:
+        Step 1: User approves Calendar action -> backend executes it, advances plan, and hits Email interrupt.
+                Calendar card is persisted to Message 1 in DB with status='completed'.
+        Step 2: User approves Email action -> backend executes it, finishes workflow.
+                Email card is persisted to Message 2 in DB with status='completed'.
+        Verify: Both cards exist sequentially in DB messages and are returned via GET /api/thread/<id>/messages/.
+        """
+        calendar_args = {"summary": "Architecture Review", "start_time": "2026-09-17T14:00:00Z"}
+        email_args = {"recipient": "lead@example.com", "subject": "Meeting Invite", "body": "Please find link."}
+
+        # --- STEP 1: Resuming Calendar hits Email interrupt ---
+        mock_app_step1 = MagicMock()
+        mock_app_step1.ainvoke = AsyncMock(return_value={
+            "messages": [
+                AIMessage(
+                    content="Calendar event booked. Now preparing to send the email invite.",
+                    tool_calls=[{"name": "manage_event", "args": calendar_args, "id": "call_step1", "type": "tool_call"}],
+                )
+            ],
+            "call_metrics": [],
+        })
+        mock_email_interrupt = MagicMock()
+        mock_email_interrupt.value = {
+            "domain": "email",
+            "tool_name": "send_gmail_message",
+            "args": email_args,
+        }
+        mock_state_step1 = MagicMock()
+        mock_state_step1.interrupts = [mock_email_interrupt]
+        mock_app_step1.aget_state = AsyncMock(return_value=mock_state_step1)
+        mock_create_graph.return_value = mock_app_step1
+
+        # Post Step 1 approval
+        res_step1 = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": True},
+            format="json"
+        )
+        self.assertEqual(res_step1.status_code, 200)
+        data_step1 = res_step1.json()
+        self.assertEqual(data_step1["status"], "approval_required")
+        self.assertEqual(data_step1["approval"]["domain"], "email")
+        self.assertEqual(data_step1["card_record"]["domain"], "calendar")
+        self.assertEqual(data_step1["card_record"]["status"], "completed")
+        self.assertEqual(data_step1["card_record"]["args"], calendar_args)
+
+        # Verify DB after Step 1
+        agent_msgs_after_step1 = Message.objects.filter(thread=self.thread, role="agent").order_by("created_at", "id")
+        self.assertEqual(agent_msgs_after_step1.count(), 1)
+        self.assertEqual(agent_msgs_after_step1[0].cards[0]["domain"], "calendar")
+        self.assertEqual(agent_msgs_after_step1[0].cards[0]["status"], "completed")
+
+        # --- STEP 2: Resuming Email completes the workflow ---
+        mock_app_step2 = MagicMock()
+        mock_app_step2.ainvoke = AsyncMock(return_value={
+            "messages": [
+                AIMessage(
+                    content="Email sent successfully! All steps complete.",
+                    tool_calls=[{"name": "send_gmail_message", "args": email_args, "id": "call_step2", "type": "tool_call"}],
+                )
+            ],
+            "call_metrics": [],
+        })
+        mock_state_step2 = MagicMock()
+        mock_state_step2.interrupts = []
+        mock_app_step2.aget_state = AsyncMock(return_value=mock_state_step2)
+        mock_create_graph.return_value = mock_app_step2
+
+        # Post Step 2 approval
+        res_step2 = self.client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": True},
+            format="json"
+        )
+        self.assertEqual(res_step2.status_code, 200)
+        data_step2 = res_step2.json()
+        self.assertEqual(data_step2["status"], "completed")
+        self.assertEqual(data_step2["card_record"]["domain"], "email")
+        self.assertEqual(data_step2["card_record"]["status"], "completed")
+        self.assertEqual(data_step2["card_record"]["args"], email_args)
+
+        # Verify DB after Step 2
+        agent_msgs_after_step2 = Message.objects.filter(thread=self.thread, role="agent").order_by("created_at", "id")
+        self.assertEqual(agent_msgs_after_step2.count(), 2)
+        self.assertEqual(agent_msgs_after_step2[0].cards[0]["domain"], "calendar")
+        self.assertEqual(agent_msgs_after_step2[0].cards[0]["status"], "completed")
+        self.assertEqual(agent_msgs_after_step2[1].cards[0]["domain"], "email")
+        self.assertEqual(agent_msgs_after_step2[1].cards[0]["status"], "completed")
+
+        # Verify GET /api/thread/<id>/messages/ returns complete history with both cards intact
+        list_res = self.client.get(f"/api/thread/{self.thread.id}/messages/")
+        self.assertEqual(list_res.status_code, 200)
+        messages_data = list_res.json()
+        agent_history = [m for m in messages_data if m["role"] == "agent"]
+        self.assertEqual(len(agent_history), 2)
+        self.assertEqual(agent_history[0]["cards"][0]["domain"], "calendar")
+        self.assertEqual(agent_history[0]["cards"][0]["status"], "completed")
+        self.assertEqual(agent_history[0]["cards"][0]["args"], calendar_args)
+        self.assertEqual(agent_history[1]["cards"][0]["domain"], "email")
+        self.assertEqual(agent_history[1]["cards"][0]["status"], "completed")
+        self.assertEqual(agent_history[1]["cards"][0]["args"], email_args)
 
 
 

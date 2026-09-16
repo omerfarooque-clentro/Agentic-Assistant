@@ -293,16 +293,14 @@ def validate_prediction(
 
 def route_intent(message: Any, available_domains: set[str], plan: list | None = None) -> RoutingResult:
     """Classify intent adaptively using rule-based reference detection and modular routing stages."""
-    # 1. Preprocess message and extract query text
-    message_list, latest_text, routed_query = preprocess_query(message)
-    call_metrics: CallMetrics | None = None
-
-    # 2. Resolve active plan queue if pending steps exist and user didn't explicitly request another domain
+    # 1. Resolve active plan queue if pending steps exist
     plan_result = resolve_active_plan(plan)
     if plan_result:
-        explicit_domains = detect_explicit_domains(latest_text) & available_domains
-        if not explicit_domains or plan_result["domain"] in explicit_domains:
-            return plan_result
+        return plan_result
+
+    # 2. Preprocess message and extract query text
+    message_list, latest_text, routed_query = preprocess_query(message)
+    call_metrics: CallMetrics | None = None
 
     # 3. Determine whether rewriting / multi-step planning is required
     should_rewrite = determine_routing_strategy(latest_text, routed_query, message_list, available_domains)

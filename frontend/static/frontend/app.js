@@ -3590,30 +3590,16 @@
           return;
         }
 
-        // 1. Collapse the card immediately and mark it completed for this domain
-        delete card.dataset.busy;
-        morphCardToCompleted(card, value, instruction, modifiedArgs, meta.label);
+        // Keep card open with active status while the tool executes in the backend
+        status.classList.remove('hidden', 'status-error', 'status-success');
+        const busyLabel = value
+          ? `Connecting to ${meta.label} tool… executing action…`
+          : (instruction ? 'Sending revision instruction…' : 'Cancelling action…');
+        status.innerHTML = `<span class="btn-spinner spinner-dark"></span> <span class="status-text">${escapeHtml(busyLabel)}</span>`;
 
-        if (state.pendingApproval === card) {
-          state.pendingApproval = null;
-        }
-        refreshComposerState();
-
-        // 2. Spawn a standalone thinking bubble below the card in the transcript
-        let pending = addMessage('agent', '', true);
-        let pendingBody = pending ? pending.querySelector('.message-content') : null;
-        const setPendingStatus = label => {
-          if (!pendingBody && pending) pendingBody = pending.querySelector('.message-content');
-          if (pendingBody) {
-            pendingBody.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>${escapeHtml(label)}</span></div>`;
-          }
-        };
-        const nextDomain = card.dataset.nextDomain;
-        const nextLabel = nextDomain && DOMAIN_META[nextDomain] ? DOMAIN_META[nextDomain].label : (nextDomain ? titleCase(nextDomain) : null);
-        const actionLabel = value
-          ? (nextLabel ? `Working with ${nextLabel} Agent…` : `Executing ${meta.label.toLowerCase()} action & advancing plan…`)
-          : (instruction ? 'Processing revision instruction…' : 'Cancelling action…');
-        setPendingStatus(actionLabel);
+        if (approveBtn) approveBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = true;
+        if (instructBtn) instructBtn.disabled = true;
 
         const payload = { approved: value };
         if (modifiedArgs && Object.keys(modifiedArgs).length > 0) {
@@ -3629,10 +3615,15 @@
             body: JSON.stringify(payload)
           });
 
-          if (pending) {
-            pending.remove();
-            pending = null;
+          // Action has now really finished in backend: collapse card to completed state
+          delete card.dataset.busy;
+          card.classList.remove('is-busy');
+          morphCardToCompleted(card, value, instruction, modifiedArgs, meta.label);
+
+          if (state.pendingApproval === card) {
+            state.pendingApproval = null;
           }
+          refreshComposerState();
 
           const approvalMetrics = data.metrics || null;
           if (approvalMetrics && approvalMetrics.total_tokens) {
@@ -3659,10 +3650,12 @@
             if (item) item.textContent = data.thread_name;
           }
         } catch (error) {
-          if (pending) {
-            pending.remove();
-            pending = null;
-          }
+          delete card.dataset.busy;
+          card.classList.remove('is-busy');
+          card.querySelectorAll('.approval-edit-input, .approval-instruction-input').forEach(input => input.disabled = false);
+          if (approveBtn) approveBtn.disabled = false;
+          if (cancelBtn) cancelBtn.disabled = false;
+          if (instructBtn) instructBtn.disabled = false;
           status.classList.remove('status-success');
           status.classList.add('status-error');
           status.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">Failed: ${escapeHtml(error.message)}</span>`;

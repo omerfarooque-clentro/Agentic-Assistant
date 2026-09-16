@@ -1,5 +1,5 @@
 from langgraph.types import interrupt
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 
 # Tool names that must be gated behind human approval before execution, grouped by domain.
@@ -99,7 +99,6 @@ def approval_node(state):
             ]
     else:
         if instruction:
-            from langchain_core.messages import HumanMessage
             state_update["messages"] = [
                 AIMessage(
                     content=f"Human approval paused for {domain} action '{tool_name}' with revisions requested."

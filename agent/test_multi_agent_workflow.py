@@ -190,15 +190,14 @@ class MultiAgentGraphProgressionTests(SimpleTestCase):
         self.assertEqual(result["domain"], "research")
         self.assertEqual(result["intent"], "research.search")
 
-    def test_route_intent_overrides_stale_plan_on_explicit_new_domain(self):
-        # Even if a plan step was left in_progress, an explicit command in another domain must not be hijacked
-        stale_plan = [
+    def test_route_intent_prioritizes_active_plan(self):
+        plan = [
             {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule meeting", "status": "completed", "result_summary": "Done"},
             {"id": 2, "domain": "email", "intent": "email.send", "description": "Send link", "status": "in_progress", "result_summary": None},
         ]
-        result = route_intent("search web for weather forecast in hyderabad", available_domains={"calendar", "email", "research"}, plan=stale_plan)
-        self.assertEqual(result["domain"], "research")
-        self.assertEqual(result["intent"], "research.search")
+        result = route_intent("continue execution", available_domains={"calendar", "email", "research"}, plan=plan)
+        self.assertEqual(result["domain"], "email")
+        self.assertEqual(result["intent"], "email.send")
 
     def test_nlp_node_resets_completed_plan_on_fresh_turn(self):
         state: AgentState = {
@@ -213,3 +212,17 @@ class MultiAgentGraphProgressionTests(SimpleTestCase):
         self.assertEqual(output["domain"], "research")
         self.assertEqual(output["plan"], [])
         self.assertEqual(output["current_step_index"], 0)
+
+    def test_route_intent_advances_to_next_plan_step_without_hijack_by_ai_message(self):
+        plan = [
+            {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule meeting", "status": "completed", "result_summary": "Done"},
+            {"id": 2, "domain": "email", "intent": "email.send", "description": "Send link", "status": "in_progress", "result_summary": None},
+        ]
+        # Previous agent response mentioned calendar; it must NOT hijack the plan to calendar!
+        messages = [
+            HumanMessage(content="Schedule interview and email link"),
+            AIMessage(content="I have scheduled the technical interview on your Google Calendar."),
+        ]
+        result = route_intent(messages, available_domains={"calendar", "email"}, plan=plan)
+        self.assertEqual(result["domain"], "email")
+        self.assertEqual(result["intent"], "email.send")

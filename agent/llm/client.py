@@ -15,6 +15,8 @@ llm_google = ChatGoogleGenerativeAI(
     temperature=0,
 )
 
+# Fast LLM for lightweight tasks like async title generation
+llm_fast = llm_google
 
 # Resilient models with cross-provider fallbacks
 llm = llm_groq.with_fallbacks([llm_google], exceptions_to_handle=(Exception,))

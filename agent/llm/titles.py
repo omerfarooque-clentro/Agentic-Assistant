@@ -1,6 +1,9 @@
-"""Utilities for suggested thread title prompt instructions, token filtering, and extraction."""
-
+import asyncio
 import re
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from agent.llm.client import llm_fast
 
 TITLE_INSTRUCTION = (
     "\n\nTHREAD NAMING RULE:\n"
@@ -201,10 +204,6 @@ async def generate_title_from_context(user_prompt: str, assistant_response: str 
 
     # 2. Try fast LLM invocation with a strict timeout
     try:
-        import asyncio
-        from langchain_core.messages import SystemMessage, HumanMessage
-        from agent.llm.client import llm_fast
-
         prompt_excerpt = clean_prompt[:250]
         messages = [
             SystemMessage(
