@@ -2,7 +2,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve
 from core.views import (
     RegistrationView,
     LoginView,
@@ -44,8 +45,10 @@ urlpatterns = [
     path('api/', include('conversations.urls')),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(
-        settings.STATIC_URL,
-        document_root=settings.BASE_DIR / 'frontend' / 'static',
-    )
+urlpatterns += [
+    re_path(
+        r'^static/(?P<path>.*)$',
+        serve,
+        {'document_root': settings.BASE_DIR / 'frontend' / 'static'},
+    ),
+]

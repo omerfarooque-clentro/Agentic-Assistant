@@ -1831,6 +1831,52 @@
         }
       });
 
+      // Mobile Drawer Toggle
+      const mobileMenuToggle = document.querySelector('#mobile-menu-toggle');
+      const sidebarCloseBtn = document.querySelector('#sidebar-close-btn');
+      const sidebar = document.querySelector('.sidebar');
+      const sidebarBackdrop = document.querySelector('#sidebar-backdrop');
+
+      const setMobileSidebar = (open) => {
+        if (!sidebar) return;
+        const willOpen = open !== undefined ? open : !sidebar.classList.contains('mobile-open');
+        sidebar.classList.toggle('mobile-open', willOpen);
+        if (sidebarBackdrop) sidebarBackdrop.classList.toggle('visible', willOpen);
+        document.body.classList.toggle('drawer-open', willOpen);
+      };
+
+      if (mobileMenuToggle) {
+        mobileMenuToggle.onclick = (e) => {
+          e.stopPropagation();
+          setMobileSidebar();
+        };
+      }
+      if (sidebarCloseBtn) {
+        sidebarCloseBtn.onclick = () => setMobileSidebar(false);
+      }
+      if (sidebarBackdrop) {
+        sidebarBackdrop.onclick = () => setMobileSidebar(false);
+      }
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && sidebar?.classList.contains('mobile-open')) {
+          setMobileSidebar(false);
+        }
+      });
+
+      const newThreadBtn = document.querySelector('#new-thread');
+      if (newThreadBtn) {
+        newThreadBtn.addEventListener('click', () => {
+          if (window.innerWidth <= 768) setMobileSidebar(false);
+        });
+      }
+      if (threadList) {
+        threadList.addEventListener('click', (e) => {
+          if (e.target.closest('.thread-item') && window.innerWidth <= 768) {
+            setMobileSidebar(false);
+          }
+        });
+      }
+
       // Network & slow internet feedback toasts
       const networkToast = document.querySelector('#network-toast');
       const networkMsg = document.querySelector('#network-toast-msg');

@@ -4,7 +4,7 @@
 
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Personal Ops{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,13 +19,13 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="{% static 'frontend/app.css' %}?v=20260913_06">
+  <link rel="stylesheet" href="{% static 'frontend/app.css' %}?v=20260916_mobile">
 </head>
 
 <body>
   <div class="ambient-glow" aria-hidden="true"></div>
   {% block content %}{% endblock %}
-  <script src="{% static 'frontend/app.js' %}?v=20260913_06"></script>
+  <script src="{% static 'frontend/app.js' %}?v=20260916_mobile"></script>
   {% block scripts %}{% endblock %}
 </body>
 
