@@ -2811,7 +2811,9 @@ body:has(.app-shell) {
   width: fit-content;
 }
 
-.approval-status .status-pulse-dot {
+.status-pulse-dot,
+.approval-status .status-pulse-dot,
+.approval-badge .status-pulse-dot {
   display: inline-block;
   width: 7px;
   height: 7px;
@@ -2819,6 +2821,7 @@ body:has(.app-shell) {
   background: var(--primary, #3b82f6);
   box-shadow: 0 0 8px var(--primary, #3b82f6);
   animation: status-pulse 1.2s infinite ease-in-out;
+  flex-shrink: 0;
 }
 
 @keyframes status-pulse {

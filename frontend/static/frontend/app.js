@@ -2737,17 +2737,28 @@
 
       const renderPlanPipeline = (plan, currentDomain) => {
         if (!plan || !Array.isArray(plan) || plan.length <= 1) return '';
+
+        // Disambiguate exactly one current step index to prevent multiple steps or
+        // repeated domains from falsely claiming "current":
+        let currentStepIdx = plan.findIndex(s => s && s.status === 'in_progress');
+        if (currentStepIdx === -1) {
+          currentStepIdx = plan.findIndex(s => s && s.status !== 'completed' && (s.domain || 'general') === currentDomain);
+        }
+        if (currentStepIdx === -1) {
+          currentStepIdx = plan.findIndex(s => s && s.status !== 'completed');
+        }
+
         const stepsHtml = plan.map((step, idx) => {
-          const stepDomain = step.domain || 'general';
+          const stepDomain = (step && step.domain) || 'general';
           const meta = DOMAIN_META[stepDomain] || { icon: '⚙️', label: titleCase(stepDomain) };
-          const isDone = step.status === 'completed';
-          const isCurrent = !isDone && (step.status === 'in_progress' || stepDomain === currentDomain);
+          const isDone = step && step.status === 'completed';
+          const isCurrent = !isDone && (idx === currentStepIdx);
           const stateClass = isDone ? 'is-step-done' : (isCurrent ? 'is-step-current' : 'is-step-pending');
           const stepIcon = isDone ? '✓' : (isCurrent ? meta.icon : '○');
           const statusText = isDone ? 'Done' : (isCurrent ? 'Current' : 'Next');
 
           return `
-            <div class="approval-plan-step ${stateClass}">
+            <div class="approval-plan-step ${stateClass}" data-step-index="${idx}">
               <span class="plan-step-icon">${stepIcon}</span>
               <span class="plan-step-label">Step ${idx + 1}: ${meta.label}</span>
               <span class="plan-step-tag">${statusText}</span>
