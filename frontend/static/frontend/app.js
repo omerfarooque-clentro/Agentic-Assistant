@@ -1877,6 +1877,200 @@
         });
       }
 
+      // Interactive User Walkthrough Tour Controller
+      const tourOverlay = document.querySelector('#tour-overlay');
+      const tourCard = document.querySelector('#tour-card');
+      const tourArrow = document.querySelector('#tour-arrow');
+      const tourTitle = document.querySelector('#tour-step-title');
+      const tourDesc = document.querySelector('#tour-step-desc');
+      const tourBadge = document.querySelector('#tour-badge');
+      const tourDotsContainer = document.querySelector('#tour-dots');
+      const btnTourPrev = document.querySelector('#btn-tour-prev');
+      const btnTourNext = document.querySelector('#btn-tour-next');
+      const btnTourClose = document.querySelector('#btn-tour-close');
+      const btnOpenTour = document.querySelector('#btn-open-tour');
+
+      const tourSteps = [
+        {
+          id: 'step-connections',
+          selector: '.connections',
+          title: '1. Connect Your Workspace Tools',
+          desc: 'One-click connect your Google Workspace (Gmail, Calendar, Docs, Sheets) and Slack. Personal Ops orchestrates actions securely across all connected apps.',
+          placement: 'right',
+          actionBefore: () => {
+            if (window.innerWidth <= 768) setMobileSidebar(true);
+          }
+        },
+        {
+          id: 'step-new-thread',
+          selector: '.sidebar-action-wrap',
+          title: '2. Conversations & Threads',
+          desc: 'Start dedicated threads for different projects or tasks. Your conversation context and cross-domain history are preserved automatically.',
+          placement: 'right',
+          actionBefore: () => {
+            if (window.innerWidth <= 768) setMobileSidebar(true);
+          }
+        },
+        {
+          id: 'step-composer',
+          selector: '.composer-input-container',
+          title: '3. Natural Language Command Desk',
+          desc: 'Give autonomous multi-step instructions like "Schedule a sync with Omer tomorrow and notify him on Slack". You can also click any Quick Card to start instantly.',
+          placement: 'top',
+          actionBefore: () => {
+            if (window.innerWidth <= 768) setMobileSidebar(false);
+          }
+        },
+        {
+          id: 'step-hud',
+          selector: '#session-token-wrapper',
+          title: '4. Token Intelligence & Safety Approvals',
+          desc: 'Click the token pill anytime for deep session analytics. Critical actions (sending emails, modifying docs) always ask for your confirmation before executing.',
+          placement: 'bottom',
+          actionBefore: () => {
+            if (window.innerWidth <= 768) setMobileSidebar(false);
+          }
+        }
+      ];
+
+      let currentTourIndex = 0;
+      let highlightedEl = null;
+
+      const clearTourHighlight = () => {
+        if (highlightedEl) {
+          highlightedEl.classList.remove('tour-target-highlight');
+          highlightedEl = null;
+        }
+      };
+
+      const positionTourCard = (targetEl, placement) => {
+        if (!tourCard || !tourArrow) return;
+        if (!targetEl || window.innerWidth <= 768) {
+          tourCard.style.top = '';
+          tourCard.style.left = '';
+          tourCard.style.right = '';
+          tourCard.style.bottom = '';
+          tourArrow.className = 'tour-arrow tour-arrow-up';
+          return;
+        }
+
+        const rect = targetEl.getBoundingClientRect();
+        const cardWidth = 340;
+        const cardHeight = 220;
+        const margin = 16;
+
+        tourArrow.className = 'tour-arrow';
+
+        if (placement === 'right') {
+          tourCard.style.left = `${Math.min(window.innerWidth - cardWidth - 20, rect.right + margin)}px`;
+          tourCard.style.top = `${Math.max(20, Math.min(window.innerHeight - cardHeight - 20, rect.top + (rect.height / 2) - (cardHeight / 2)))}px`;
+          tourCard.style.bottom = '';
+          tourCard.style.right = '';
+          tourArrow.classList.add('tour-arrow-left');
+        } else if (placement === 'top') {
+          tourCard.style.left = `${Math.max(20, Math.min(window.innerWidth - cardWidth - 20, rect.left + (rect.width / 2) - (cardWidth / 2)))}px`;
+          tourCard.style.top = `${Math.max(20, rect.top - cardHeight - margin)}px`;
+          tourCard.style.bottom = '';
+          tourCard.style.right = '';
+          tourArrow.classList.add('tour-arrow-down');
+        } else {
+          tourCard.style.left = `${Math.max(20, Math.min(window.innerWidth - cardWidth - 20, rect.left + (rect.width / 2) - (cardWidth / 2)))}px`;
+          tourCard.style.top = `${Math.min(window.innerHeight - cardHeight - 20, rect.bottom + margin)}px`;
+          tourCard.style.bottom = '';
+          tourCard.style.right = '';
+          tourArrow.classList.add('tour-arrow-up');
+        }
+      };
+
+      const renderTourStep = (index) => {
+        if (!tourOverlay) return;
+        clearTourHighlight();
+
+        currentTourIndex = index;
+        const step = tourSteps[index];
+        if (!step) return;
+
+        if (step.actionBefore) step.actionBefore();
+
+        setTimeout(() => {
+          const targetEl = document.querySelector(step.selector);
+          if (targetEl) {
+            targetEl.classList.add('tour-target-highlight');
+            highlightedEl = targetEl;
+            if (targetEl.scrollIntoViewIfNeeded) {
+              targetEl.scrollIntoViewIfNeeded({ behavior: 'smooth', block: 'center' });
+            }
+          }
+
+          if (tourTitle) tourTitle.textContent = step.title;
+          if (tourDesc) tourDesc.textContent = step.desc;
+          if (tourBadge) tourBadge.textContent = `Step ${index + 1} of ${tourSteps.length}`;
+
+          if (btnTourPrev) {
+            btnTourPrev.style.visibility = index === 0 ? 'hidden' : 'visible';
+          }
+          if (btnTourNext) {
+            btnTourNext.textContent = index === tourSteps.length - 1 ? 'Finish Tour 🎉' : 'Next Step →';
+          }
+
+          if (tourDotsContainer) {
+            tourDotsContainer.innerHTML = tourSteps.map((_, i) =>
+              `<span class="tour-dot ${i === index ? 'active' : ''}"></span>`
+            ).join('');
+          }
+
+          positionTourCard(targetEl, step.placement);
+        }, 90);
+      };
+
+      const startTour = () => {
+        if (!tourOverlay) return;
+        tourOverlay.classList.remove('hidden');
+        tourOverlay.setAttribute('aria-hidden', 'false');
+        renderTourStep(0);
+      };
+
+      const closeTour = () => {
+        if (!tourOverlay) return;
+        clearTourHighlight();
+        tourOverlay.classList.add('hidden');
+        tourOverlay.setAttribute('aria-hidden', 'true');
+        localStorage.setItem('ops_tour_seen', 'true');
+        if (window.innerWidth <= 768) setMobileSidebar(false);
+      };
+
+      if (btnTourNext) {
+        btnTourNext.onclick = () => {
+          if (currentTourIndex < tourSteps.length - 1) {
+            renderTourStep(currentTourIndex + 1);
+          } else {
+            closeTour();
+          }
+        };
+      }
+      if (btnTourPrev) {
+        btnTourPrev.onclick = () => {
+          if (currentTourIndex > 0) {
+            renderTourStep(currentTourIndex - 1);
+          }
+        };
+      }
+      if (btnTourClose) {
+        btnTourClose.onclick = () => closeTour();
+      }
+      if (btnOpenTour) {
+        btnOpenTour.onclick = () => startTour();
+      }
+
+      // Auto-start for first-time visitors
+      if (!localStorage.getItem('ops_tour_seen')) {
+        setTimeout(() => {
+          if (!localStorage.getItem('ops_tour_seen')) {
+            startTour();
+          }
+        }, 1200);
+      }
+
       // Network & slow internet feedback toasts
       const networkToast = document.querySelector('#network-toast');
       const networkMsg = document.querySelector('#network-toast-msg');
@@ -2557,8 +2751,22 @@
             input.value = button.dataset.prompt;
             autoGrowTextarea(input);
             input.focus();
+            const composerBox = document.querySelector('.composer-input-container');
+            if (composerBox) {
+              composerBox.classList.remove('composer-pulse');
+              void composerBox.offsetWidth; // trigger reflow
+              composerBox.classList.add('composer-pulse');
+            }
+            if (window.innerWidth <= 768) {
+              input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
           };
         });
+
+        const welcomeTourBtn = document.querySelector('#btn-welcome-tour');
+        if (welcomeTourBtn) {
+          welcomeTourBtn.onclick = () => startTour();
+        }
       };
 
       const renderWelcomeState = () => {
@@ -2568,49 +2776,107 @@
           <div class="welcome-hub">
             <div class="welcome-badge"><i class="status-dot"></i>Personal Ops Assistant</div>
             <h2 class="welcome-heading">${escapeHtml(greeting)}</h2>
-            <p class="welcome-sub">Ask your operations agent to organize your day, search emails, manage meetings, or draft documents.</p>
+            <p class="welcome-sub">Autonomous multi-domain assistant for your daily operations. Connect services, run cross-tool workflows, or choose a starter card below.</p>
+            
+            <div class="welcome-tour-banner">
+              <div class="tour-banner-content">
+                <span class="tour-banner-icon">🚀</span>
+                <div class="tour-banner-text">
+                  <strong>New to Personal Ops?</strong>
+                  <span>Take a 30-second interactive guided walkthrough with visual pointers.</span>
+                </div>
+              </div>
+              <button type="button" id="btn-welcome-tour" class="welcome-tour-btn">Start Quick Tour 💡</button>
+            </div>
+
+            <div class="quick-cards-header">
+              <span class="quick-cards-label">Quick Starter Workflows</span>
+              <span class="quick-cards-hint">Click any card to pre-fill</span>
+            </div>
+
             <div class="starter-grid">
-              <button type="button" class="starter-card" data-prompt="Give me a quick overview of my unread emails">
-                <span class="starter-icon">✉️</span>
-                <span class="starter-info">
-                  <span class="starter-title">Inbox Overview</span>
-                  <span class="starter-desc">Summarize latest unread messages and urgent threads</span>
-                </span>
+              <button type="button" class="starter-card" data-prompt="Schedule a 30-minute sync with Omer tomorrow at 4:00 PM about Jarvis project discussion and inform him on Slack to confirm availability">
+                <div class="starter-card-top">
+                  <span class="starter-tag tag-multi">Calendar + Slack</span>
+                  <span class="starter-arrow">→</span>
+                </div>
+                <div class="starter-card-main">
+                  <span class="starter-icon">📅</span>
+                  <div class="starter-info">
+                    <span class="starter-title">Schedule & Notify</span>
+                    <span class="starter-desc">Book meeting on Google Calendar and ping attendee on Slack to confirm</span>
+                  </div>
+                </div>
               </button>
-              <button type="button" class="starter-card" data-prompt="What meetings and events do I have scheduled today?">
-                <span class="starter-icon">📅</span>
-                <span class="starter-info">
-                  <span class="starter-title">Today's Schedule</span>
-                  <span class="starter-desc">Review your calendar events and upcoming meetings</span>
-                </span>
+
+              <button type="button" class="starter-card" data-prompt="Give me a quick overview of my unread emails from today and summarize action items">
+                <div class="starter-card-top">
+                  <span class="starter-tag tag-gmail">Gmail</span>
+                  <span class="starter-arrow">→</span>
+                </div>
+                <div class="starter-card-main">
+                  <span class="starter-icon">✉️</span>
+                  <div class="starter-info">
+                    <span class="starter-title">Inbox Digest</span>
+                    <span class="starter-desc">Summarize latest unread messages and highlight urgent requests</span>
+                  </div>
+                </div>
               </button>
-              <button type="button" class="starter-card" data-prompt="Draft an operations summary note in Google Docs">
-                <span class="starter-icon">📝</span>
-                <span class="starter-info">
-                  <span class="starter-title">Capture a Note</span>
-                  <span class="starter-desc">Draft or append meeting notes to your Google Docs</span>
-                </span>
+
+              <button type="button" class="starter-card" data-prompt="Search the web for the latest breakthroughs in AI agents and draft a summary note in Google Docs">
+                <div class="starter-card-top">
+                  <span class="starter-tag tag-research">Research + Docs</span>
+                  <span class="starter-arrow">→</span>
+                </div>
+                <div class="starter-card-main">
+                  <span class="starter-icon">🔍</span>
+                  <div class="starter-info">
+                    <span class="starter-title">Live Research & Doc</span>
+                    <span class="starter-desc">Search current web facts and synthesize findings into a Google Doc</span>
+                  </div>
+                </div>
               </button>
-              <button type="button" class="starter-card" data-prompt="Search the web for the latest updates on ">
-                <span class="starter-icon">🔍</span>
-                <span class="starter-info">
-                  <span class="starter-title">Web Research</span>
-                  <span class="starter-desc">Pull live facts, industry updates, and research</span>
-                </span>
+
+              <button type="button" class="starter-card" data-prompt="Read key metrics from my latest active Google Sheet and summarize highlights">
+                <div class="starter-card-top">
+                  <span class="starter-tag tag-sheets">Sheets</span>
+                  <span class="starter-arrow">→</span>
+                </div>
+                <div class="starter-card-main">
+                  <span class="starter-icon">📊</span>
+                  <div class="starter-info">
+                    <span class="starter-title">Inspect Spreadsheets</span>
+                    <span class="starter-desc">Extract tabular data and summarize key numbers or table rows</span>
+                  </div>
+                </div>
               </button>
-              <button type="button" class="starter-card" data-prompt="Check my recent Slack messages and mentions">
-                <span class="starter-icon">💬</span>
-                <span class="starter-info">
-                  <span class="starter-title">Slack Catchup</span>
-                  <span class="starter-desc">Scan unread workspace channels and mentions</span>
-                </span>
+
+              <button type="button" class="starter-card" data-prompt="Draft a project milestone progress update to share with the team on Slack">
+                <div class="starter-card-top">
+                  <span class="starter-tag tag-slack">Slack</span>
+                  <span class="starter-arrow">→</span>
+                </div>
+                <div class="starter-card-main">
+                  <span class="starter-icon">💬</span>
+                  <div class="starter-info">
+                    <span class="starter-title">Team Broadcast</span>
+                    <span class="starter-desc">Compose and post concise progress updates or status announcements</span>
+                  </div>
+                </div>
               </button>
-              <button type="button" class="starter-card" data-prompt="What operations tasks can you assist me with?">
-                <span class="starter-icon">⚡</span>
-                <span class="starter-info">
-                  <span class="starter-title">Explore Capabilities</span>
-                  <span class="starter-desc">Discover available tools, workflows, and integrations</span>
-                </span>
+
+              <button type="button" class="starter-card" data-prompt="What operations tasks, tools, and cross-domain workflows can you assist me with?">
+                <div class="starter-card-top">
+                  <span class="starter-tag tag-general">Capabilities</span>
+                  <span class="starter-arrow">→</span>
+                </div>
+                <div class="starter-card-main">
+                  <span class="starter-icon">⚡</span>
+                  <div class="starter-info">
+                    <span class="starter-title">Explore Capabilities</span>
+                    <span class="starter-desc">Discover connected tools, safety approvals, and autonomous planning</span>
+                  </div>
+                </div>
               </button>
             </div>
           </div>

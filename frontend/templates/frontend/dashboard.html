@@ -127,6 +127,10 @@
             <!-- Rendered dynamically -->
           </div>
         </div>
+        <button id="btn-open-tour" class="tour-trigger-btn" title="Quick Tour & Walkthrough" aria-label="Quick Tour & Walkthrough">
+          <span class="tour-icon">💡</span>
+          <span class="tour-label">Guide</span>
+        </button>
         <span class="live-pill"><i class="status-dot"></i>Live workspace</span>
         <span id="clock"></span>
       </div>
@@ -160,6 +164,32 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- Interactive Onboarding Walkthrough Tour -->
+<div id="tour-overlay" class="tour-overlay hidden" aria-hidden="true">
+  <div id="tour-spotlight" class="tour-spotlight"></div>
+  <div id="tour-card" class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-step-title">
+    <div id="tour-arrow" class="tour-arrow tour-arrow-up"></div>
+    <div class="tour-header">
+      <span class="tour-badge" id="tour-badge">Step 1 of 4</span>
+      <button id="btn-tour-close" class="tour-close-btn" title="Exit Tour" aria-label="Exit Tour">×</button>
+    </div>
+    <h3 id="tour-step-title" class="tour-title">Connect Services</h3>
+    <p id="tour-step-desc" class="tour-desc">Connect Gmail, Calendar, Slack, Sheets, and Docs so Personal Ops can orchestrate tasks across your tools.</p>
+    <div class="tour-footer">
+      <div class="tour-dots" id="tour-dots">
+        <span class="tour-dot active"></span>
+        <span class="tour-dot"></span>
+        <span class="tour-dot"></span>
+        <span class="tour-dot"></span>
+      </div>
+      <div class="tour-actions">
+        <button id="btn-tour-prev" class="tour-btn tour-btn-secondary" type="button">Back</button>
+        <button id="btn-tour-next" class="tour-btn tour-btn-primary" type="button">Next →</button>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 {% block scripts %}<script>window.PersonalOps.initDashboard();</script>{% endblock %}
