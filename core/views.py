@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 import time
 import json
@@ -293,7 +294,7 @@ async def new_chat_view(request):
                     yield f"data: {json.dumps({'type': 'token', 'token': chunk['token']})}\n\n"
                     continue
                 if chunk_type == "approval_required":
-                    yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt']})}\n\n"
+                    yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt'], 'thread_id': thread.id})}\n\n"
                     return
                 if chunk_type == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': chunk['message']})}\n\n"
@@ -308,9 +309,28 @@ async def new_chat_view(request):
                     continue
 
                 messages = chunk["result"].get("messages", [])
-                final_content = extract_text_content(messages[-1].content) if messages else ""
+                raw_content = extract_text_content(messages[-1].content) if messages else ""
+                final_content, suggested_title = extract_title_from_text(raw_content)
+
+                resolved_title = chunk.get("thread_name") or suggested_title
+                if resolved_title and thread.name in ("New Thread", "New Conversation", "", None):
+                    thread.name = resolved_title
+                    await thread.asave(update_fields=["name", "updated_at"])
+                else:
+                    await thread.asave(update_fields=["updated_at"])
+
+                if resolved_title:
+                    final_content = re.sub(
+                        rf"^(?:#*\s*)?{re.escape(resolved_title)}[:\s]*\n+",
+                        "",
+                        final_content,
+                        flags=re.IGNORECASE,
+                    ).strip()
+
+                if not final_content.strip():
+                    final_content = "I processed your request. Let me know if there’s anything else you’d like to do!"
                 
-                await Message.objects.acreate(thread=thread, role="agent", content=final_content, metrics=chunk.get("metrics") or {},)
+                await Message.objects.acreate(thread=thread, role="agent", content=final_content, metrics=chunk.get("metrics") or {})
                 await thread.asave(update_fields=["updated_at"])
                 await thread.arefresh_from_db(fields=["name", "updated_at"])
                 yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
@@ -364,7 +384,7 @@ async def agent_chat_view(request, thread_id):
                     yield f"data: {json.dumps({'type': 'token', 'token': chunk['token']})}\n\n"
                     continue
                 if chunk_type == "approval_required":
-                    yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt']})}\n\n"
+                    yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt'], 'thread_id': thread.id})}\n\n"
                     return
                 if chunk_type == "error":
                     err_msg = chunk.get("message") or "Unknown error occurred"
@@ -382,17 +402,26 @@ async def agent_chat_view(request, thread_id):
                 messages = chunk["result"].get("messages", [])
                 raw_content = extract_text_content(messages[-1].content) if messages else ""
                 final_content, suggested_title = extract_title_from_text(raw_content)
-                if not final_content.strip():
-                    final_content = "I processed your request. Let me know if there’s anything else you’d like to do!"
 
                 resolved_title = chunk.get("thread_name") or suggested_title
 
-                if resolved_title and thread.name == "New Thread":
+                if resolved_title and thread.name in ("New Thread", "New Conversation", "", None):
                     thread.name = resolved_title
                     await thread.asave(update_fields=["name", "updated_at"])
                 else:
                     await thread.asave(update_fields=["updated_at"])
-            
+                
+                if resolved_title:
+                    final_content = re.sub(
+                        rf"^(?:#*\s*)?{re.escape(resolved_title)}[:\s]*\n+",
+                        "",
+                        final_content,
+                        flags=re.IGNORECASE,
+                    ).strip()
+
+                if not final_content.strip():
+                    final_content = "I processed your request. Let me know if there’s anything else you’d like to do!"
+                    
                 await Message.objects.acreate(
                     thread=thread,
                     role="agent",

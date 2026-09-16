@@ -185,6 +185,7 @@
   };
   const truncateText = (text, max) => (typeof text === 'string' && text.length > max ? `${text.slice(0, max)}…` : text);
   const safeText = value => (value === null || value === undefined ? '' : String(value));
+  const cleanMessageContent = text => safeText(text).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
 
   const formatRelativeTime = dateInput => {
     if (!dateInput) return '';
@@ -1898,7 +1899,7 @@
           desc: 'One-click connect your Google Workspace (Gmail, Calendar, Docs, Sheets) and Slack. Personal Ops orchestrates actions securely across all connected apps.',
           placement: 'right',
           actionBefore: () => {
-            if (window.innerWidth <= 768) setMobileSidebar(true);
+            if (window.innerWidth > 768) setMobileSidebar(true);
           }
         },
         {
@@ -1908,14 +1909,14 @@
           desc: 'Start dedicated threads for different projects or tasks. Your conversation context and cross-domain history are preserved automatically.',
           placement: 'right',
           actionBefore: () => {
-            if (window.innerWidth <= 768) setMobileSidebar(true);
+            if (window.innerWidth > 768) setMobileSidebar(true);
           }
         },
         {
           id: 'step-composer',
           selector: '.composer-input-container',
           title: '3. Natural Language Command Desk',
-          desc: 'Give autonomous multi-step instructions like "Schedule a sync with Omer tomorrow and notify him on Slack". You can also click any Quick Card to start instantly.',
+          desc: 'Give autonomous multi-step instructions like "Schedule a sync with Omer tomorrow and notify him on Slack". You can also swipe Quick Cards to start instantly.',
           placement: 'top',
           actionBefore: () => {
             if (window.innerWidth <= 768) setMobileSidebar(false);
@@ -1925,7 +1926,7 @@
           id: 'step-hud',
           selector: '#session-token-wrapper',
           title: '4. Token Intelligence & Safety Approvals',
-          desc: 'Click the token pill anytime for deep session analytics. Critical actions (sending emails, modifying docs) always ask for your confirmation before executing.',
+          desc: 'Tap the token pill anytime for deep session analytics. Critical actions (sending emails, modifying docs) always ask for your confirmation before executing.',
           placement: 'bottom',
           actionBefore: () => {
             if (window.innerWidth <= 768) setMobileSidebar(false);
@@ -1990,10 +1991,15 @@
         const step = tourSteps[index];
         if (!step) return;
 
+        const isMobile = window.innerWidth <= 768;
         if (step.actionBefore) step.actionBefore();
 
         setTimeout(() => {
-          const targetEl = document.querySelector(step.selector);
+          let targetEl = null;
+          // On mobile, don't attempt to highlight elements inside the off-screen drawer
+          if (!isMobile || (step.selector !== '.connections' && step.selector !== '.sidebar-action-wrap')) {
+            targetEl = document.querySelector(step.selector);
+          }
           if (targetEl) {
             targetEl.classList.add('tour-target-highlight');
             highlightedEl = targetEl;
@@ -2003,7 +2009,13 @@
           }
 
           if (tourTitle) tourTitle.textContent = step.title;
-          if (tourDesc) tourDesc.textContent = step.desc;
+          if (tourDesc) {
+            if (isMobile && (step.id === 'step-connections' || step.id === 'step-new-thread')) {
+              tourDesc.textContent = `${step.desc} (Accessible anytime via the top-left menu ☰)`;
+            } else {
+              tourDesc.textContent = step.desc;
+            }
+          }
           if (tourBadge) tourBadge.textContent = `Step ${index + 1} of ${tourSteps.length}`;
 
           if (btnTourPrev) {
@@ -2561,7 +2573,7 @@
           };
         }
         const body = item.querySelector('.message-content');
-        const text = safeText(content);
+        const text = role === 'agent' ? cleanMessageContent(content) : safeText(content);
         if (pending) {
           body.innerHTML = '<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>Operations agent thinking…</span></div>';
         } else if (role === 'user') {
@@ -3210,6 +3222,10 @@
 
           if (data.type === 'approval_required' || status === 'approval_required') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            if (!state.threadId && data.thread_id) {
+              state.threadId = data.thread_id;
+              loadThreads();
+            }
             setPendingStatus('Waiting for approval…');
             pending.remove();
             addApprovalCard(approval || {});
