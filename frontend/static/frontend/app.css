@@ -2325,6 +2325,103 @@ body:has(.app-shell) {
   border: 1px solid var(--amber-line);
   color: var(--amber-ink);
   width: fit-content;
+  transition: all .2s ease;
+}
+
+.approval-badge.is-processing {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--primary, #3b82f6);
+}
+
+/* Approval Plan Pipeline Track */
+.approval-plan-pipeline {
+  margin: 10px 0 12px;
+  padding: 8px 12px;
+  background: var(--panel-hover);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.approval-plan-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 700 10px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.approval-plan-steps-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.approval-plan-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  transition: all .2s ease;
+}
+
+.approval-plan-step.is-step-done {
+  background: var(--emerald-bg);
+  border-color: var(--emerald-line);
+  color: var(--emerald-ink);
+}
+
+.approval-plan-step.is-step-current {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: var(--primary, #3b82f6);
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.15);
+}
+
+.approval-plan-step.is-step-pending {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.approval-plan-step .plan-step-icon {
+  font-size: 10px;
+}
+
+.approval-plan-step .plan-step-label {
+  font-weight: 600;
+}
+
+.approval-plan-step .plan-step-tag {
+  font: 700 9px var(--font-mono);
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.approval-plan-step.is-step-done .plan-step-tag {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--emerald-ink);
+}
+
+.approval-plan-step.is-step-current .plan-step-tag {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--primary, #3b82f6);
+}
+
+.plan-step-separator {
+  color: var(--muted);
+  font-size: 11px;
+  user-select: none;
 }
 
 .approval-card h3 {

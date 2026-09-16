@@ -2642,8 +2642,19 @@
         const label = domainLabel || (DOMAIN_META[domain] ? DOMAIN_META[domain].label : titleCase(domain));
         const badge = card.querySelector('.approval-badge');
         if (badge) {
+          badge.classList.remove('is-processing');
           const icon = (DOMAIN_META[domain] && DOMAIN_META[domain].icon) || '✓';
           badge.textContent = `${icon} ${label} Agent: ${approved ? 'Completed' : (instruction ? 'Revised' : 'Cancelled')}`;
+        }
+
+        const currentPlanStep = card.querySelector('.approval-plan-step.is-step-current');
+        if (currentPlanStep) {
+          currentPlanStep.classList.remove('is-step-current');
+          currentPlanStep.classList.add(approved ? 'is-step-done' : 'is-step-pending');
+          const stepIcon = currentPlanStep.querySelector('.plan-step-icon');
+          if (stepIcon) stepIcon.textContent = approved ? '✓' : '✕';
+          const stepTag = currentPlanStep.querySelector('.plan-step-tag');
+          if (stepTag) stepTag.textContent = approved ? 'Done' : (instruction ? 'Revised' : 'Cancelled');
         }
 
         const actions = card.querySelector('.approval-actions');
@@ -2724,15 +2735,45 @@
         return card;
       };
 
+      const renderPlanPipeline = (plan, currentDomain) => {
+        if (!plan || !Array.isArray(plan) || plan.length <= 1) return '';
+        const stepsHtml = plan.map((step, idx) => {
+          const stepDomain = step.domain || 'general';
+          const meta = DOMAIN_META[stepDomain] || { icon: '⚙️', label: titleCase(stepDomain) };
+          const isDone = step.status === 'completed';
+          const isCurrent = !isDone && (step.status === 'in_progress' || stepDomain === currentDomain);
+          const stateClass = isDone ? 'is-step-done' : (isCurrent ? 'is-step-current' : 'is-step-pending');
+          const stepIcon = isDone ? '✓' : (isCurrent ? meta.icon : '○');
+          const statusText = isDone ? 'Done' : (isCurrent ? 'Current' : 'Next');
+
+          return `
+            <div class="approval-plan-step ${stateClass}">
+              <span class="plan-step-icon">${stepIcon}</span>
+              <span class="plan-step-label">Step ${idx + 1}: ${meta.label}</span>
+              <span class="plan-step-tag">${statusText}</span>
+            </div>
+          `;
+        }).join('<span class="plan-step-separator">→</span>');
+
+        return `
+          <div class="approval-plan-pipeline">
+            <div class="approval-plan-title">
+              <span>⚡ Workflow Plan (${plan.length} Steps)</span>
+            </div>
+            <div class="approval-plan-steps-track">
+              ${stepsHtml}
+            </div>
+          </div>
+        `;
+      };
+
       const addApprovalCard = approval => {
         const domain = (approval && approval.domain) || 'email';
         const meta = DOMAIN_META[domain] || { icon: '⚙️', label: titleCase(domain) };
         const card = document.createElement('div');
         card.className = 'approval-card';
         card.dataset.domain = domain;
-        if (approval && approval.next_domain) {
-          card.dataset.nextDomain = approval.next_domain;
-        }
+        const plan = (approval && Array.isArray(approval.plan)) ? approval.plan : [];
         const heading = approval && approval.is_duplicate
           ? `Re-run this ${meta.label.toLowerCase()} action?`
           : (approval && approval.message) || `Approve ${meta.label.toLowerCase()} action`;
@@ -2750,6 +2791,7 @@
               </div>
             </div>
             <h3>${escapeHtml(heading)}</h3>
+            ${renderPlanPipeline(plan, domain)}
             <div class="approval-status hidden" aria-live="polite"></div>
             <div class="approval-body-collapsible">
               ${renderApprovalBody(approval || {})}
@@ -3595,11 +3637,39 @@
         const busyLabel = value
           ? `Connecting to ${meta.label} tool… executing action…`
           : (instruction ? 'Sending revision instruction…' : 'Cancelling action…');
-        status.innerHTML = `<span class="btn-spinner spinner-dark"></span> <span class="status-text">${escapeHtml(busyLabel)}</span>`;
+        status.innerHTML = `<span class="status-pulse-dot"></span> <span class="status-text">${escapeHtml(busyLabel)}</span>`;
 
-        if (approveBtn) approveBtn.disabled = true;
-        if (cancelBtn) cancelBtn.disabled = true;
-        if (instructBtn) instructBtn.disabled = true;
+        const badge = card.querySelector('.approval-badge');
+        if (badge) {
+          badge.classList.add('is-processing');
+          badge.innerHTML = `<span class="status-pulse-dot"></span> Executing ${meta.label} action…`;
+        }
+
+        if (value) {
+          if (approveBtn) {
+            approveBtn.disabled = true;
+            approveBtn.classList.add('btn-loading');
+            approveBtn.innerHTML = `<span>Executing ${meta.label}…</span><span class="btn-spinner"></span>`;
+          }
+          if (cancelBtn) cancelBtn.disabled = true;
+          if (instructBtn) instructBtn.disabled = true;
+        } else if (instruction) {
+          if (instructBtn) {
+            instructBtn.disabled = true;
+            instructBtn.classList.add('btn-loading');
+            instructBtn.innerHTML = `<span>Revising…</span><span class="btn-spinner"></span>`;
+          }
+          if (approveBtn) approveBtn.disabled = true;
+          if (cancelBtn) cancelBtn.disabled = true;
+        } else {
+          if (cancelBtn) {
+            cancelBtn.disabled = true;
+            cancelBtn.classList.add('btn-loading');
+            cancelBtn.innerHTML = `<span>Cancelling…</span><span class="btn-spinner"></span>`;
+          }
+          if (approveBtn) approveBtn.disabled = true;
+          if (instructBtn) instructBtn.disabled = true;
+        }
 
         const payload = { approved: value };
         if (modifiedArgs && Object.keys(modifiedArgs).length > 0) {
@@ -3652,10 +3722,26 @@
         } catch (error) {
           delete card.dataset.busy;
           card.classList.remove('is-busy');
+          if (badge) {
+            badge.classList.remove('is-processing');
+            badge.textContent = `${meta.icon} Waiting on you — ${meta.label}`;
+          }
           card.querySelectorAll('.approval-edit-input, .approval-instruction-input').forEach(input => input.disabled = false);
-          if (approveBtn) approveBtn.disabled = false;
-          if (cancelBtn) cancelBtn.disabled = false;
-          if (instructBtn) instructBtn.disabled = false;
+          if (approveBtn) {
+            approveBtn.disabled = false;
+            approveBtn.classList.remove('btn-loading');
+            approveBtn.innerHTML = `<span>Approve</span>`;
+          }
+          if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.classList.remove('btn-loading');
+            cancelBtn.innerHTML = `<span>Cancel</span>`;
+          }
+          if (instructBtn) {
+            instructBtn.disabled = false;
+            instructBtn.classList.remove('btn-loading');
+            instructBtn.innerHTML = `<span>Instruct Agent</span>`;
+          }
           status.classList.remove('status-success');
           status.classList.add('status-error');
           status.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">Failed: ${escapeHtml(error.message)}</span>`;
