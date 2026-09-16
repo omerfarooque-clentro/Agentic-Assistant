@@ -3450,38 +3450,43 @@
           if (instructBtn) instructBtn.disabled = true;
         }
 
-        // Animated stage progression
-        const stages = value
-          ? [
-              `Connecting to ${meta.label} service…`,
-              `Executing ${meta.label.toLowerCase()} action with verified parameters…`,
-              `Finalizing response & updating conversation…`
-            ]
-          : instruction
-          ? [
-              `Forwarding instruction to agent…`,
-              `Revising plan with new details…`,
-              `Generating updated response…`
-            ]
-          : [
-              `Cancelling action…`,
-              `Recording decision in thread…`
-            ];
+        // Animated live stage progression with dynamic domain awareness & elapsed seconds
+        const startTime = Date.now();
+        const getDynamicStatusText = () => {
+          const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+          if (value) {
+            if (elapsedSec < 3) {
+              return `Connecting to ${meta.label} service & verifying parameters…`;
+            } else if (elapsedSec < 8) {
+              return `Executing ${meta.label.toLowerCase()} action… (${elapsedSec}s)`;
+            } else if (elapsedSec < 16) {
+              return `${meta.label} action complete. Advancing plan & orchestrating downstream tools… (${elapsedSec}s)`;
+            } else if (elapsedSec < 30) {
+              return `Executing workspace actions & querying connected domains… (${elapsedSec}s)`;
+            } else {
+              return `Synthesizing multi-step results & preparing final response… (${elapsedSec}s)`;
+            }
+          } else if (instruction) {
+            if (elapsedSec < 4) {
+              return `Forwarding revision instruction to agent…`;
+            } else if (elapsedSec < 14) {
+              return `Revising plan with new details… (${elapsedSec}s)`;
+            } else {
+              return `Generating updated response… (${elapsedSec}s)`;
+            }
+          } else {
+            return `Cancelling action & recording decision… (${elapsedSec}s)`;
+          }
+        };
 
-        let stageIdx = 0;
-        const renderStatusStage = (idx) => {
-          const text = stages[Math.min(idx, stages.length - 1)];
+        const renderStatusStage = () => {
+          const text = getDynamicStatusText();
           status.innerHTML = `<span class="status-pulse-dot"></span> <span class="status-text">${escapeHtml(text)}</span>`;
         };
         status.classList.remove('hidden', 'status-error', 'status-success');
-        renderStatusStage(0);
+        renderStatusStage();
 
-        const stageInterval = setInterval(() => {
-          stageIdx++;
-          if (stageIdx < stages.length) {
-            renderStatusStage(stageIdx);
-          }
-        }, 1800);
+        const stageInterval = setInterval(renderStatusStage, 1000);
 
         // Gather modified args if approving
         let modifiedArgs = null;
@@ -3522,14 +3527,16 @@
           });
           clearInterval(stageInterval);
 
-          if (state.pendingApproval !== card) return;
+          delete card.dataset.busy;
           card.classList.remove('is-busy');
           status.classList.add('status-success');
           status.innerHTML = `<span class="status-icon">✓</span> <span class="status-text">${value 
             ? (modifiedArgs ? 'Approved with edits — action executed.' : 'Approved — action executed.')
             : (instruction ? 'Instruction processed by agent.' : 'Action cancelled.')}</span>`;
           
-          state.pendingApproval = null;
+          if (state.pendingApproval === card) {
+            state.pendingApproval = null;
+          }
           refreshComposerState();
           const approvalMetrics = data.metrics || null;
           if (approvalMetrics && approvalMetrics.total_tokens) {
