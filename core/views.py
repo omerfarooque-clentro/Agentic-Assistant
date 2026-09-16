@@ -1,44 +1,48 @@
-import re
 from datetime import datetime
-import time
 import json
+import re
+import time
+import zoneinfo
+
 from asgiref.sync import sync_to_async
-from django.http import JsonResponse
+from django.contrib.auth import get_user_model
+from django.http import JsonResponse, StreamingHttpResponse
+from django.shortcuts import redirect
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework.response import Response
+from langchain_core.messages import ToolMessage
+from langgraph.types import Command
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
+from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
-# pyrefly: ignore [missing-import]
-from django.contrib.auth import get_user_model
-from agent.runner import run_agent
-from agent.llm import extract_title_from_text
-from core.serializers import (
-    AgentChatSerializer,
-    
-    RegisterationSerializer,
-    LoginSerializer,
-    ApproveEmailSerializer,
-    ForgotPasswordSerializer,
-    VerifyOTPSerializer,
-    ResetPasswordSerializer,
-    OTPGenerateSerializer,
-    InAppResetPasswordSerializer,
-)
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from accounts.utils import (
     generate_recovery_otp,
     hash_recovery_otp,
     verify_recovery_otp,
 )
-from rest_framework_simplejwt.tokens import RefreshToken
-from conversations.models import Thread, Message
-from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
+from agent.graph.approval import DOMAIN_BY_TOOL_NAME
+from agent.llm import extract_title_from_text
+from agent.metrics import aggregate_turn_metrics
 from agent.models import MCPIntegration
-from django.http import StreamingHttpResponse
-from django.utils import timezone
-import zoneinfo
+from agent.runner import run_agent
+from agent.tools import get_user_tools
+from conversations.models import Approval, Message, Thread
+from core.serializers import (
+    AgentChatSerializer,
+    ApproveEmailSerializer,
+    ForgotPasswordSerializer,
+    InAppResetPasswordSerializer,
+    LoginSerializer,
+    OTPGenerateSerializer,
+    RegisterationSerializer,
+    ResetPasswordSerializer,
+    VerifyOTPSerializer,
+)
 
 User = get_user_model()
 
@@ -72,8 +76,39 @@ def extract_text_content(message_content):
             else:
                 text_parts.append(str(block))
         return " ".join(text_parts)
-    return str(message_content)
- 
+
+
+def render_cards(approval, messages, modified_args=None, approved=True, instruction=None):
+    card_domain = getattr(approval, "domain", "") or ""
+    if not card_domain or card_domain == "general":
+        for m in reversed(messages):
+            if isinstance(m, ToolMessage):
+                card_domain = DOMAIN_BY_TOOL_NAME.get(getattr(m, "name", ""), "")
+                if card_domain:
+                    break
+    if not card_domain:
+        card_domain = "general"
+
+    tool_args = dict(modified_args) if modified_args else {}
+    if not tool_args:
+        for m in reversed(messages):
+            if hasattr(m, "tool_calls") and m.tool_calls:
+                for tc in reversed(m.tool_calls):
+                    tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                    if DOMAIN_BY_TOOL_NAME.get(tc_name) == card_domain:
+                        tool_args = tc.get("args") or {} if isinstance(tc, dict) else getattr(tc, "args", {})
+                        break
+                if tool_args:
+                    break
+
+    return {
+        "domain": card_domain,
+        "approved": approved,
+        "status": "completed" if approved else ("revised" if instruction else "cancelled"),
+        "heading": f"{card_domain.title()} action",
+        "args": tool_args,
+    }
+
 
 @sync_to_async
 def authenticate_api_request(request):
@@ -99,10 +134,6 @@ class RegistrationView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterationSerializer
     permission_classes = [AllowAny]
-    
-
-
-from django.shortcuts import redirect
 
 
 class LoginView(generics.GenericAPIView):
@@ -439,9 +470,6 @@ async def agent_chat_view(request, thread_id):
     return response
 
 
-from langgraph.types import Command
-from conversations.models import Approval, Message, Thread
-
 @csrf_exempt
 async def tool_approval_view(request, thread_id):
     if request.method != "POST":
@@ -502,9 +530,6 @@ async def tool_approval_view(request, thread_id):
 
     print(f"i am approve_email_view and i resumed thread {thread.id} with final response: {result['messages'][-1].content!r}")
 
-    from langchain_core.messages import ToolMessage
-    from agent.metrics import aggregate_turn_metrics
-
     state = await app.aget_state(config)
     messages = result.get("messages", [])
     raw_message = extract_text_content(messages[-1].content) if messages else ""
@@ -516,15 +541,25 @@ async def tool_approval_view(request, thread_id):
         messages=result.get("messages", []),
     )
 
+    card_record = render_cards(
+        approval=approval,
+        messages=messages,
+        modified_args=modified_args,
+        approved=approved,
+        instruction=instruction,
+    )
+    card_domain = card_record["domain"]
+
     if state.interrupts:
-        if message.strip():
-            await Message.objects.acreate(
-                thread=thread,
-                role="agent",
-                content=message,
-                metrics=approval_metrics,
-            )
-            await thread.asave(update_fields=["updated_at"])
+        interrupt_content = message.strip() or (f"{card_domain.title()} action completed." if approved else "Action cancelled.")
+        await Message.objects.acreate(
+            thread=thread,
+            role="agent",
+            content=interrupt_content,
+            metrics=approval_metrics,
+            cards=[card_record],
+        )
+        await thread.asave(update_fields=["updated_at"])
 
         return JsonResponse({
             "status": "approval_required",
@@ -533,6 +568,7 @@ async def tool_approval_view(request, thread_id):
             "thread_id": int(thread.id),
             "thread_name": thread.name,
             "metrics": approval_metrics,
+            "card_record": card_record,
         })
 
     if not message.strip():
@@ -558,6 +594,7 @@ async def tool_approval_view(request, thread_id):
         role="agent",
         content=message,
         metrics=approval_metrics,
+        cards=[card_record],
     )
 
     return JsonResponse({
@@ -566,6 +603,7 @@ async def tool_approval_view(request, thread_id):
         "thread_id": int(thread.id),
         "thread_name": thread.name,
         "metrics": approval_metrics,
+        "card_record": card_record,
     })
 
 

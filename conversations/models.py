@@ -16,6 +16,7 @@ class Message(models.Model):
     content = models.TextField()
     role = models.CharField(max_length=50)  # e.g., 'user', 'assistant', etc.
     metrics = models.JSONField(null=True, blank=True)
+    cards = models.JSONField(null=True, blank=True) # To send card to FE
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -141,7 +141,7 @@ button {
   inset: 0;
   pointer-events: none;
   background: radial-gradient(circle at 10% 5%, var(--accent-soft) 0%, transparent 40%),
-              radial-gradient(circle at 90% 90%, rgba(16, 185, 129, 0.03) 0%, transparent 40%);
+    radial-gradient(circle at 90% 90%, rgba(16, 185, 129, 0.03) 0%, transparent 40%);
   z-index: 0;
   opacity: 0.8;
 }
@@ -167,7 +167,7 @@ button {
   padding: 7vw 10vw;
   gap: 6vw;
   background: radial-gradient(circle at 15% 20%, var(--accent-soft) 0%, transparent 45%),
-              linear-gradient(135deg, var(--paper) 0%, var(--line-subtle) 100%);
+    linear-gradient(135deg, var(--paper) 0%, var(--line-subtle) 100%);
   position: relative;
   transition: background 0.2s ease;
 }
@@ -274,8 +274,8 @@ textarea {
 }
 
 input:-webkit-autofill,
-input:-webkit-autofill:hover, 
-input:-webkit-autofill:focus, 
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 30px var(--paper) inset !important;
   -webkit-text-fill-color: var(--ink) !important;
@@ -474,8 +474,17 @@ body:has(.app-shell) {
 }
 
 @keyframes pulse-dot {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: 0.75; }
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.15);
+    opacity: 0.75;
+  }
 }
 
 .sidebar-action-wrap {
@@ -793,8 +802,13 @@ body:has(.app-shell) {
 }
 
 @keyframes shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: 0 0; }
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: 0 0;
+  }
 }
 
 .connections {
@@ -1117,6 +1131,7 @@ body:has(.app-shell) {
     transform: translateY(6px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -1261,8 +1276,15 @@ body:has(.app-shell) {
 }
 
 @keyframes pulse-border {
-  0%, 100% { border-color: var(--line); }
-  50% { border-color: var(--accent); }
+
+  0%,
+  100% {
+    border-color: var(--line);
+  }
+
+  50% {
+    border-color: var(--accent);
+  }
 }
 
 .dot-flash {
@@ -2149,11 +2171,25 @@ body:has(.app-shell) {
 }
 
 /* Domain-tailored accents */
-.approval-card[data-domain="calendar"] { border-left-color: #3b82f6; }
-.approval-card[data-domain="email"] { border-left-color: #ea4335; }
-.approval-card[data-domain="slack"] { border-left-color: #4a154b; }
-.approval-card[data-domain="docs"] { border-left-color: #2563eb; }
-.approval-card[data-domain="sheets"] { border-left-color: #10b981; }
+.approval-card[data-domain="calendar"] {
+  border-left-color: #3b82f6;
+}
+
+.approval-card[data-domain="email"] {
+  border-left-color: #ea4335;
+}
+
+.approval-card[data-domain="slack"] {
+  border-left-color: #4a154b;
+}
+
+.approval-card[data-domain="docs"] {
+  border-left-color: #2563eb;
+}
+
+.approval-card[data-domain="sheets"] {
+  border-left-color: #10b981;
+}
 
 /* Active processing (non-freezing, dynamic glow) */
 .approval-card.is-busy {
@@ -2190,8 +2226,13 @@ body:has(.app-shell) {
 }
 
 @keyframes approval-shimmer-track {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(350%); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(350%);
+  }
 }
 
 /* Resolved/Completed Audit States */
@@ -2210,6 +2251,65 @@ body:has(.app-shell) {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.approval-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.btn-approval-collapse {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  transition: all .2s ease;
+}
+
+.btn-approval-collapse:hover {
+  color: var(--ink);
+  background: var(--panel-hover);
+  border-color: var(--line);
+}
+
+.btn-approval-collapse .chevron-icon {
+  width: 15px;
+  height: 15px;
+  transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: rotate(180deg);
+}
+
+.approval-card.is-collapsed .btn-approval-collapse .chevron-icon {
+  transform: rotate(0deg);
+}
+
+.approval-body-collapsible {
+  transition: max-height .3s cubic-bezier(0.16, 1, 0.3, 1), opacity .2s ease, margin .2s ease;
+  max-height: 1600px;
+  opacity: 1;
+  overflow: hidden;
+}
+
+.approval-card.is-collapsed {
+  padding: 12px 18px;
+  gap: 12px;
+}
+
+.approval-card.is-collapsed .approval-body-collapsible {
+  max-height: 0;
+  opacity: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none;
 }
 
 .approval-badge {
@@ -2625,8 +2725,17 @@ body:has(.app-shell) {
 }
 
 @keyframes status-pulse {
-  0%, 100% { transform: scale(0.85); opacity: 0.6; }
-  50% { transform: scale(1.35); opacity: 1; }
+
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
 }
 
 .approval-status.status-success {
@@ -3127,8 +3236,15 @@ body:has(.app-shell) {
 }
 
 @keyframes floatRocket {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-3px);
+  }
 }
 
 .tour-banner-text {
@@ -3353,10 +3469,12 @@ body:has(.app-shell) {
     box-shadow: 0 0 0 0 rgba(79, 110, 247, 0.7);
     border-color: #4f6ef7;
   }
+
   40% {
     box-shadow: 0 0 0 6px rgba(79, 110, 247, 0.3);
     border-color: #4f6ef7;
   }
+
   100% {
     box-shadow: none;
   }
@@ -3449,6 +3567,7 @@ body:has(.app-shell) {
     opacity: 0;
     transform: scale(0.96) translateY(4px);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
@@ -3475,8 +3594,15 @@ body:has(.app-shell) {
 }
 
 @keyframes bounceArrowUp {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4px);
+  }
 }
 
 /* Arrow pointing DOWN towards element below */
@@ -3490,8 +3616,15 @@ body:has(.app-shell) {
 }
 
 @keyframes bounceArrowDown {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(4px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(4px);
+  }
 }
 
 /* Arrow pointing LEFT towards element on left */
@@ -3505,8 +3638,15 @@ body:has(.app-shell) {
 }
 
 @keyframes bounceArrowLeft {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(-4px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(-4px);
+  }
 }
 
 /* Arrow pointing RIGHT towards element on right */
@@ -3520,8 +3660,15 @@ body:has(.app-shell) {
 }
 
 @keyframes bounceArrowRight {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(4px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(4px);
+  }
 }
 
 .tour-header {
@@ -4000,7 +4147,9 @@ body:has(.app-shell) {
 }
 
 @media(max-width: 768px) {
-  html, body {
+
+  html,
+  body {
     height: 100dvh;
     overflow: hidden;
   }
@@ -4267,7 +4416,7 @@ body:has(.app-shell) {
     gap: 16px;
     box-sizing: border-box;
     background: radial-gradient(circle at 50% 8%, var(--accent-soft) 0%, transparent 65%),
-                linear-gradient(180deg, var(--paper) 0%, var(--line-subtle) 100%);
+      linear-gradient(180deg, var(--paper) 0%, var(--line-subtle) 100%);
   }
 
   .auth-top-bar {
@@ -4348,7 +4497,8 @@ body:has(.app-shell) {
   }
 
   .stack-form input {
-    font-size: 16px !important; /* Prevents auto-zoom on iOS */
+    font-size: 16px !important;
+    /* Prevents auto-zoom on iOS */
     padding: 12px 14px;
     min-height: 48px;
     border-radius: 10px;
@@ -4819,10 +4969,13 @@ body:has(.app-shell) {
 }
 
 @keyframes pulse-indicator {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
     border-color: var(--line);
   }
+
   50% {
     opacity: 0.65;
     border-color: var(--muted);
@@ -4853,11 +5006,14 @@ body:has(.app-shell) {
     opacity: 0;
     transform: translateY(-8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
   }
-}/* ==========================================================================
+}
+
+/* ==========================================================================
    Token Metrics & Expandable HUD Styles
    ========================================================================== */
 
@@ -4978,6 +5134,7 @@ body:has(.app-shell) {
     opacity: 0;
     transform: translateY(-8px) scale(0.97);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -5494,10 +5651,12 @@ body:has(.app-shell) {
     box-shadow: 0 0 0 0 var(--accent-glow);
     background-color: var(--accent-soft);
   }
+
   50% {
     box-shadow: 0 0 0 4px var(--accent-glow);
     background-color: var(--accent-soft);
   }
+
   100% {
     box-shadow: none;
     background-color: transparent;

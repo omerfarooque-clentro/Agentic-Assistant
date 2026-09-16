@@ -50,7 +50,7 @@
       } else {
         document.documentElement.classList.remove('theme-dark');
       }
-      try { localStorage.setItem('ops_theme', next); } catch (e) {}
+      try { localStorage.setItem('ops_theme', next); } catch (e) { }
     };
 
     const buttons = document.querySelectorAll('#theme-toggle, .theme-toggle-btn');
@@ -1306,7 +1306,7 @@
             if (copyBtn) {
               copyBtn.onclick = async () => {
                 if (data.recovery_code) {
-                  await navigator.clipboard.writeText(data.recovery_code).catch(() => {});
+                  await navigator.clipboard.writeText(data.recovery_code).catch(() => { });
                   copyBtn.textContent = 'Copied!';
                   setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
                 }
@@ -1515,7 +1515,7 @@
             if (copyNewBtn) {
               copyNewBtn.onclick = async () => {
                 if (data.recovery_code) {
-                  await navigator.clipboard.writeText(data.recovery_code).catch(() => {});
+                  await navigator.clipboard.writeText(data.recovery_code).catch(() => { });
                   copyNewBtn.textContent = 'Copied!';
                   setTimeout(() => { copyNewBtn.textContent = 'Copy'; }, 2000);
                 }
@@ -1615,7 +1615,7 @@
             if (copyBtn) {
               copyBtn.onclick = async () => {
                 if (data.recovery_code) {
-                  await navigator.clipboard.writeText(data.recovery_code).catch(() => {});
+                  await navigator.clipboard.writeText(data.recovery_code).catch(() => { });
                   copyBtn.textContent = 'Copied!';
                   setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
                 }
@@ -1742,7 +1742,7 @@
               const copyBtn = document.querySelector('#btn-settings-pass-copy-code');
               if (copyBtn) {
                 copyBtn.onclick = async () => {
-                  await navigator.clipboard.writeText(data.recovery_code).catch(() => {});
+                  await navigator.clipboard.writeText(data.recovery_code).catch(() => { });
                   copyBtn.textContent = 'Copied!';
                   setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
                 };
@@ -1770,7 +1770,7 @@
       }
     },
 
-    
+
     initDashboard() {
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
       const state = {
@@ -2276,9 +2276,9 @@
               <div class="metrics-subheading">Domain Token Distribution</div>
               <div class="metrics-breakdown-list">
                 ${domainKeys.map(d => {
-                  const tok = stats.domains[d];
-                  const pct = totalTok > 0 ? Math.round((tok / totalTok) * 100) : 0;
-                  return `
+              const tok = stats.domains[d];
+              const pct = totalTok > 0 ? Math.round((tok / totalTok) * 100) : 0;
+              return `
                     <div class="metrics-breakdown-item" style="cursor:default;">
                       <div class="metrics-breakdown-main">
                         <div class="item-title">
@@ -2292,7 +2292,7 @@
                       </div>
                     </div>
                   `;
-                }).join('')}
+            }).join('')}
               </div>
             `;
           }
@@ -2569,7 +2569,7 @@
               const span = copyBtn.querySelector('span') || copyBtn;
               span.textContent = 'Copied!';
               setTimeout(() => { span.textContent = 'Copy'; }, 1800);
-            }).catch(() => {});
+            }).catch(() => { });
           };
         }
         const body = item.querySelector('.message-content');
@@ -2624,10 +2624,10 @@
         return item;
       };
 
-      const morphCardToCompleted = (card, approved, instruction, modifiedArgs) => {
+      const morphCardToCompleted = (card, approved, instruction, modifiedArgs, domainLabel = '') => {
         if (!card || !card.isConnected) return;
         card.classList.remove('is-busy');
-        card.classList.add('is-completed');
+        card.classList.add('is-completed', 'is-collapsed');
         if (!approved && !instruction) {
           card.classList.add('is-cancelled');
         }
@@ -2638,15 +2638,90 @@
         const instructWrap = card.querySelector('.approval-instruction-wrap');
         if (instructWrap) instructWrap.remove();
 
+        const domain = card.dataset.domain || 'general';
+        const label = domainLabel || (DOMAIN_META[domain] ? DOMAIN_META[domain].label : titleCase(domain));
+        const badge = card.querySelector('.approval-badge');
+        if (badge) {
+          const icon = (DOMAIN_META[domain] && DOMAIN_META[domain].icon) || '✓';
+          badge.textContent = `${icon} ${label} Agent: ${approved ? 'Completed' : (instruction ? 'Revised' : 'Cancelled')}`;
+        }
+
         const actions = card.querySelector('.approval-actions');
         if (actions) {
-          const badgeText = approved 
-            ? (modifiedArgs ? 'Approved with edits' : 'Approved & Executed')
+          const badgeText = approved
+            ? (modifiedArgs ? 'Approved with edits' : `${label} Agent: Completed`)
             : (instruction ? 'Revised by instruction' : 'Cancelled');
           const badgeClass = approved ? 'badge-executed' : (instruction ? 'badge-revised' : 'badge-cancelled');
           const icon = approved ? '✓' : (instruction ? '✎' : '✕');
           actions.innerHTML = `<div class="approval-resolved-badge ${badgeClass}"><span class="badge-icon">${icon}</span> <span>${escapeHtml(badgeText)}</span></div>`;
         }
+
+        const status = card.querySelector('.approval-status');
+        if (status) {
+          status.classList.remove('hidden', 'status-error');
+          status.classList.add('status-success');
+          const statusText = approved
+            ? `${label} Agent: Completed`
+            : (instruction ? 'Instruction processed' : 'Action cancelled');
+          status.innerHTML = `<span class="status-icon">✓</span> <span class="status-text">${escapeHtml(statusText)}</span>`;
+        }
+
+        const collapseBtn = card.querySelector('.btn-approval-collapse');
+        if (collapseBtn) {
+          collapseBtn.title = 'Expand details';
+        }
+      };
+
+      const renderHistoricalCard = cardData => {
+        const domain = (cardData && cardData.domain) || 'general';
+        const meta = DOMAIN_META[domain] || { icon: '⚙️', label: titleCase(domain) };
+        const card = document.createElement('div');
+        card.className = 'approval-card is-completed is-collapsed';
+        if (!cardData.approved && cardData.status === 'cancelled') {
+          card.classList.add('is-cancelled');
+        }
+        card.dataset.domain = domain;
+        const heading = cardData.heading || `${meta.label} action`;
+        const approved = !!cardData.approved;
+        const statusText = approved ? 'Completed' : (cardData.status === 'revised' ? 'Revised' : 'Cancelled');
+        const badgeIcon = meta.icon || '✓';
+        const badgeClass = approved ? 'badge-executed' : (cardData.status === 'revised' ? 'badge-revised' : 'badge-cancelled');
+        const actionIcon = approved ? '✓' : (cardData.status === 'revised' ? '✎' : '✕');
+
+        card.innerHTML = `
+          <div class="approval-progress-track"><div class="approval-progress-fill"></div></div>
+          <div style="flex:1; min-width:0;">
+            <div class="approval-header">
+              <div class="approval-header-top">
+                <span class="approval-badge">${badgeIcon} ${meta.label} Agent: ${statusText}</span>
+                <button type="button" class="btn-approval-collapse" title="Expand details" aria-label="Toggle details">
+                  <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <h3>${escapeHtml(heading)}</h3>
+            <div class="approval-status status-success" aria-live="polite">
+              <span class="status-icon">✓</span> <span class="status-text">${meta.label} Agent: ${statusText}</span>
+            </div>
+            <div class="approval-body-collapsible">
+              ${renderApprovalBody({ domain, args: cardData.args || {} })}
+            </div>
+          </div>
+          <div class="approval-actions">
+            <div class="approval-resolved-badge ${badgeClass}"><span class="badge-icon">${actionIcon}</span> <span>${meta.label} Agent: ${statusText}</span></div>
+          </div>`;
+
+        const collapseBtn = card.querySelector('.btn-approval-collapse');
+        if (collapseBtn) {
+          collapseBtn.onclick = e => {
+            e.stopPropagation();
+            const isCollapsed = card.classList.toggle('is-collapsed');
+            collapseBtn.title = isCollapsed ? 'Expand details' : 'Collapse details';
+          };
+        }
+        return card;
       };
 
       const addApprovalCard = approval => {
@@ -2655,6 +2730,9 @@
         const card = document.createElement('div');
         card.className = 'approval-card';
         card.dataset.domain = domain;
+        if (approval && approval.next_domain) {
+          card.dataset.nextDomain = approval.next_domain;
+        }
         const heading = approval && approval.is_duplicate
           ? `Re-run this ${meta.label.toLowerCase()} action?`
           : (approval && approval.message) || `Approve ${meta.label.toLowerCase()} action`;
@@ -2662,26 +2740,35 @@
           <div class="approval-progress-track"><div class="approval-progress-fill"></div></div>
           <div style="flex:1; min-width:0;">
             <div class="approval-header">
-              <span class="approval-badge">${meta.icon} Waiting on you — ${meta.label}</span>
+              <div class="approval-header-top">
+                <span class="approval-badge">${meta.icon} Waiting on you — ${meta.label}</span>
+                <button type="button" class="btn-approval-collapse" title="Collapse details" aria-label="Toggle details">
+                  <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+              </div>
             </div>
             <h3>${escapeHtml(heading)}</h3>
-            ${renderApprovalBody(approval || {})}
-            <div class="approval-edit-toggle-bar">
-              <button type="button" class="btn-approval-toggle-edit" data-action="toggle-edit">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                <span>Edit fields</span>
-              </button>
-            </div>
-            <div class="approval-edit-drawer hidden">
-              ${renderApprovalEditFields(approval || {})}
-            </div>
-            <div class="approval-instruction-wrap">
-              <input type="text" class="approval-instruction-input" placeholder="Or instruct agent to revise (e.g. change time, revise text)...">
-              <button type="button" class="btn-instruct-action" data-action="instruct">
-                <span>Instruct Agent</span>
-              </button>
-            </div>
             <div class="approval-status hidden" aria-live="polite"></div>
+            <div class="approval-body-collapsible">
+              ${renderApprovalBody(approval || {})}
+              <div class="approval-edit-toggle-bar">
+                <button type="button" class="btn-approval-toggle-edit" data-action="toggle-edit">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  <span>Edit fields</span>
+                </button>
+              </div>
+              <div class="approval-edit-drawer hidden">
+                ${renderApprovalEditFields(approval || {})}
+              </div>
+              <div class="approval-instruction-wrap">
+                <input type="text" class="approval-instruction-input" placeholder="Or instruct agent to revise (e.g. change time, revise text)...">
+                <button type="button" class="btn-instruct-action" data-action="instruct">
+                  <span>Instruct Agent</span>
+                </button>
+              </div>
+            </div>
           </div>
           <div class="approval-actions">
             <button class="btn btn-primary btn-approve" data-action="approve">
@@ -2691,6 +2778,15 @@
               <span>Cancel</span>
             </button>
           </div>`;
+
+        const collapseBtn = card.querySelector('.btn-approval-collapse');
+        if (collapseBtn) {
+          collapseBtn.onclick = (e) => {
+            e.stopPropagation();
+            const isCollapsed = card.classList.toggle('is-collapsed');
+            collapseBtn.title = isCollapsed ? 'Expand details' : 'Collapse details';
+          };
+        }
 
         const toggleBtn = card.querySelector('[data-action="toggle-edit"]');
         const editDrawer = card.querySelector('.approval-edit-drawer');
@@ -2899,6 +2995,10 @@
       const selectThread = async id => {
         cancelActiveStream();
         state.threadId = id;
+        try {
+          sessionStorage.setItem('ops_active_thread', String(id));
+          window.history.replaceState(null, '', `/?thread=${encodeURIComponent(id)}`);
+        } catch (e) { }
         state.messageCount = 0;
         state.pendingApproval = null;
         state.sending = false;
@@ -2932,6 +3032,14 @@
                 if (role === 'user') {
                   state.lastUserQuery = message.content;
                 }
+                if (message.cards && Array.isArray(message.cards)) {
+                  message.cards.forEach(cardData => {
+                    if (cardData && typeof cardData === 'object') {
+                      const cardEl = renderHistoricalCard(cardData);
+                      transcript.appendChild(cardEl);
+                    }
+                  });
+                }
                 const metrics = message.metrics || null;
                 addMessage(
                   role,
@@ -2960,11 +3068,15 @@
           if (state.threadId === threadId) {
             state.threadId = null;
             state.pendingApproval = null;
+            try {
+              sessionStorage.removeItem('ops_active_thread');
+              window.history.replaceState(null, '', '/');
+            } catch (e) { }
             title.textContent = getDynamicGreeting();
             renderWelcomeState();
             document.querySelectorAll('.thread-item').forEach(item => item.classList.remove('active'));
           }
-          await loadThreads({ selectFirst: !state.threadId });
+          await loadThreads({ autoResume: !state.threadId });
         } catch (error) {
           showBanner(error.message || "Couldn't delete that thread.", () => deleteThread(threadId));
         }
@@ -3087,18 +3199,29 @@
         };
       }
 
-      const loadThreads = async ({ selectFirst = false } = {}) => {
+      const loadThreads = async ({ autoResume = false } = {}) => {
         renderThreadSkeleton();
         try {
           const data = await api('/api/list_thread/');
           const threads = Array.isArray(data) ? data : data.results || [];
           state.threads = threads;
           filterThreads(threadSearchInput ? threadSearchInput.value : '');
-          if (selectFirst && !state.initialThreadPicked) {
+          if (autoResume && !state.initialThreadPicked) {
             state.initialThreadPicked = true;
-            if (threads[0]) {
-              selectThread(threads[0].id);
+            let resumeThreadId = null;
+            try {
+              const urlParams = new URLSearchParams(window.location.search);
+              resumeThreadId = urlParams.get('thread') || sessionStorage.getItem('ops_active_thread');
+            } catch (e) { }
+
+            if (resumeThreadId && threads.some(t => String(t.id) === String(resumeThreadId))) {
+              selectThread(resumeThreadId);
             } else {
+              try {
+                sessionStorage.removeItem('ops_active_thread');
+                window.history.replaceState(null, '', '/');
+              } catch (e) { }
+              state.threadId = null;
               title.textContent = getDynamicGreeting();
               renderWelcomeState();
             }
@@ -3106,7 +3229,7 @@
           return threads;
         } catch (error) {
           threadList.innerHTML = '';
-          showBanner("Couldn't load your threads.", () => loadThreads({ selectFirst }));
+          showBanner("Couldn't load your threads.", () => loadThreads({ autoResume }));
           return [];
         }
       };
@@ -3224,6 +3347,10 @@
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
             if (!state.threadId && data.thread_id) {
               state.threadId = data.thread_id;
+              try {
+                sessionStorage.setItem('ops_active_thread', String(data.thread_id));
+                window.history.replaceState(null, '', `/?thread=${encodeURIComponent(data.thread_id)}`);
+              } catch (e) { }
               loadThreads();
             }
             setPendingStatus('Waiting for approval…');
@@ -3243,6 +3370,10 @@
             addMessage('agent', assistantText, false, metrics);
             if (!state.threadId && data.thread_id) {
               state.threadId = data.thread_id;
+              try {
+                sessionStorage.setItem('ops_active_thread', String(data.thread_id));
+                window.history.replaceState(null, '', `/?thread=${encodeURIComponent(data.thread_id)}`);
+              } catch (e) { }
               loadThreads();
             }
             if (data.thread_name && data.thread_name !== 'New Thread') {
@@ -3395,6 +3526,10 @@
         if (state.pendingApproval) return; // don't abandon an open approval mid-decision
         cancelActiveStream();
         state.threadId = null;
+        try {
+          sessionStorage.removeItem('ops_active_thread');
+          window.history.replaceState(null, '', '/');
+        } catch (e) { }
         state.messageCount = 0;
         state.sending = false;
         state.sessionTurns = [];
@@ -3426,68 +3561,6 @@
         // Disable input edits and instruction fields so parameters cannot be changed mid-flight
         card.querySelectorAll('.approval-edit-input, .approval-instruction-input').forEach(input => input.disabled = true);
 
-        // Targeted button loading state
-        if (instruction && instructBtn) {
-          instructBtn.classList.add('btn-loading');
-          instructBtn.disabled = true;
-          const label = instructBtn.querySelector('span');
-          if (label) label.textContent = 'Revising…';
-          if (approveBtn) approveBtn.disabled = true;
-          if (cancelBtn) cancelBtn.disabled = true;
-        } else if (value && approveBtn) {
-          approveBtn.classList.add('btn-loading');
-          approveBtn.disabled = true;
-          const label = approveBtn.querySelector('span');
-          if (label) label.textContent = 'Approving…';
-          if (cancelBtn) cancelBtn.disabled = true;
-          if (instructBtn) instructBtn.disabled = true;
-        } else if (!value && cancelBtn) {
-          cancelBtn.classList.add('btn-loading');
-          cancelBtn.disabled = true;
-          const label = cancelBtn.querySelector('span');
-          if (label) label.textContent = 'Cancelling…';
-          if (approveBtn) approveBtn.disabled = true;
-          if (instructBtn) instructBtn.disabled = true;
-        }
-
-        // Animated live stage progression with dynamic domain awareness & elapsed seconds
-        const startTime = Date.now();
-        const getDynamicStatusText = () => {
-          const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
-          if (value) {
-            if (elapsedSec < 3) {
-              return `Connecting to ${meta.label} service & verifying parameters…`;
-            } else if (elapsedSec < 8) {
-              return `Executing ${meta.label.toLowerCase()} action… (${elapsedSec}s)`;
-            } else if (elapsedSec < 16) {
-              return `${meta.label} action complete. Advancing plan & orchestrating downstream tools… (${elapsedSec}s)`;
-            } else if (elapsedSec < 30) {
-              return `Executing workspace actions & querying connected domains… (${elapsedSec}s)`;
-            } else {
-              return `Synthesizing multi-step results & preparing final response… (${elapsedSec}s)`;
-            }
-          } else if (instruction) {
-            if (elapsedSec < 4) {
-              return `Forwarding revision instruction to agent…`;
-            } else if (elapsedSec < 14) {
-              return `Revising plan with new details… (${elapsedSec}s)`;
-            } else {
-              return `Generating updated response… (${elapsedSec}s)`;
-            }
-          } else {
-            return `Cancelling action & recording decision… (${elapsedSec}s)`;
-          }
-        };
-
-        const renderStatusStage = () => {
-          const text = getDynamicStatusText();
-          status.innerHTML = `<span class="status-pulse-dot"></span> <span class="status-text">${escapeHtml(text)}</span>`;
-        };
-        status.classList.remove('hidden', 'status-error', 'status-success');
-        renderStatusStage();
-
-        const stageInterval = setInterval(renderStatusStage, 1000);
-
         // Gather modified args if approving
         let modifiedArgs = null;
         if (value) {
@@ -3508,40 +3581,64 @@
           });
         }
 
-        try {
-          const threadId = state.threadId;
-          if (!threadId) {
-            throw new Error('This approval is no longer attached to an active thread.');
-          }
-          const payload = { approved: value };
-          if (modifiedArgs && Object.keys(modifiedArgs).length > 0) {
-            payload.modified_args = modifiedArgs;
-          }
-          if (instruction) {
-            payload.instruction = instruction;
-          }
+        const threadId = state.threadId;
+        if (!threadId) {
+          status.classList.add('status-error');
+          status.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">This approval is no longer attached to an active thread.</span>`;
+          delete card.dataset.busy;
+          card.classList.remove('is-busy');
+          return;
+        }
 
+        // 1. Collapse the card immediately and mark it completed for this domain
+        delete card.dataset.busy;
+        morphCardToCompleted(card, value, instruction, modifiedArgs, meta.label);
+
+        if (state.pendingApproval === card) {
+          state.pendingApproval = null;
+        }
+        refreshComposerState();
+
+        // 2. Spawn a standalone thinking bubble below the card in the transcript
+        let pending = addMessage('agent', '', true);
+        let pendingBody = pending ? pending.querySelector('.message-content') : null;
+        const setPendingStatus = label => {
+          if (!pendingBody && pending) pendingBody = pending.querySelector('.message-content');
+          if (pendingBody) {
+            pendingBody.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>${escapeHtml(label)}</span></div>`;
+          }
+        };
+        const nextDomain = card.dataset.nextDomain;
+        const nextLabel = nextDomain && DOMAIN_META[nextDomain] ? DOMAIN_META[nextDomain].label : (nextDomain ? titleCase(nextDomain) : null);
+        const actionLabel = value
+          ? (nextLabel ? `Working with ${nextLabel} Agent…` : `Executing ${meta.label.toLowerCase()} action & advancing plan…`)
+          : (instruction ? 'Processing revision instruction…' : 'Cancelling action…');
+        setPendingStatus(actionLabel);
+
+        const payload = { approved: value };
+        if (modifiedArgs && Object.keys(modifiedArgs).length > 0) {
+          payload.modified_args = modifiedArgs;
+        }
+        if (instruction) {
+          payload.instruction = instruction;
+        }
+
+        try {
           const data = await api(`/api/thread/${threadId}/tool-approval/`, {
             method: 'POST',
             body: JSON.stringify(payload)
           });
-          clearInterval(stageInterval);
 
-          delete card.dataset.busy;
-          card.classList.remove('is-busy');
-          status.classList.add('status-success');
-          status.innerHTML = `<span class="status-icon">✓</span> <span class="status-text">${value 
-            ? (modifiedArgs ? 'Approved with edits — action executed.' : 'Approved — action executed.')
-            : (instruction ? 'Instruction processed by agent.' : 'Action cancelled.')}</span>`;
-          
-          if (state.pendingApproval === card) {
-            state.pendingApproval = null;
+          if (pending) {
+            pending.remove();
+            pending = null;
           }
-          refreshComposerState();
+
           const approvalMetrics = data.metrics || null;
           if (approvalMetrics && approvalMetrics.total_tokens) {
             updateSessionTokens(approvalMetrics.total_tokens);
           }
+
           if (data.status === 'approval_required' && data.approval) {
             if (data.result) {
               addMessage('agent', data.result, false, approvalMetrics);
@@ -3551,7 +3648,6 @@
               const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);
               if (item) item.textContent = data.thread_name;
             }
-            morphCardToCompleted(card, value, instruction, modifiedArgs);
             addApprovalCard(data.approval);
             return;
           }
@@ -3562,23 +3658,15 @@
             const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);
             if (item) item.textContent = data.thread_name;
           }
-          morphCardToCompleted(card, value, instruction, modifiedArgs);
         } catch (error) {
-          clearInterval(stageInterval);
-          card.classList.remove('is-busy');
-          card.querySelectorAll('.approval-edit-input, .approval-instruction-input').forEach(input => input.disabled = false);
-          actions.querySelectorAll('button').forEach(button => {
-            button.classList.remove('btn-loading');
-            button.disabled = false;
-          });
-          if (instructBtn) {
-            instructBtn.classList.remove('btn-loading');
-            instructBtn.disabled = false;
+          if (pending) {
+            pending.remove();
+            pending = null;
           }
           status.classList.remove('status-success');
           status.classList.add('status-error');
           status.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">Failed: ${escapeHtml(error.message)}</span>`;
-          delete card.dataset.busy;
+          showBanner('Action failed: ' + error.message);
         }
       }
 
@@ -3673,7 +3761,7 @@
 
       setupThreadRenaming();
       loadIntegrations();
-      loadThreads({ selectFirst: true });
+      loadThreads({ autoResume: true });
     }
   };
 })();

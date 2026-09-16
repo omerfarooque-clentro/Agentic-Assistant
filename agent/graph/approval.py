@@ -53,6 +53,10 @@ def approval_node(state):
     # Check if this specific tool_call_id was already processed
     is_duplicate = tool_id in sent_tool_call_ids
 
+    plan = state.get("plan") or []
+    next_step = next((s for s in plan if isinstance(s, dict) and s.get("status") == "pending"), None)
+    next_domain = next_step.get("domain") if next_step else None
+
     # 2. INTERRUPT (Pure read-only operation before this point)
     decision = interrupt({
         "type": "approval",
@@ -61,6 +65,8 @@ def approval_node(state):
         "args": args,
         "is_duplicate": is_duplicate,
         "message": "This action was already executed. Re-run it?" if is_duplicate else f"Approve this {domain} action ({tool_name})?",
+        "next_domain": next_domain,
+        "plan": plan,
     })
 
     # 3. RESUME EXECUTION (Runs ONLY after user resumes)
