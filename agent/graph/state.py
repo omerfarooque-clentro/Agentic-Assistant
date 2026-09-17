@@ -41,3 +41,6 @@ class AgentState(TypedDict):
 
     plan: list[PlanStep]
     current_step_index: int
+
+    details: dict
+    is_re_send: bool

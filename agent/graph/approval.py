@@ -118,8 +118,9 @@ def approval_node(state):
 
 
 def approval_result(state):
-    if not state["approved"]:
+    if not state.get("approved"):
         return "cancel"
 
-    domain = state["details"]["domain"]
+    details = state.get("details") or {}
+    domain = details.get("domain") or state.get("domain", "general")
     return domain
