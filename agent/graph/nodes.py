@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import time
 from typing import Any
 
@@ -11,6 +13,8 @@ from agent.graph.approval import APPROVAL_TOOL_NAMES
 from agent.graph.state import AgentState
 from agent.metrics import extract_call_metrics, DEFAULT_MODEL
 from agent.routing.intent_router import route_intent
+
+logger = logging.getLogger(__name__)
 
 
 # Domains whose write actions are gated behind human-in-the-loop approval.
@@ -53,7 +57,7 @@ def nlp_node(state: AgentState, available_domains=()) -> dict[str, Any]:
 def advance_plan_node(state: AgentState) -> dict[str, Any]:
     """Advance the current plan step to completed and prepare the next pending step."""
     plan = [dict(s) for s in state.get("plan", [])]
-    print(f"plan: {plan}")
+    logger.debug("plan: %s", plan)
     current_idx = state.get("current_step_index", 0)
 
     # Extract summary/result from last agent message or tool message

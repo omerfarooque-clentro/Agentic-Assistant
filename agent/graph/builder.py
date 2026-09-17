@@ -1,3 +1,4 @@
+import logging
 import os
 
 import asyncio
@@ -18,6 +19,8 @@ from agent.graph.nodes import (
     advance_plan_node,
 )
 from agent.routing.intent_router import get_mcp_tool_names
+
+logger = logging.getLogger(__name__)
 
 
 DB_URI = (
@@ -154,9 +157,9 @@ def create_graph(tools_groups):
         
         graph.add_edge(tools_name, agent_name)
 
-    print("approval_domains:", approval_domains)
-    print(
-        "approval route map:",
+    logger.debug("approval_domains: %s", approval_domains)
+    logger.debug(
+        "approval route map: %s",
         {
             **{domain: f"{domain}_tools" for domain in approval_domains},
             "cancel": END,

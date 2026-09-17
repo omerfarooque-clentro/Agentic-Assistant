@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 import re
 import time
 from langchain_core.messages import AIMessage, HumanMessage
 
+from agent.constants import AGENT_NODES
 from agent.tools import get_user_tools
 from agent.graph import create_graph, ensure_checkpointer
 from agent.status import NODE_STATUS_MAP
@@ -14,16 +17,7 @@ from agent.metrics import aggregate_turn_metrics
 from agent.llm import StreamTitleFilter, extract_title_from_text, generate_title_from_context, is_substantive_for_title
 from conversations.models import Thread
 
-
-AGENT_NODES = {
-    "general_agent",
-    "email_agent",
-    "calendar_agent",
-    "docs_agent",
-    "sheets_agent",
-    "slack_agent",
-    "research_agent",
-}
+logger = logging.getLogger(__name__)
 
 
 async def run_agent(message: str, thread_id: int, user):
@@ -179,4 +173,4 @@ async def run_agent(message: str, thread_id: int, user):
         exit_reason = "error yielded"
         return
     finally:
-        print(f"run_agent: exiting for thread {thread_id} with reason: {exit_reason}")
+        logger.debug("run_agent: exiting for thread %s with reason: %s", thread_id, exit_reason)

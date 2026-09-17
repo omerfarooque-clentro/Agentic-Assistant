@@ -20,7 +20,7 @@ class ApproveEmailSerializer(serializers.Serializer):
     instruction = serializers.CharField(required=False, allow_blank=True, default="")
 
 
-class RegisterationSerializer(serializers.ModelSerializer):
+class RegistrationSerializer(serializers.ModelSerializer):
     recovery_code = serializers.CharField(read_only=True)
     auto_generate_password = serializers.BooleanField(required=False, default=False, write_only=True)
 
@@ -208,3 +208,7 @@ class OTPGenerateSerializer(serializers.Serializer):
         if not user.check_password(password):
             raise serializers.ValidationError({"password": "Incorrect password."})
         return data
+
+
+# Backward-compatible alias for the corrected name.
+RegisterationSerializer = RegistrationSerializer

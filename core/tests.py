@@ -10,8 +10,8 @@ from core.views import (
     verify_otp_view,
     reset_password_view,
     format_user_agent_message,
-    render_cards,
 )
+from agent.cards import render_cards
 from core.serializers import (
     AgentChatSerializer,
     LoginSerializer,
@@ -28,6 +28,39 @@ from accounts.utils import (
     verify_recovery_otp,
 )
 
+
+import json
+
+def parse_sse_final(response):
+    """
+    Safely consumes streaming_content (whether yielding bytes or str),
+    extracts all 'data: ' JSON objects, and returns the final terminal event.
+    """
+    raw_chunks = []
+    for chunk in response.streaming_content:
+        if isinstance(chunk, bytes):
+            raw_chunks.append(chunk.decode("utf-8"))
+        elif isinstance(chunk, str):
+            raw_chunks.append(chunk)
+
+    raw_text = "".join(raw_chunks)
+    events = []
+
+    for line in raw_text.splitlines():
+        line = line.strip()
+        if line.startswith("data:"):
+            payload_str = line[len("data:"):].strip()
+            if payload_str:
+                try:
+                    events.append(json.loads(payload_str))
+                except json.JSONDecodeError:
+                    continue
+
+    for event in reversed(events):
+        if event.get("type") in ("completed", "approval_required", "error"):
+            return event
+
+    return events[-1] if events else {}
 
 class AuthURLTests(SimpleTestCase):
     def test_registration_url_resolves(self):
@@ -442,7 +475,7 @@ class ToolApprovalViewTests(TestCase):
             format="json"
         )
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = parse_sse_final(response)
         self.assertEqual(data["status"], "completed")
         self.assertEqual(data["result"], "Event scheduled successfully!")
         self.assertEqual(data["thread_id"], self.thread.id)
@@ -472,7 +505,7 @@ class ToolApprovalViewTests(TestCase):
             format="json"
         )
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = parse_sse_final(response)
         self.assertEqual(data["status"], "completed")
         self.assertEqual(data["result"], "Action cancelled.")
 
@@ -508,7 +541,7 @@ class ToolApprovalViewTests(TestCase):
             format="json"
         )
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = parse_sse_final(response)
         self.assertEqual(data["status"], "approval_required")
         self.assertEqual(data["result"], explanation)
         self.assertEqual(data["approval"]["domain"], "calendar")
@@ -643,7 +676,7 @@ class ApprovalCardPersistenceTests(TestCase):
             format="json"
         )
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = parse_sse_final(response)
         self.assertEqual(data["status"], "completed")
         self.assertIn("card_record", data)
         self.assertEqual(data["card_record"]["domain"], "calendar")
@@ -692,7 +725,7 @@ class ApprovalCardPersistenceTests(TestCase):
             format="json"
         )
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = parse_sse_final(response)
         self.assertEqual(data["status"], "completed")
         self.assertEqual(data["card_record"]["status"], "cancelled")
         self.assertFalse(data["card_record"]["approved"])
@@ -727,7 +760,7 @@ class ApprovalCardPersistenceTests(TestCase):
             format="json"
         )
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = parse_sse_final(response)
         self.assertEqual(data["card_record"]["status"], "revised")
         self.assertFalse(data["card_record"]["approved"])
 
@@ -756,7 +789,7 @@ class ApprovalCardPersistenceTests(TestCase):
             format="json"
         )
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = parse_sse_final(response)
         self.assertEqual(data["card_record"]["args"], modified)
 
         db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
@@ -806,7 +839,7 @@ class ApprovalCardPersistenceTests(TestCase):
             format="json"
         )
         self.assertEqual(res_step1.status_code, 200)
-        data_step1 = res_step1.json()
+        data_step1 = parse_sse_final(res_step1)
         self.assertEqual(data_step1["status"], "approval_required")
         self.assertEqual(data_step1["approval"]["domain"], "email")
         self.assertEqual(data_step1["card_record"]["domain"], "calendar")
@@ -842,7 +875,7 @@ class ApprovalCardPersistenceTests(TestCase):
             format="json"
         )
         self.assertEqual(res_step2.status_code, 200)
-        data_step2 = res_step2.json()
+        data_step2 = parse_sse_final(res_step2)
         self.assertEqual(data_step2["status"], "completed")
         self.assertEqual(data_step2["card_record"]["domain"], "email")
         self.assertEqual(data_step2["card_record"]["status"], "completed")

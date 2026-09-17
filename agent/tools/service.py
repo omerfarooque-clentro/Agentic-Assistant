@@ -1,18 +1,26 @@
+"""Service layer for fetching and assembling per-user MCP tool groups."""
+
 import asyncio
-from agent.integrations.access import (refresh_expired_google_token, validate_slack_integration)
+import logging
+
+from asgiref.sync import sync_to_async
+
+from agent.integrations.access import refresh_expired_google_token, validate_slack_integration
 from agent.models import MCPIntegration
 from .grouping import build_user_tool_groups
 from .slack_resolver import create_slack_resolver_tool
-from asgiref.sync import sync_to_async
+
+logger = logging.getLogger(__name__)
+
 
 async def get_user_tools(user):
-
-    integrations = await sync_to_async(list)(MCPIntegration.objects.filter(user=user, enabled=True))
-   # print(f"i am get_user_tools and i am fetching tools for user {user.id} with integrations: {[i.service for i in integrations]}")
+    """Fetch, refresh, and group MCP tools for the given user."""
+    integrations = await sync_to_async(list)(
+        MCPIntegration.objects.filter(user=user, enabled=True)
+    )
     if not integrations:
         return {}
 
-    
     integrations = await asyncio.gather(
         *(refresh_expired_google_token(integration) for integration in integrations)
     )
@@ -21,12 +29,11 @@ async def get_user_tools(user):
     )
 
     live_integrations = [integration for integration in integrations if integration is not None]
-  #  print(f"i am get_user_tools and i am fetching tools for user {user.id} with live integrations: {[i.service for i in live_integrations]}")
     if not live_integrations:
         return {}
 
     tool_groups = await build_user_tool_groups(live_integrations)
     if "slack" in tool_groups:
         tool_groups["slack"].append(create_slack_resolver_tool(user))
-   # print(f"i am get_user_tools and i am fetching tools for user {user.id} with tool groups: {list(tool_groups.values())}")
+
     return tool_groups

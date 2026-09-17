@@ -249,7 +249,7 @@ class ChatStreamingAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    @patch("core.views.run_agent")
+    @patch("agent.streaming.run_agent")
     def test_chat_streaming_headers_and_thread_message_creation(self, mock_run_agent):
         async def fake_run_agent(*args, **kwargs):
             yield {"type": "status", "status": "thinking", "message": "Planning..."}
