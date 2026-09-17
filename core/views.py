@@ -4,6 +4,7 @@ import re
 import time
 import zoneinfo
 
+from agent.streaming import event_stream, stream_agent_response
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse, StreamingHttpResponse
@@ -319,68 +320,7 @@ async def new_chat_view(request):
     await Message.objects.acreate(thread=thread, role="user", content=message)
     await thread.asave(update_fields=["updated_at"]) 
     
-
-    async def event_stream():
-        try:
-            async for chunk in run_agent(message=formatted_message, thread_id=thread.id, user=user):
-                chunk_type = chunk["type"]
-                
-                if chunk_type == "status":
-                    # Pass through status events from the backend with their message
-                    yield f"data: {json.dumps({'type': 'status', 'status': chunk.get('status'), 'message': chunk.get('message')})}\n\n"
-                    continue
-                if chunk_type == "token":
-                    yield f"data: {json.dumps({'type': 'token', 'token': chunk['token']})}\n\n"
-                    continue
-                if chunk_type == "approval_required":
-                    yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt'], 'thread_id': thread.id})}\n\n"
-                    return
-                if chunk_type == "error":
-                    yield f"data: {json.dumps({'type': 'error', 'message': chunk['message']})}\n\n"
-                    await Message.objects.acreate(thread=thread, role="agent", content="An unexpected error occurred during processing, please try again.")
-                    await thread.asave(update_fields=["updated_at"]) 
-                    return
-                if chunk_type == "thread_name":
-                    yield f"data: {json.dumps({'type': 'thread_name', 'thread_id': chunk['thread_id'], 'thread_name': chunk['thread_name']})}\n\n"
-                    continue
-                if chunk_type != "completed":
-                    print(f"new_chat event_stream: ignoring unexpected chunk type={chunk_type} for thread {thread.id}")
-                    continue
-
-                messages = chunk["result"].get("messages", [])
-                raw_content = extract_text_content(messages[-1].content) if messages else ""
-                final_content, suggested_title = extract_title_from_text(raw_content)
-
-                resolved_title = chunk.get("thread_name") or suggested_title
-                if resolved_title and thread.name in ("New Thread", "New Conversation", "", None):
-                    thread.name = resolved_title
-                    await thread.asave(update_fields=["name", "updated_at"])
-                else:
-                    await thread.asave(update_fields=["updated_at"])
-
-                if resolved_title:
-                    final_content = re.sub(
-                        rf"^(?:#*\s*)?{re.escape(resolved_title)}[:\s]*\n+",
-                        "",
-                        final_content,
-                        flags=re.IGNORECASE,
-                    ).strip()
-
-                if not final_content.strip():
-                    final_content = "I processed your request. Let me know if there’s anything else you’d like to do!"
-                
-                await Message.objects.acreate(thread=thread, role="agent", content=final_content, metrics=chunk.get("metrics") or {})
-                await thread.asave(update_fields=["updated_at"])
-                await thread.arefresh_from_db(fields=["name", "updated_at"])
-                yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
-                return
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+    return stream_agent_response(formatted_message, thread, user)
 
 
 @csrf_exempt
@@ -407,75 +347,7 @@ async def agent_chat_view(request, thread_id):
     await Message.objects.acreate(thread=thread, role="user", content=message)
     await thread.asave(update_fields=["updated_at"]) 
     
-    local_save  = []
-
-    async def event_stream():
-        try:
-            async for chunk in run_agent(message=formatted_message, thread_id=thread.id, user=user):
-                chunk_type = chunk["type"]
-    
-                if chunk_type == "status":
-                    # Pass through status events from the backend with their message
-                    yield f"data: {json.dumps({'type': 'status', 'status': chunk.get('status'), 'message': chunk.get('message')})}\n\n"
-                    continue
-                if chunk_type == "token":
-                    local_save.append(chunk['token'])
-                    yield f"data: {json.dumps({'type': 'token', 'token': chunk['token']})}\n\n"
-                    continue
-                if chunk_type == "approval_required":
-                    yield f"data: {json.dumps({'type': 'approval_required', 'approval': chunk['interrupt'], 'thread_id': thread.id})}\n\n"
-                    return
-                if chunk_type == "error":
-                    err_msg = chunk.get("message") or "Unknown error occurred"
-                    accumulated = "".join(local_save).strip()
-                    db_content = f"{accumulated}\n\n[Error: {err_msg}]" if accumulated else f"[Error: {err_msg}]"
-                    await Message.objects.acreate(thread=thread, role="agent", content=db_content)
-                    yield f"data: {json.dumps({'type': 'error', 'message': err_msg})}\n\n"
-                    return
-                if chunk_type == "thread_name":
-                    yield f"data: {json.dumps({'type': 'thread_name', 'thread_id': chunk['thread_id'], 'thread_name': chunk['thread_name']})}\n\n"
-                    continue
-                if chunk_type != "completed":
-                    continue
-
-                messages = chunk["result"].get("messages", [])
-                raw_content = extract_text_content(messages[-1].content) if messages else ""
-                final_content, suggested_title = extract_title_from_text(raw_content)
-
-                resolved_title = chunk.get("thread_name") or suggested_title
-
-                if resolved_title and thread.name in ("New Thread", "New Conversation", "", None):
-                    thread.name = resolved_title
-                    await thread.asave(update_fields=["name", "updated_at"])
-                else:
-                    await thread.asave(update_fields=["updated_at"])
-                
-                if resolved_title:
-                    final_content = re.sub(
-                        rf"^(?:#*\s*)?{re.escape(resolved_title)}[:\s]*\n+",
-                        "",
-                        final_content,
-                        flags=re.IGNORECASE,
-                    ).strip()
-
-                if not final_content.strip():
-                    final_content = "I processed your request. Let me know if there’s anything else you’d like to do!"
-                    
-                await Message.objects.acreate(
-                    thread=thread,
-                    role="agent",
-                    content=final_content,
-                    metrics=chunk.get("metrics") or {},
-                )
-                yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
-                return
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+    return stream_agent_response(formatted_message, thread, user)
 
 
 @csrf_exempt
@@ -517,102 +389,143 @@ async def tool_approval_view(request, thread_id):
             "thread_id": str(thread.id)
         }
     }
-     
-    print(f"i am approve_email_view resuming thread {thread.id} for user {user.id} with approved={approved}")
+
+    print(f"tool_approval_view: resuming thread {thread.id} for user {user.id} with approved={approved}")
 
     await ensure_checkpointer()
     tools = await get_user_tools(user)
     app = create_graph(tools)
-   
-    start_time = time.perf_counter()
-    result = await app.ainvoke(
-        Command(
-            resume={
-                "approved": approved,
-                "modified_args": modified_args,
-                "instruction": instruction,
-            }
-        ),
-        config=config,
-    )
 
-    print(f"i am approve_email_view and i resumed thread {thread.id} with final response: {result['messages'][-1].content!r}")
+    from agent.status import NODE_STATUS_MAP
+    from agent.llm import StreamTitleFilter
 
-    state = await app.aget_state(config)
-    messages = result.get("messages", [])
-    raw_message = extract_text_content(messages[-1].content) if messages else ""
-    message, suggested_title = extract_title_from_text(raw_message)
+    AGENT_NODES = {
+        "general_agent", "email_agent", "calendar_agent",
+        "docs_agent", "sheets_agent", "slack_agent", "research_agent",
+    }
 
-    approval_metrics = aggregate_turn_metrics(
-        call_metrics=result.get("call_metrics", []),
-        start_time=start_time,
-        messages=result.get("messages", []),
-    )
+    async def approval_event_stream():
+        start_time = time.perf_counter()
+        title_filter = StreamTitleFilter()
 
-    card_record = render_cards(
-        approval=approval,
-        messages=messages,
-        modified_args=modified_args,
-        approved=approved,
-        instruction=instruction,
-    )
-    card_domain = card_record["domain"]
+        try:
+            resume_input = Command(
+                resume={
+                    "approved": approved,
+                    "modified_args": modified_args,
+                    "instruction": instruction,
+                }
+            )
 
-    if state.interrupts:
-        interrupt_content = message.strip() or (f"{card_domain.title()} action completed." if approved else "Action cancelled.")
-        await Message.objects.acreate(
-            thread=thread,
-            role="agent",
-            content=interrupt_content,
-            metrics=approval_metrics,
-            cards=[card_record],
-        )
-        await thread.asave(update_fields=["updated_at"])
+            async for event in app.astream_events(resume_input, config=config, version="v2"):
+                event_type = event["event"]
+                metadata = event.get("metadata", {})
+                node_name = metadata.get("langgraph_node")
 
-        return JsonResponse({
-            "status": "approval_required",
-            "approval": state.interrupts[0].value,
-            "result": message if message.strip() else None,
-            "thread_id": int(thread.id),
-            "thread_name": thread.name,
-            "metrics": approval_metrics,
-            "card_record": card_record,
-        })
+                # Emit status events for known nodes (thinking bubbles)
+                status_info = NODE_STATUS_MAP.get(node_name, {})
+                if status_info and event_type == "on_chat_model_start":
+                    yield f"data: {json.dumps({'type': 'status', 'status': status_info.get('status'), 'message': status_info.get('message'), 'node': node_name})}\n\n"
 
-    if not message.strip():
-        tool_err = None
-        for msg in reversed(messages):
-            if isinstance(msg, ToolMessage):
-                if getattr(msg, "status", None) == "error" or "Error calling tool" in str(msg.content):
-                    tool_err = str(msg.content)
-                break
-        if tool_err:
-            message = f"Action failed: {tool_err}"
-        else:
-            message = "Action executed successfully." if approved else "Action cancelled."
+                if node_name not in AGENT_NODES:
+                    continue
 
-    if suggested_title and thread.name == "New Thread":
-        thread.name = suggested_title
-        await thread.asave(update_fields=["name", "updated_at"])
-    else:
-        await thread.asave(update_fields=["updated_at"])
+                if event_type != "on_chat_model_stream":
+                    continue
 
-    await Message.objects.acreate(
-        thread=thread,
-        role="agent",
-        content=message,
-        metrics=approval_metrics,
-        cards=[card_record],
-    )
+                chunk = event["data"]["chunk"]
+                chunk_content = getattr(chunk, "content", None)
+                if not chunk_content or not isinstance(chunk_content, str):
+                    continue
 
-    return JsonResponse({
-        "status": "completed",
-        "result": message,
-        "thread_id": int(thread.id),
-        "thread_name": thread.name,
-        "metrics": approval_metrics,
-        "card_record": card_record,
-    })
+                user_token = title_filter.process_chunk(chunk_content)
+                if user_token:
+                    yield f"data: {json.dumps({'type': 'token', 'token': user_token})}\n\n"
+
+            # Flush remaining title filter buffer
+            rem_token, extracted_title = title_filter.finalize()
+            if rem_token:
+                yield f"data: {json.dumps({'type': 'token', 'token': rem_token})}\n\n"
+
+            # Get final state after graph execution
+            state = await app.aget_state(config)
+            final_values = state.values
+            messages = list(final_values.get("messages", []))
+
+            raw_message = extract_text_content(messages[-1].content) if messages else ""
+            final_text, suggested_title = extract_title_from_text(raw_message)
+
+            if not extracted_title and suggested_title:
+                extracted_title = suggested_title
+
+            approval_metrics = aggregate_turn_metrics(
+                call_metrics=final_values.get("call_metrics", []),
+                start_time=start_time,
+                messages=messages,
+            )
+
+            card_record = render_cards(
+                approval=approval,
+                messages=messages,
+                modified_args=modified_args,
+                approved=approved,
+                instruction=instruction,
+            )
+            card_domain = card_record["domain"]
+
+            # Handle thread naming
+            if extracted_title and thread.name in ("New Thread", "New Conversation", "", None):
+                thread.name = extracted_title
+                await thread.asave(update_fields=["name", "updated_at"])
+                yield f"data: {json.dumps({'type': 'thread_name', 'thread_id': thread.id, 'thread_name': extracted_title})}\n\n"
+            else:
+                await thread.asave(update_fields=["updated_at"])
+
+            # Check if graph hit another interrupt (next approval step)
+            if state.interrupts:
+                interrupt_content = final_text.strip() or (f"{card_domain.title()} action completed." if approved else "Action cancelled.")
+                await Message.objects.acreate(
+                    thread=thread,
+                    role="agent",
+                    content=interrupt_content,
+                    metrics=approval_metrics,
+                    cards=[card_record],
+                )
+
+                yield f"data: {json.dumps({'type': 'approval_required', 'approval': state.interrupts[0].value, 'result': final_text if final_text.strip() else None, 'thread_id': int(thread.id), 'thread_name': thread.name, 'metrics': approval_metrics, 'card_record': card_record})}\n\n"
+                return
+
+            # No more interrupts — graph completed
+            if not final_text.strip():
+                tool_err = None
+                for msg in reversed(messages):
+                    if isinstance(msg, ToolMessage):
+                        if getattr(msg, "status", None) == "error" or "Error calling tool" in str(msg.content):
+                            tool_err = str(msg.content)
+                        break
+                if tool_err:
+                    final_text = f"Action failed: {tool_err}"
+                else:
+                    final_text = "Action executed successfully." if approved else "Action cancelled."
+
+            await Message.objects.acreate(
+                thread=thread,
+                role="agent",
+                content=final_text,
+                metrics=approval_metrics,
+                cards=[card_record],
+            )
+
+            yield f"data: {json.dumps({'type': 'completed', 'result': final_text, 'thread_id': int(thread.id), 'thread_name': thread.name, 'metrics': approval_metrics, 'card_record': card_record})}\n\n"
+
+        except Exception as e:
+            print(f"tool_approval_view error for thread {thread.id}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    response = StreamingHttpResponse(approval_event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 @csrf_exempt

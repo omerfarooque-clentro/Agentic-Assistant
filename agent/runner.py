@@ -69,6 +69,7 @@ async def run_agent(message: str, thread_id: int, user):
             if status_info and event_type == "on_chat_model_start":
                 yield {
                     "type": "status",
+                    "node": node_name,
                     **status_info,
                 }
 

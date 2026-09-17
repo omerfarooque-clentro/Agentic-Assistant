@@ -2312,6 +2312,32 @@ body:has(.app-shell) {
   pointer-events: none;
 }
 
+/* When completed AND collapsed, hide everything except the badge+chevron row */
+.approval-card.is-completed.is-collapsed h3 {
+  display: none;
+}
+
+.approval-card.is-completed.is-collapsed .approval-plan-pipeline {
+  display: none;
+}
+
+.approval-card.is-completed.is-collapsed .approval-status {
+  display: none;
+}
+
+/* Completed progress track — solid green fill instead of shimmer */
+.approval-card.is-completed .approval-progress-track {
+  display: block;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.approval-card.is-completed .approval-progress-fill {
+  width: 100%;
+  background: var(--emerald, #10b981);
+  animation: none;
+  transform: none;
+}
+
 .approval-badge {
   display: inline-flex;
   align-items: center;

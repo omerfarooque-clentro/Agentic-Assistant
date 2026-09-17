@@ -3607,7 +3607,7 @@
         state.pendingApproval = card;
 
         const actions = card.querySelector('.approval-actions');
-        const status = card.querySelector('.approval-status');
+        const statusEl = card.querySelector('.approval-status');
         const instructBtn = card.querySelector('[data-action="instruct"]');
         const approveBtn = card.querySelector('[data-action="approve"]');
         const cancelBtn = card.querySelector('[data-action="cancel"]');
@@ -3642,10 +3642,10 @@
 
         const threadId = card.dataset.threadId || state.threadId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('ops_active_thread') : null);
         if (!threadId) {
-          if (status) {
-            status.classList.remove('hidden', 'status-success');
-            status.classList.add('status-error');
-            status.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">This approval is no longer attached to an active thread.</span>`;
+          if (statusEl) {
+            statusEl.classList.remove('hidden', 'status-success');
+            statusEl.classList.add('status-error');
+            statusEl.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">This approval is no longer attached to an active thread.</span>`;
           }
           delete card.dataset.busy;
           card.classList.remove('is-busy');
@@ -3655,47 +3655,14 @@
           state.threadId = threadId;
         }
 
-        // Live progression timer with domain awareness & elapsed seconds
-        const startTime = Date.now();
-        const getDynamicStatusText = () => {
-          const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
-          if (value) {
-            if (elapsedSec < 3) {
-              return `Connecting to ${meta.label} service & verifying parameters…`;
-            } else if (elapsedSec < 8) {
-              return `Executing ${meta.label.toLowerCase()} action… (${elapsedSec}s)`;
-            } else if (elapsedSec < 16) {
-              return `${meta.label} action complete. Advancing plan & orchestrating downstream tools… (${elapsedSec}s)`;
-            } else if (elapsedSec < 30) {
-              return `Executing workspace actions & querying connected domains… (${elapsedSec}s)`;
-            } else {
-              return `Synthesizing multi-step results & preparing final response… (${elapsedSec}s)`;
-            }
-          } else if (instruction) {
-            if (elapsedSec < 4) {
-              return `Forwarding revision instruction to agent…`;
-            } else if (elapsedSec < 14) {
-              return `Revising plan with new details… (${elapsedSec}s)`;
-            } else {
-              return `Generating updated response… (${elapsedSec}s)`;
-            }
-          } else {
-            return `Cancelling action & recording decision… (${elapsedSec}s)`;
-          }
+        // Show initial status on card
+        const updateCardStatus = (text) => {
+          if (!statusEl) return;
+          statusEl.classList.remove('hidden', 'status-error', 'status-success');
+          statusEl.innerHTML = `<span class="status-pulse-dot"></span> <span class="status-text">${escapeHtml(text)}</span>`;
         };
 
-        const renderStatusStage = () => {
-          if (!status) return;
-          const text = getDynamicStatusText();
-          status.innerHTML = `<span class="status-pulse-dot"></span> <span class="status-text">${escapeHtml(text)}</span>`;
-        };
-
-        // Keep card open with active status while the tool executes in the backend
-        if (status) {
-          status.classList.remove('hidden', 'status-error', 'status-success');
-          renderStatusStage();
-        }
-        const stageInterval = setInterval(renderStatusStage, 1000);
+        updateCardStatus(value ? `Connecting to ${meta.label} service…` : (instruction ? 'Forwarding revision…' : 'Cancelling…'));
 
         const badge = card.querySelector('.approval-badge');
         if (badge) {
@@ -3737,49 +3704,270 @@
           payload.instruction = instruction;
         }
 
+        // Create a thinking bubble message for streaming agent tokens
+        let thinkingBubble = null;
+        let thinkingBody = null;
+        let agentText = '';
+
+        const ensureThinkingBubble = () => {
+          if (thinkingBubble) return;
+          thinkingBubble = addMessage('agent', '', true);
+          thinkingBody = thinkingBubble.querySelector('.message-content');
+        };
+
+        const setThinkingStatus = (label) => {
+          ensureThinkingBubble();
+          if (!thinkingBody) return;
+          thinkingBody.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>${escapeHtml(label)}</span></div>`;
+        };
+
+        // Fallback timer — shows elapsed time if backend goes quiet
+        let lastEventTime = Date.now();
+        const approvalStartTime = Date.now();
+        const fallbackTimer = setInterval(() => {
+          const sinceLast = Math.floor((Date.now() - lastEventTime) / 1000);
+          const totalElapsed = Math.floor((Date.now() - approvalStartTime) / 1000);
+          if (sinceLast > 4) {
+            const msg = `Executing ${meta.label.toLowerCase()} action… (${totalElapsed}s)`;
+            if (!cardMorphed) {
+              updateCardStatus(msg);
+            } else {
+              setThinkingStatus(`Processing next step… (${totalElapsed}s)`);
+            }
+          }
+        }, 2000);
+        let cardMorphed = false;
+
         try {
-          const data = await api(`/api/thread/${threadId}/tool-approval/`, {
+          const response = await fetchWithAuth(`/api/thread/${threadId}/tool-approval/`, {
             method: 'POST',
-            body: JSON.stringify(payload)
+            headers: { 'Accept': 'text/event-stream' },
+            body: JSON.stringify(payload),
           });
-          clearInterval(stageInterval);
 
-          // Action has now really finished in backend: collapse card to completed state
-          delete card.dataset.busy;
-          card.classList.remove('is-busy');
-          morphCardToCompleted(card, value, instruction, modifiedArgs, meta.label);
-
-          if (state.pendingApproval === card) {
-            state.pendingApproval = null;
-          }
-          refreshComposerState();
-
-          const approvalMetrics = data.metrics || null;
-          if (approvalMetrics && approvalMetrics.total_tokens) {
-            updateSessionTokens(approvalMetrics.total_tokens);
+          if (!response.ok) {
+            let errorText = `Request failed (${response.status})`;
+            try { const d = await response.json(); errorText = extractErrorMessage(d) || errorText; } catch {}
+            throw new Error(errorText);
           }
 
-          if (data.status === 'approval_required' && data.approval) {
-            if (data.result) {
-              addMessage('agent', data.result, false, approvalMetrics);
+          if (!response.body) {
+            throw new Error('Streaming not supported by this browser.');
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let streamCompleted = false;
+
+          const processApprovalSseBlock = (block) => {
+            if (!block || !block.trim()) return;
+            const lines = block.split(/\r?\n/);
+            let ssePayload = '';
+            for (const line of lines) {
+              if (!line || line.startsWith(':')) continue;
+              if (line.toLowerCase().startsWith('data:')) {
+                ssePayload += line.slice(5).trim();
+              }
             }
-            if (data.thread_name && data.thread_name !== 'New Thread') {
-              title.textContent = data.thread_name;
-              const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);
-              if (item) item.textContent = data.thread_name;
-            }
-            addApprovalCard({ ...(data.approval || {}), thread_id: data.thread_id || threadId });
-            return;
-          }
+            if (!ssePayload) return;
+            let data;
+            try { data = JSON.parse(ssePayload); } catch { return; }
 
-          addMessage('agent', data.result || (value ? 'Action executed successfully.' : (instruction ? `Instruction sent: "${instruction}"` : 'Cancelled.')), false, approvalMetrics);
-          if (data.thread_name && data.thread_name !== 'New Thread') {
-            title.textContent = data.thread_name;
-            const item = threadList.querySelector(`.thread-item[data-id="${threadId}"] .thread-item-title`);
-            if (item) item.textContent = data.thread_name;
+            lastEventTime = Date.now();
+
+            // The card's own agent node — status stays on the card
+            const cardAgentNode = `${domain}_agent`;
+
+            // Detect domain transition: when we see a node that is NOT the card's
+            // own agent (e.g. advance_plan, nlp, or a different *_agent), it means
+            // the card's step is done — morph the card and switch to thinking bubble
+            const morphCardIfNeeded = (nodeHint) => {
+              if (cardMorphed) return;
+              // Only morph if this node is clearly "past" the card's own domain
+              if (nodeHint && nodeHint !== cardAgentNode) {
+                cardMorphed = true;
+                delete card.dataset.busy;
+                card.classList.remove('is-busy');
+                morphCardToCompleted(card, value, instruction, modifiedArgs, meta.label);
+                if (state.pendingApproval === card) {
+                  state.pendingApproval = null;
+                }
+              }
+            };
+
+            // Status events — live feedback
+            if (data.type === 'status') {
+              const msg = data.message || 'Processing…';
+              const node = data.node || '';
+
+              // If the node belongs to a DIFFERENT agent or a coordinator node,
+              // the card's step is done — collapse card and switch to thinking bubble
+              if (node && node !== cardAgentNode) {
+                morphCardIfNeeded(node);
+              }
+
+              if (!cardMorphed) {
+                // Phase 1: Card is still active — show status ON the card
+                updateCardStatus(msg);
+              } else {
+                // Phase 2: Card is done — show status in thinking bubble
+                setThinkingStatus(msg);
+              }
+              return;
+            }
+
+            // Thread name updates
+            if (data.type === 'thread_name' && data.thread_name) {
+              if (data.thread_name !== 'New Thread') {
+                title.textContent = data.thread_name;
+                const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || threadId}"] .thread-item-title`);
+                if (item) item.textContent = data.thread_name;
+              }
+              return;
+            }
+
+            // Token streaming — agent is generating text
+            if (data.type === 'token') {
+              const token = data.token || '';
+              if (!cardMorphed) {
+                // Still on our card's domain — update the card status with progress
+                agentText += safeText(token);
+                updateCardStatus(`${meta.label} agent is responding…`);
+              } else {
+                // Past our card — stream into thinking bubble
+                agentText += safeText(token);
+                ensureThinkingBubble();
+                if (thinkingBubble) thinkingBubble.classList.remove('pending');
+                if (thinkingBody) {
+                  thinkingBody.textContent = agentText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
+                }
+                transcript.scrollTop = transcript.scrollHeight;
+              }
+              return;
+            }
+
+            // Next approval required — chain next card
+            if (data.type === 'approval_required') {
+              streamCompleted = true;
+
+              // Ensure card is morphed (it should already be, but just in case)
+              if (!cardMorphed) {
+                cardMorphed = true;
+                delete card.dataset.busy;
+                card.classList.remove('is-busy');
+                morphCardToCompleted(card, value, instruction, modifiedArgs, meta.label);
+                if (state.pendingApproval === card) {
+                  state.pendingApproval = null;
+                }
+              }
+
+              const approvalMetrics = data.metrics || null;
+              if (approvalMetrics && approvalMetrics.total_tokens) {
+                updateSessionTokens(approvalMetrics.total_tokens);
+              }
+
+              // Show intermediate agent result if present
+              if (thinkingBubble) thinkingBubble.remove();
+              const resultText = agentText.trim() || (data.result ? safeText(data.result) : '');
+              if (resultText) {
+                addMessage('agent', resultText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim(), false, approvalMetrics);
+              }
+
+              // Chain next approval card
+              const nextApproval = data.approval || {};
+              addApprovalCard({ ...nextApproval, thread_id: data.thread_id || threadId });
+
+              refreshComposerState();
+              return 'done';
+            }
+
+            // Completed — graph finished
+            if (data.type === 'completed') {
+              streamCompleted = true;
+
+              // Ensure card is morphed
+              if (!cardMorphed) {
+                cardMorphed = true;
+                delete card.dataset.busy;
+                card.classList.remove('is-busy');
+                morphCardToCompleted(card, value, instruction, modifiedArgs, meta.label);
+                if (state.pendingApproval === card) {
+                  state.pendingApproval = null;
+                }
+              }
+
+              const approvalMetrics = data.metrics || null;
+              if (approvalMetrics && approvalMetrics.total_tokens) {
+                updateSessionTokens(approvalMetrics.total_tokens);
+              }
+
+              // Show final agent message
+              if (thinkingBubble) thinkingBubble.remove();
+              const finalText = agentText.trim() || safeText(data.result || (value ? 'Action executed successfully.' : (instruction ? `Instruction sent: "${instruction}"` : 'Cancelled.')));
+              addMessage('agent', finalText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim(), false, approvalMetrics);
+
+              if (data.thread_name && data.thread_name !== 'New Thread') {
+                title.textContent = data.thread_name;
+                const item = threadList.querySelector(`.thread-item[data-id="${data.thread_id || threadId}"] .thread-item-title`);
+                if (item) item.textContent = data.thread_name;
+              }
+
+              refreshComposerState();
+              return 'done';
+            }
+
+            // Error
+            if (data.type === 'error') {
+              throw new Error(data.message || 'Agent request failed.');
+            }
+          };
+
+          while (true) {
+            const { value: chunk, done } = await reader.read();
+            if (chunk) buffer += decoder.decode(chunk, { stream: true });
+            if (!done) {
+              const blocks = buffer.split(/\r?\n\r?\n/);
+              buffer = blocks.pop() || '';
+              for (const block of blocks) {
+                if (block.trim() === '') continue;
+                const result = processApprovalSseBlock(block);
+                if (result === 'done') {
+                  clearInterval(fallbackTimer);
+                  return;
+                }
+              }
+              continue;
+            }
+            // Stream ended
+            buffer += decoder.decode();
+            const remaining = buffer.trim();
+            if (remaining) {
+              const result = processApprovalSseBlock(remaining);
+              if (result === 'done') {
+                clearInterval(fallbackTimer);
+                return;
+              }
+            }
+            // Stream ended without a completed/approval event — clean up gracefully
+            if (!streamCompleted) {
+              delete card.dataset.busy;
+              card.classList.remove('is-busy');
+              morphCardToCompleted(card, value, instruction, modifiedArgs, meta.label);
+              if (state.pendingApproval === card) {
+                state.pendingApproval = null;
+              }
+              if (thinkingBubble) thinkingBubble.remove();
+              if (agentText.trim()) {
+                addMessage('agent', agentText.trim());
+              } else {
+                addMessage('agent', value ? 'Action executed successfully.' : 'Action cancelled.');
+              }
+              refreshComposerState();
+            }
+            break;
           }
         } catch (error) {
-          clearInterval(stageInterval);
           delete card.dataset.busy;
           card.classList.remove('is-busy');
           if (badge) {
@@ -3802,12 +3990,15 @@
             instructBtn.classList.remove('btn-loading');
             instructBtn.innerHTML = `<span>Instruct Agent</span>`;
           }
-          if (status) {
-            status.classList.remove('status-success', 'hidden');
-            status.classList.add('status-error');
-            status.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">Failed: ${escapeHtml(error.message)}</span>`;
+          if (statusEl) {
+            statusEl.classList.remove('status-success', 'hidden');
+            statusEl.classList.add('status-error');
+            statusEl.innerHTML = `<span class="status-icon">⚠</span> <span class="status-text">Failed: ${escapeHtml(error.message)}</span>`;
           }
+          if (thinkingBubble) thinkingBubble.remove();
           showBanner('Action failed: ' + error.message);
+        } finally {
+          clearInterval(fallbackTimer);
         }
       }
 
