@@ -113,7 +113,6 @@ async def event_stream(formatted_message, thread, user):
         logger.exception("event_stream error for thread %s", thread.id)
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-
 async def approval_event_stream(approval, thread, user, config, approved, modified_args, instruction):
     """Async generator that resumes a paused graph after user approval/rejection and streams results."""
     start_time = time.perf_counter()
@@ -137,10 +136,14 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
             metadata = event.get("metadata", {})
             node_name = metadata.get("langgraph_node")
 
-            # Emit status events for known nodes (thinking bubbles)
-            status_info = NODE_STATUS_MAP.get(node_name, {})
-            if status_info and event_type == "on_chat_model_start":
-                yield f"data: {json.dumps({'type': 'status', 'status': status_info.get('status'), 'message': status_info.get('message'), 'node': node_name})}\n\n"
+            # Emit status events for known nodes (both LLM calls and pure Python steps like advance_plan)
+            status_info = NODE_STATUS_MAP.get(node_name)
+            if status_info:
+                is_llm_start = (event_type == "on_chat_model_start")
+                is_node_start = (event_type == "on_chain_start" and event.get("name") == node_name)
+
+                if is_llm_start or is_node_start:
+                    yield f"data: {json.dumps({'type': 'status', 'status': status_info.get('status'), 'message': status_info.get('message'), 'node': node_name})}\n\n"
 
             if node_name not in AGENT_NODES:
                 continue
