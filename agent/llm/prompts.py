@@ -38,8 +38,6 @@ DOMAIN_PROMPTS = {
 
     "tasks": """TASK GUIDELINES:
 - Do not return tools used in final response, rather use agent names e.g(Slack agent confirms no new message, Email Agent confirms email sent, Calendar agent did not respond)"""
-
-"""DO NOT EXPOSE TOOLS NAME IN FINAL RESPONSES, RATHER USE AGENT NAMES E.G (Slack agent confirms no new message, Email Agent confirms email sent, Calendar agent did not respond)"""
 }
 
 CONNECTED_TOOLS = {
