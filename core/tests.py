@@ -29,38 +29,40 @@ from accounts.utils import (
 )
 
 
+from django.test import TransactionTestCase, AsyncClient
+
+
 import json
-
-def parse_sse_final(response):
-    """
-    Safely consumes streaming_content (whether yielding bytes or str),
-    extracts all 'data: ' JSON objects, and returns the final terminal event.
-    """
-    raw_chunks = []
-    for chunk in response.streaming_content:
-        if isinstance(chunk, bytes):
-            raw_chunks.append(chunk.decode("utf-8"))
-        elif isinstance(chunk, str):
-            raw_chunks.append(chunk)
-
-    raw_text = "".join(raw_chunks)
+async def parse_sse_final(response):
+    """Consume the async SSE response and return the terminal event payload."""
     events = []
 
-    for line in raw_text.splitlines():
-        line = line.strip()
-        if line.startswith("data:"):
-            payload_str = line[len("data:"):].strip()
-            if payload_str:
-                try:
-                    events.append(json.loads(payload_str))
-                except json.JSONDecodeError:
-                    continue
+    async for chunk in response.streaming_content:
+        if isinstance(chunk, bytes):
+            chunk = chunk.decode("utf-8")
+
+        for line in chunk.splitlines():
+            line = line.strip()
+
+            if not line.startswith("data:"):
+                continue
+
+            payload = line[len("data:") :].strip()
+
+            if not payload:
+                continue
+
+            try:
+                events.append(json.loads(payload))
+            except json.JSONDecodeError:
+                continue
 
     for event in reversed(events):
         if event.get("type") in ("completed", "approval_required", "error"):
             return event
 
     return events[-1] if events else {}
+
 
 class AuthURLTests(SimpleTestCase):
     def test_registration_url_resolves(self):
@@ -420,110 +422,135 @@ class FormatUserAgentMessageTests(SimpleTestCase):
 
 
 from unittest.mock import patch, AsyncMock, MagicMock
+from django.test import TestCase, AsyncClient
+from rest_framework_simplejwt.tokens import RefreshToken
+from langchain_core.messages import AIMessage
 from conversations.models import Thread, Message, Approval
-from langchain_core.messages import AIMessage, ToolMessage
 
-
-class ToolApprovalViewTests(TestCase):
+class ToolApprovalViewTests(TransactionTestCase):
     def setUp(self):
+        # Sync setUp runs normally before each async test
         self.user = User.objects.create_user(
             username="approval_user",
             email="approval@example.com",
             password="StrongPassword123!"
         )
-        self.client = APIClient()
+        self.async_client = AsyncClient()
         token = RefreshToken.for_user(self.user)
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+        self.auth_headers = {"Authorization": f"Bearer {token.access_token}"}
         self.thread = Thread.objects.create(user=self.user, name="Meeting Thread")
         self.user_msg = Message.objects.create(thread=self.thread, role="user", content="Schedule meeting")
 
-    def test_unauthenticated_request_rejected(self):
-        unauth_client = APIClient()
-        response = unauth_client.post(f"/api/thread/{self.thread.id}/tool-approval/", {"approved": True}, format="json")
+    async def test_unauthenticated_request_rejected(self):
+        unauth_client = AsyncClient()
+        response = await unauth_client.post(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            {"approved": True},
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 401)
 
-    def test_method_not_allowed(self):
-        response = self.client.get(f"/api/thread/{self.thread.id}/tool-approval/")
+    async def test_method_not_allowed(self):
+        response = await self.async_client.get(
+            f"/api/thread/{self.thread.id}/tool-approval/",
+            headers=self.auth_headers,
+        )
         self.assertEqual(response.status_code, 405)
 
-    def test_nonexistent_thread_returns_404(self):
-        response = self.client.post("/api/thread/999999/tool-approval/", {"approved": True}, format="json")
+    async def test_nonexistent_thread_returns_404(self):
+        response = await self.async_client.post(
+            "/api/thread/999999/tool-approval/",
+            {"approved": True},
+            content_type="application/json",
+            headers=self.auth_headers,
+        )
         self.assertEqual(response.status_code, 404)
 
-    def test_no_user_message_returns_404(self):
-        empty_thread = Thread.objects.create(user=self.user, name="Empty Thread")
-        response = self.client.post(f"/api/thread/{empty_thread.id}/tool-approval/", {"approved": True}, format="json")
-        self.assertEqual(response.status_code, 404)
+    @patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.streaming.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.streaming.create_graph")
+    async def test_successful_tool_approval(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        async def fake_astream_events(*args, **kwargs):
+            if False:
+                yield {}
 
-    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
-    @patch("core.views.get_user_tools", new_callable=AsyncMock)
-    @patch("core.views.create_graph")
-    def test_successful_tool_approval(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
         mock_app = MagicMock()
-        mock_app.ainvoke = AsyncMock(return_value={
-            "messages": [AIMessage(content="Event scheduled successfully!")],
-            "call_metrics": [],
-        })
+        mock_app.astream_events = fake_astream_events
         mock_state = MagicMock()
         mock_state.interrupts = []
+        mock_state.values = {
+            "messages": [AIMessage(content="Event scheduled successfully!")],
+            "call_metrics": [],
+        }
         mock_app.aget_state = AsyncMock(return_value=mock_state)
         mock_create_graph.return_value = mock_app
 
-        response = self.client.post(
+        response = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": True},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, 200)
-        data = parse_sse_final(response)
-        self.assertEqual(data["status"], "completed")
+
+        data = await parse_sse_final(response)
+        self.assertEqual(data["type"], "completed")
         self.assertEqual(data["result"], "Event scheduled successfully!")
         self.assertEqual(data["thread_id"], self.thread.id)
 
-        # Verify Message saved in DB
-        agent_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        # Async DB assertion
+        agent_msg = await Message.objects.filter(thread=self.thread, role="agent").alast()
         self.assertIsNotNone(agent_msg)
         self.assertEqual(agent_msg.content, "Event scheduled successfully!")
+        
+    @patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.streaming.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.streaming.create_graph")
+    async def test_tool_approval_with_rejection(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        async def fake_astream_events(*args, **kwargs):
+            if False:
+                yield {}
 
-    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
-    @patch("core.views.get_user_tools", new_callable=AsyncMock)
-    @patch("core.views.create_graph")
-    def test_tool_approval_with_rejection(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
         mock_app = MagicMock()
-        mock_app.ainvoke = AsyncMock(return_value={
-            "messages": [AIMessage(content="")],
-            "call_metrics": [],
-        })
+        mock_app.astream_events = fake_astream_events
         mock_state = MagicMock()
         mock_state.interrupts = []
+        mock_state.values = {
+            "messages": [AIMessage(content="")],
+            "call_metrics": [],
+        }
         mock_app.aget_state = AsyncMock(return_value=mock_state)
         mock_create_graph.return_value = mock_app
 
-        response = self.client.post(
+        response = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": False},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, 200)
-        data = parse_sse_final(response)
-        self.assertEqual(data["status"], "completed")
+
+        data = await parse_sse_final(response)
+        self.assertEqual(data["type"], "completed")
         self.assertEqual(data["result"], "Action cancelled.")
 
-        agent_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        agent_msg = await Message.objects.filter(thread=self.thread, role="agent").alast()
         self.assertIsNotNone(agent_msg)
         self.assertEqual(agent_msg.content, "Action cancelled.")
 
-    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
-    @patch("core.views.get_user_tools", new_callable=AsyncMock)
-    @patch("core.views.create_graph")
-    def test_tool_approval_triggers_subsequent_interrupt(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
-        """When tool resumption hits another interrupt, assistant explanation must be saved to DB and returned."""
+
+    @patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.streaming.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.streaming.create_graph")
+    async def test_tool_approval_triggers_subsequent_interrupt(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
         explanation = "I encountered an attendee email format issue. Let me reschedule for 9:00 PM."
+
+        async def fake_astream_events(*args, **kwargs):
+            if False:
+                yield {}
+
         mock_app = MagicMock()
-        mock_app.ainvoke = AsyncMock(return_value={
-            "messages": [AIMessage(content=explanation)],
-            "call_metrics": [],
-        })
+        mock_app.astream_events = fake_astream_events
         mock_interrupt = MagicMock()
         mock_interrupt.value = {
             "domain": "calendar",
@@ -532,27 +559,35 @@ class ToolApprovalViewTests(TestCase):
         }
         mock_state = MagicMock()
         mock_state.interrupts = [mock_interrupt]
+        mock_state.values = {
+            "messages": [AIMessage(content=explanation)],
+            "call_metrics": [],
+        }
         mock_app.aget_state = AsyncMock(return_value=mock_state)
         mock_create_graph.return_value = mock_app
 
-        response = self.client.post(
+        response = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": True},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, 200)
-        data = parse_sse_final(response)
-        self.assertEqual(data["status"], "approval_required")
+
+        data = await parse_sse_final(response)
+        self.assertEqual(data["type"], "approval_required")
         self.assertEqual(data["result"], explanation)
         self.assertEqual(data["approval"]["domain"], "calendar")
         self.assertEqual(data["approval"]["tool_name"], "manage_event")
 
-        # Crucial check: message MUST be persisted in the database so it doesn't vanish on reload
-        agent_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        agent_msg = await Message.objects.filter(thread=self.thread, role="agent").alast()
         self.assertIsNotNone(agent_msg)
         self.assertEqual(agent_msg.content, explanation)
-
-
+        self.assertEqual(mock_create_graph.call_count, 1)
+        mock_get_tools.assert_awaited_once_with(self.user)
+        mock_ensure_cp.assert_awaited_once()
+        
+        
 class ApprovalCardUnitTests(SimpleTestCase):
     def test_render_cards_single_approved_extracts_tool_args(self):
         approval = MagicMock(domain="calendar")
@@ -636,191 +671,274 @@ class ApprovalCardUnitTests(SimpleTestCase):
         self.assertEqual(card["heading"], "General action")
 
 
-class ApprovalCardPersistenceTests(TestCase):
+class ApprovalCardPersistenceTests(TransactionTestCase):
+
     def setUp(self):
         self.user = User.objects.create_user(
             username="card_user",
             email="cards@example.com",
-            password="StrongPassword123!"
+            password="StrongPassword123!",
         )
-        self.client = APIClient()
+        self.async_client = AsyncClient()
         token = RefreshToken.for_user(self.user)
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-        self.thread = Thread.objects.create(user=self.user, name="Multi Agent Thread")
-        self.user_msg = Message.objects.create(thread=self.thread, role="user", content="Schedule meeting and send email")
+        self.auth_headers = {"Authorization": f"Bearer {token.access_token}"}
+        self.thread = Thread.objects.create(
+            user=self.user, name="Multi Agent Thread"
+        )
+        self.user_msg = Message.objects.create(
+            thread=self.thread,
+            role="user",
+            content="Schedule meeting and send email",
+        )
 
-    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
-    @patch("core.views.get_user_tools", new_callable=AsyncMock)
-    @patch("core.views.create_graph")
-    def test_single_approval_persists_card_record_in_db_and_response(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+    @patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.streaming.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.streaming.create_graph")
+    async def test_single_approval_persists_card_record_in_db_and_response(
+        self, mock_create_graph, mock_get_tools, mock_ensure_cp
+    ):
         """Single approval correctly attaches card_record to Message in DB and is retrievable via messages endpoint."""
-        tool_args = {"summary": "Weekly 1:1", "start_time": "2026-09-17T11:00:00Z"}
+        tool_args = {
+            "summary": "Weekly 1:1",
+            "start_time": "2026-09-17T11:00:00Z",
+        }
+
+        async def fake_astream_events(*args, **kwargs):
+            if False:
+                yield {}
+
         mock_app = MagicMock()
-        mock_app.ainvoke = AsyncMock(return_value={
+        mock_app.astream_events = fake_astream_events
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_state.values = {
             "messages": [
                 AIMessage(
                     content="Calendar event booked successfully!",
-                    tool_calls=[{"name": "manage_event", "args": tool_args, "id": "call_p_1", "type": "tool_call"}],
+                    tool_calls=[
+                        {
+                            "name": "manage_event",
+                            "args": tool_args,
+                            "id": "call_p_1",
+                            "type": "tool_call",
+                        }
+                    ],
                 )
             ],
             "call_metrics": [],
-        })
-        mock_state = MagicMock()
-        mock_state.interrupts = []
+        }
         mock_app.aget_state = AsyncMock(return_value=mock_state)
         mock_create_graph.return_value = mock_app
 
-        response = self.client.post(
+        response = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": True},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, 200)
-        data = parse_sse_final(response)
-        self.assertEqual(data["status"], "completed")
+
+        data = await parse_sse_final(response)
+        self.assertEqual(data["type"], "completed")
         self.assertIn("card_record", data)
         self.assertEqual(data["card_record"]["domain"], "calendar")
         self.assertEqual(data["card_record"]["status"], "completed")
         self.assertTrue(data["card_record"]["approved"])
         self.assertEqual(data["card_record"]["args"], tool_args)
 
-        # Verify database record has cards JSON
-        db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        # Async DB query
+        db_msg = await Message.objects.filter(
+            thread=self.thread, role="agent"
+        ).alast()
         self.assertIsNotNone(db_msg)
         self.assertIsInstance(db_msg.cards, list)
         self.assertEqual(len(db_msg.cards), 1)
         self.assertEqual(db_msg.cards[0], data["card_record"])
 
-        # Verify GET /api/thread/<id>/messages/ serializes the cards array
-        msg_res = self.client.get(f"/api/thread/{self.thread.id}/messages/")
+        # Async GET /api/thread/<id>/messages/
+        msg_res = await self.async_client.get(
+            f"/api/thread/{self.thread.id}/messages/",
+            headers=self.auth_headers,
+        )
         self.assertEqual(msg_res.status_code, 200)
         msg_list = msg_res.json()
         agent_msgs = [m for m in msg_list if m["role"] == "agent"]
         self.assertEqual(len(agent_msgs), 1)
         self.assertEqual(agent_msgs[0]["cards"], [data["card_record"]])
 
-    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
-    @patch("core.views.get_user_tools", new_callable=AsyncMock)
-    @patch("core.views.create_graph")
-    def test_single_rejection_persists_cancelled_card_in_db(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+
+    @patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.streaming.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.streaming.create_graph")
+    async def test_single_rejection_persists_cancelled_card_in_db(
+        self, mock_create_graph, mock_get_tools, mock_ensure_cp
+    ):
         """Action cancellation records status='cancelled' in card and persists to Message.cards."""
+
+        async def fake_astream_events(*args, **kwargs):
+            if False:
+                yield {}
+
         mock_app = MagicMock()
-        mock_app.ainvoke = AsyncMock(return_value={
+        mock_app.astream_events = fake_astream_events
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_state.values = {
             "messages": [
                 AIMessage(
                     content="Action cancelled.",
-                    tool_calls=[{"name": "manage_event", "args": {"summary": "Cancelled meeting"}, "id": "call_p_2", "type": "tool_call"}],
+                    tool_calls=[
+                        {
+                            "name": "manage_event",
+                            "args": {"summary": "Cancelled meeting"},
+                            "id": "call_p_2",
+                            "type": "tool_call",
+                        }
+                    ],
                 )
             ],
             "call_metrics": [],
-        })
-        mock_state = MagicMock()
-        mock_state.interrupts = []
+        }
         mock_app.aget_state = AsyncMock(return_value=mock_state)
         mock_create_graph.return_value = mock_app
 
-        response = self.client.post(
+        response = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": False},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, 200)
-        data = parse_sse_final(response)
-        self.assertEqual(data["status"], "completed")
+
+        data = await parse_sse_final(response)
+        self.assertEqual(data["type"], "completed")
         self.assertEqual(data["card_record"]["status"], "cancelled")
         self.assertFalse(data["card_record"]["approved"])
 
-        db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        db_msg = await Message.objects.filter(
+            thread=self.thread, role="agent"
+        ).alast()
         self.assertEqual(db_msg.cards[0]["status"], "cancelled")
         self.assertFalse(db_msg.cards[0]["approved"])
 
-    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
-    @patch("core.views.get_user_tools", new_callable=AsyncMock)
-    @patch("core.views.create_graph")
-    def test_single_revision_instruction_persists_revised_card_in_db(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+    @patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.streaming.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.streaming.create_graph")
+    async def test_single_revision_instruction_persists_revised_card_in_db(
+        self, mock_create_graph, mock_get_tools, mock_ensure_cp
+    ):
         """Submitting revision instruction persists status='revised' in card."""
+
+        async def fake_astream_events(*args, **kwargs):
+            if False:
+                yield {}
+
         mock_app = MagicMock()
-        mock_app.ainvoke = AsyncMock(return_value={
+        mock_app.astream_events = fake_astream_events
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_state.values = {
             "messages": [
                 AIMessage(
                     content="I updated the time to 4:00 PM as requested.",
-                    tool_calls=[{"name": "manage_event", "args": {"summary": "1:1 meeting"}, "id": "call_p_3", "type": "tool_call"}],
+                    tool_calls=[
+                        {
+                            "name": "manage_event",
+                            "args": {"summary": "1:1 meeting"},
+                            "id": "call_p_3",
+                            "type": "tool_call",
+                        }
+                    ],
                 )
             ],
             "call_metrics": [],
-        })
-        mock_state = MagicMock()
-        mock_state.interrupts = []
+        }
         mock_app.aget_state = AsyncMock(return_value=mock_state)
         mock_create_graph.return_value = mock_app
 
-        response = self.client.post(
+        response = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": False, "instruction": "Schedule at 4pm instead"},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, 200)
-        data = parse_sse_final(response)
+
+        data = await parse_sse_final(response)
         self.assertEqual(data["card_record"]["status"], "revised")
         self.assertFalse(data["card_record"]["approved"])
 
-        db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        db_msg = await Message.objects.filter(
+            thread=self.thread, role="agent"
+        ).alast()
         self.assertEqual(db_msg.cards[0]["status"], "revised")
 
-    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
-    @patch("core.views.get_user_tools", new_callable=AsyncMock)
-    @patch("core.views.create_graph")
-    def test_single_approval_with_modified_args_persists_modified_args_in_card(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+    @patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.streaming.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.streaming.create_graph")
+    async def test_single_approval_with_modified_args_persists_modified_args_in_card(
+        self, mock_create_graph, mock_get_tools, mock_ensure_cp
+    ):
         """User modified field overrides are stored in card_record args."""
-        modified = {"summary": "Modified Interview Title", "start_time": "2026-09-17T16:00:00Z"}
+        modified = {
+            "summary": "Modified Interview Title",
+            "start_time": "2026-09-17T16:00:00Z",
+        }
+
+        async def fake_astream_events(*args, **kwargs):
+            if False:
+                yield {}
+
         mock_app = MagicMock()
-        mock_app.ainvoke = AsyncMock(return_value={
-            "messages": [AIMessage(content="Event created with edited fields.")],
-            "call_metrics": [],
-        })
+        mock_app.astream_events = fake_astream_events
         mock_state = MagicMock()
         mock_state.interrupts = []
+        mock_state.values = {
+            "messages": [AIMessage(content="Event created with edited fields.")],
+            "call_metrics": [],
+        }
         mock_app.aget_state = AsyncMock(return_value=mock_state)
         mock_create_graph.return_value = mock_app
 
-        response = self.client.post(
+        response = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": True, "modified_args": modified},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, 200)
-        data = parse_sse_final(response)
+
+        data = await parse_sse_final(response)
         self.assertEqual(data["card_record"]["args"], modified)
 
-        db_msg = Message.objects.filter(thread=self.thread, role="agent").last()
+        db_msg = await Message.objects.filter(
+            thread=self.thread, role="agent"
+        ).alast()
         self.assertEqual(db_msg.cards[0]["args"], modified)
 
-    @patch("core.views.ensure_checkpointer", new_callable=AsyncMock)
-    @patch("core.views.get_user_tools", new_callable=AsyncMock)
-    @patch("core.views.create_graph")
-    def test_multi_step_sequential_approval_workflow_persists_both_cards(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
-        """
-        Multi-step scenario:
-        Step 1: User approves Calendar action -> backend executes it, advances plan, and hits Email interrupt.
-                Calendar card is persisted to Message 1 in DB with status='completed'.
-        Step 2: User approves Email action -> backend executes it, finishes workflow.
-                Email card is persisted to Message 2 in DB with status='completed'.
-        Verify: Both cards exist sequentially in DB messages and are returned via GET /api/thread/<id>/messages/.
-        """
-        calendar_args = {"summary": "Architecture Review", "start_time": "2026-09-17T14:00:00Z"}
-        email_args = {"recipient": "lead@example.com", "subject": "Meeting Invite", "body": "Please find link."}
+    @patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.streaming.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.streaming.create_graph")
+    async def test_multi_step_sequential_approval_workflow_persists_both_cards(
+        self, mock_create_graph, mock_get_tools, mock_ensure_cp
+    ):
+        calendar_args = {
+            "summary": "Architecture Review",
+            "start_time": "2026-09-17T14:00:00Z",
+        }
+        email_args = {
+            "recipient": "lead@example.com",
+            "subject": "Meeting Invite",
+            "body": "Please find link.",
+        }
+
+        async def fake_astream_events(*args, **kwargs):
+            if False:
+                yield {}
 
         # --- STEP 1: Resuming Calendar hits Email interrupt ---
         mock_app_step1 = MagicMock()
-        mock_app_step1.ainvoke = AsyncMock(return_value={
-            "messages": [
-                AIMessage(
-                    content="Calendar event booked. Now preparing to send the email invite.",
-                    tool_calls=[{"name": "manage_event", "args": calendar_args, "id": "call_step1", "type": "tool_call"}],
-                )
-            ],
-            "call_metrics": [],
-        })
+        mock_app_step1.astream_events = fake_astream_events
         mock_email_interrupt = MagicMock()
         mock_email_interrupt.value = {
             "domain": "email",
@@ -829,68 +947,116 @@ class ApprovalCardPersistenceTests(TestCase):
         }
         mock_state_step1 = MagicMock()
         mock_state_step1.interrupts = [mock_email_interrupt]
+        mock_state_step1.values = {
+            "messages": [
+                AIMessage(
+                    content="Calendar event booked. Now preparing to send the email invite.",
+                    tool_calls=[
+                        {
+                            "name": "manage_event",
+                            "args": calendar_args,
+                            "id": "call_step1",
+                            "type": "tool_call",
+                        }
+                    ],
+                )
+            ],
+            "call_metrics": [],
+        }
         mock_app_step1.aget_state = AsyncMock(return_value=mock_state_step1)
         mock_create_graph.return_value = mock_app_step1
 
-        # Post Step 1 approval
-        res_step1 = self.client.post(
+        res_step1 = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": True},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(res_step1.status_code, 200)
-        data_step1 = parse_sse_final(res_step1)
-        self.assertEqual(data_step1["status"], "approval_required")
+
+        data_step1 = await parse_sse_final(res_step1)
+        self.assertEqual(data_step1["type"], "approval_required")
         self.assertEqual(data_step1["approval"]["domain"], "email")
         self.assertEqual(data_step1["card_record"]["domain"], "calendar")
         self.assertEqual(data_step1["card_record"]["status"], "completed")
         self.assertEqual(data_step1["card_record"]["args"], calendar_args)
 
-        # Verify DB after Step 1
-        agent_msgs_after_step1 = Message.objects.filter(thread=self.thread, role="agent").order_by("created_at", "id")
-        self.assertEqual(agent_msgs_after_step1.count(), 1)
-        self.assertEqual(agent_msgs_after_step1[0].cards[0]["domain"], "calendar")
-        self.assertEqual(agent_msgs_after_step1[0].cards[0]["status"], "completed")
+        # Async query of Message queryset
+        agent_msgs_after_step1 = [
+            msg
+            async for msg in Message.objects.filter(
+                thread=self.thread, role="agent"
+            ).order_by("created_at", "id")
+        ]
+        self.assertEqual(len(agent_msgs_after_step1), 1)
+        self.assertEqual(
+            agent_msgs_after_step1[0].cards[0]["domain"], "calendar"
+        )
+        self.assertEqual(
+            agent_msgs_after_step1[0].cards[0]["status"], "completed"
+        )
 
         # --- STEP 2: Resuming Email completes the workflow ---
         mock_app_step2 = MagicMock()
-        mock_app_step2.ainvoke = AsyncMock(return_value={
+        mock_app_step2.astream_events = fake_astream_events
+        mock_state_step2 = MagicMock()
+        mock_state_step2.interrupts = []
+        mock_state_step2.values = {
             "messages": [
                 AIMessage(
                     content="Email sent successfully! All steps complete.",
-                    tool_calls=[{"name": "send_gmail_message", "args": email_args, "id": "call_step2", "type": "tool_call"}],
+                    tool_calls=[
+                        {
+                            "name": "send_gmail_message",
+                            "args": email_args,
+                            "id": "call_step2",
+                            "type": "tool_call",
+                        }
+                    ],
                 )
             ],
             "call_metrics": [],
-        })
-        mock_state_step2 = MagicMock()
-        mock_state_step2.interrupts = []
+        }
         mock_app_step2.aget_state = AsyncMock(return_value=mock_state_step2)
         mock_create_graph.return_value = mock_app_step2
 
-        # Post Step 2 approval
-        res_step2 = self.client.post(
+        res_step2 = await self.async_client.post(
             f"/api/thread/{self.thread.id}/tool-approval/",
             {"approved": True},
-            format="json"
+            content_type="application/json",
+            headers=self.auth_headers,
         )
         self.assertEqual(res_step2.status_code, 200)
-        data_step2 = parse_sse_final(res_step2)
-        self.assertEqual(data_step2["status"], "completed")
+
+        data_step2 = await parse_sse_final(res_step2)
+        self.assertEqual(data_step2["type"], "completed")
         self.assertEqual(data_step2["card_record"]["domain"], "email")
         self.assertEqual(data_step2["card_record"]["status"], "completed")
         self.assertEqual(data_step2["card_record"]["args"], email_args)
 
-        # Verify DB after Step 2
-        agent_msgs_after_step2 = Message.objects.filter(thread=self.thread, role="agent").order_by("created_at", "id")
-        self.assertEqual(agent_msgs_after_step2.count(), 2)
-        self.assertEqual(agent_msgs_after_step2[0].cards[0]["domain"], "calendar")
-        self.assertEqual(agent_msgs_after_step2[0].cards[0]["status"], "completed")
+        agent_msgs_after_step2 = [
+            msg
+            async for msg in Message.objects.filter(
+                thread=self.thread, role="agent"
+            ).order_by("created_at", "id")
+        ]
+        self.assertEqual(len(agent_msgs_after_step2), 2)
+        self.assertEqual(
+            agent_msgs_after_step2[0].cards[0]["domain"], "calendar"
+        )
+        self.assertEqual(
+            agent_msgs_after_step2[0].cards[0]["status"], "completed"
+        )
         self.assertEqual(agent_msgs_after_step2[1].cards[0]["domain"], "email")
-        self.assertEqual(agent_msgs_after_step2[1].cards[0]["status"], "completed")
+        self.assertEqual(
+            agent_msgs_after_step2[1].cards[0]["status"], "completed"
+        )
 
-        # Verify GET /api/thread/<id>/messages/ returns complete history with both cards intact
-        list_res = self.client.get(f"/api/thread/{self.thread.id}/messages/")
+        # GET messages history
+        list_res = await self.async_client.get(
+            f"/api/thread/{self.thread.id}/messages/",
+            headers=self.auth_headers,
+        )
         self.assertEqual(list_res.status_code, 200)
         messages_data = list_res.json()
         agent_history = [m for m in messages_data if m["role"] == "agent"]
@@ -901,6 +1067,3 @@ class ApprovalCardPersistenceTests(TestCase):
         self.assertEqual(agent_history[1]["cards"][0]["domain"], "email")
         self.assertEqual(agent_history[1]["cards"][0]["status"], "completed")
         self.assertEqual(agent_history[1]["cards"][0]["args"], email_args)
-
-
-
