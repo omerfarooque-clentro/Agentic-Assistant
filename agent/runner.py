@@ -15,6 +15,12 @@ from agent.graph import create_graph, ensure_checkpointer
 from agent.status import NODE_STATUS_MAP
 from agent.metrics import aggregate_turn_metrics
 from agent.llm import StreamTitleFilter, extract_title_from_text, generate_title_from_context, is_substantive_for_title
+from agent.utils import (
+    extract_stream_chunk_token,
+    extract_turn_response,
+    is_intermediate_plan_step,
+    synthesize_response_from_actions,
+)
 from conversations.models import Thread
 
 logger = logging.getLogger(__name__)
@@ -53,14 +59,19 @@ async def run_agent(message: str, thread_id: int, user):
         }
 
         title_filter = StreamTitleFilter()
+        current_plan = None
 
         async for event in app.astream_events(input_message, config=config, version="v2"):
             event_type = event["event"]
             metadata = event.get("metadata", {})
             node_name = metadata.get("langgraph_node")
 
-            status_info = NODE_STATUS_MAP.get(node_name, {})
+            if event_type == "on_chain_end":
+                out_data = event.get("data", {}).get("output")
+                if isinstance(out_data, dict) and "plan" in out_data:
+                    current_plan = out_data["plan"]
 
+            status_info = NODE_STATUS_MAP.get(node_name, {})
             if status_info and event_type == "on_chat_model_start":
                 yield {
                     "type": "status",
@@ -68,18 +79,14 @@ async def run_agent(message: str, thread_id: int, user):
                     **status_info,
                 }
 
-            if node_name not in AGENT_NODES:
+            if node_name not in AGENT_NODES or event_type != "on_chat_model_stream":
                 continue
 
-            if event_type != "on_chat_model_stream":
+            # Suppress conversational tokens during intermediate steps of multi-step plans
+            if is_intermediate_plan_step(current_plan):
                 continue
 
-            chunk = event["data"]["chunk"]
-            chunk_content = getattr(chunk, "content", None)
-            if not chunk_content or not isinstance(chunk_content, str):
-                continue
-
-            user_token = title_filter.process_chunk(chunk_content)
+            user_token = extract_stream_chunk_token(event["data"]["chunk"], title_filter)
             if user_token:
                 yield {
                     "type": "token",
@@ -87,7 +94,7 @@ async def run_agent(message: str, thread_id: int, user):
                 }
 
         rem_token, extracted_title = title_filter.finalize()
-        if rem_token:
+        if rem_token and not is_intermediate_plan_step(current_plan):
             yield {
                 "type": "token",
                 "token": rem_token,
@@ -106,30 +113,15 @@ async def run_agent(message: str, thread_id: int, user):
 
         final_state = state.values
         messages = list(final_state.get("messages", []))
+        last_content = extract_turn_response(messages)
 
-        # Fallback inspection or generation of title if needed
-        last_content = getattr(messages[-1], "content", "") if messages else ""
-        if isinstance(last_content, list):
-            last_content = " ".join(str(b.get("text") or "") if isinstance(b, dict) else str(b) for b in last_content)
-
-        # Fallback if assistant finished with empty text content
+        # Fallback if assistant finished with empty text content or completed intermediate steps
         if not str(last_content).strip():
-            completed_actions = [
-                a for a in (final_state.get("completed_actions") or [])
-                if isinstance(a, dict) and a.get("summary") and not a.get("__reset__")
-            ]
-            if completed_actions:
-                last_content = "\n\n".join(
-                    f"**{a.get('domain', '').capitalize()}:** {a.get('summary', '').strip()}"
-                    for a in completed_actions
-                )
-            else:
-                tool_calls = getattr(messages[-1], "tool_calls", None) if messages else None
-                if tool_calls:
-                    tool_names = ", ".join(t.get("name", "tool") for t in tool_calls)
-                    last_content = f"Operation completed successfully ({tool_names})."
-                else:
-                    last_content = "I processed your request. Let me know if you need anything else!"
+            last_content = synthesize_response_from_actions(
+                final_state,
+                messages=messages,
+                default="I processed your request. Let me know if you need anything else!",
+            )
             if messages:
                 messages[-1] = AIMessage(content=last_content)
                 final_state["messages"] = messages

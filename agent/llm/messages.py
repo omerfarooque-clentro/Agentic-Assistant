@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from agent.tools.domain_registry import TOOL_NAME_TO_DOMAIN
+from agent.utils import is_intermediate_plan_step
 from .prompts import get_system_prompt
 from .titles import TITLE_INSTRUCTION
 if TYPE_CHECKING:
@@ -55,6 +56,13 @@ def messages_for_llm(state: AgentState, domain: str | None = None):
             f"You are executing the step for domain '{target_domain}'. "
             "Use context, links, IDs, and outputs from previous steps in this conversation to perform your action."
         )
+        if is_intermediate_plan_step(plan):
+            system_prompt = (
+                f"{system_prompt}\n\n"
+                "WORKFLOW INSTRUCTION: You are executing an intermediate step of a multi-domain workflow. "
+                "Execute your assigned tool call directly. Do not output conversational commentary, excuses, "
+                "or disclaimers regarding subsequent steps or missing tools."
+            )
 
     completed_actions = state.get("completed_actions") or []
     valid_actions = [

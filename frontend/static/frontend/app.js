@@ -2674,7 +2674,7 @@
         if (badge) {
           badge.classList.remove('is-processing');
           const icon = (DOMAIN_META[domain] && DOMAIN_META[domain].icon) || '✓';
-          badge.textContent = `${icon} ${label} Agent: ${approved ? 'Completed' : (instruction ? 'Revised' : 'Cancelled')}`;
+          badge.innerHTML = `${icon} <span>${escapeHtml(label)} Agent: ${approved ? 'Completed' : (instruction ? 'Revised' : 'Cancelled')}</span>`;
         }
 
         const currentPlanStep = card.querySelector('.approval-plan-step.is-step-current');
@@ -2734,7 +2734,7 @@
           <div style="flex:1; min-width:0;">
             <div class="approval-header">
               <div class="approval-header-top">
-                <span class="approval-badge">${badgeIcon} ${meta.label} Agent: ${statusText}</span>
+                <span class="approval-badge">${badgeIcon} <span>${meta.label} Agent: ${statusText}</span></span>
                 <button type="button" class="btn-approval-collapse" title="Expand details" aria-label="Toggle details">
                   <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="6 9 12 15 18 9"></polyline>
@@ -2827,7 +2827,7 @@
           <div style="flex:1; min-width:0;">
             <div class="approval-header">
               <div class="approval-header-top">
-                <span class="approval-badge">${meta.icon} Waiting on you — ${meta.label}</span>
+                <span class="approval-badge">${meta.icon} <span>Waiting on you — ${meta.label}</span></span>
                 <button type="button" class="btn-approval-collapse" title="Collapse details" aria-label="Toggle details">
                   <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="6 9 12 15 18 9"></polyline>
@@ -4029,7 +4029,7 @@
           card.classList.remove('is-busy');
           if (badge) {
             badge.classList.remove('is-processing');
-            badge.textContent = `${meta.icon} Waiting on you — ${meta.label}`;
+            badge.innerHTML = `${meta.icon} <span>Waiting on you — ${escapeHtml(meta.label)}</span>`;
           }
           card.querySelectorAll('.approval-edit-input, .approval-instruction-input').forEach(input => input.disabled = false);
           if (approveBtn) {

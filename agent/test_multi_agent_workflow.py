@@ -705,3 +705,75 @@ class MultiAgentEndToEndExecutionTests(TransactionTestCase):
             final_res = completed_events[0]["response"]
             self.assertIn("https://meet.google.com/abc-xyz", final_res)
             self.assertIn("Sent Google Meet link", final_res)
+
+
+class StreamHelpersUnitTests(SimpleTestCase):
+    """Verify stream helper utilities in agent.utils."""
+
+    def test_is_intermediate_plan_step(self):
+        from agent.utils import is_intermediate_plan_step
+
+        self.assertFalse(is_intermediate_plan_step(None))
+        self.assertFalse(is_intermediate_plan_step([]))
+        self.assertFalse(is_intermediate_plan_step([{"id": 1, "domain": "calendar", "status": "in_progress"}]))
+        self.assertFalse(is_intermediate_plan_step([
+            {"id": 1, "domain": "calendar", "status": "completed"},
+            {"id": 2, "domain": "email", "status": "in_progress"},
+        ]))
+
+        # When future steps are pending, it is an intermediate step
+        self.assertTrue(is_intermediate_plan_step([
+            {"id": 1, "domain": "calendar", "status": "in_progress"},
+            {"id": 2, "domain": "email", "status": "pending"},
+        ]))
+        self.assertTrue(is_intermediate_plan_step([
+            {"id": 1, "domain": "calendar", "status": "completed"},
+            {"id": 2, "domain": "email", "status": "in_progress"},
+            {"id": 3, "domain": "slack", "status": "pending"},
+        ]))
+
+    def test_extract_turn_response(self):
+        from agent.utils import extract_turn_response
+        from langchain_core.messages import HumanMessage, AIMessage
+
+        msgs = [
+            HumanMessage(content="Hello"),
+            AIMessage(content="Old response"),
+            HumanMessage(content="Book meeting"),
+            AIMessage(content="Meeting booked."),
+            AIMessage(content="Email confirmation sent."),
+        ]
+        res = extract_turn_response(msgs)
+        self.assertEqual(res, "Meeting booked.\n\nEmail confirmation sent.")
+        self.assertNotIn("Old response", res)
+
+    def test_synthesize_response_from_actions(self):
+        from agent.utils import synthesize_response_from_actions
+
+        state = {
+            "completed_actions": [
+                {"domain": "calendar", "summary": "Booked meeting tomorrow at 4pm"},
+                {"domain": "email", "summary": "Sent invite to test@example.com"},
+            ]
+        }
+        res = synthesize_response_from_actions(state)
+        self.assertIn("**Calendar:** Booked meeting tomorrow at 4pm", res)
+        self.assertIn("**Email:** Sent invite to test@example.com", res)
+
+        empty_res = synthesize_response_from_actions({})
+        self.assertEqual(empty_res, "I processed your request. Let me know if there's anything else you'd like to do!")
+
+    def test_extract_stream_chunk_token(self):
+        from agent.utils import extract_stream_chunk_token
+        from agent.llm.titles import StreamTitleFilter
+
+        tf = StreamTitleFilter()
+        chunk = MagicMock()
+        chunk.content = "Hello world"
+        token = extract_stream_chunk_token(chunk, tf)
+        self.assertEqual(token, "Hello world")
+
+        # Non-string content returns None
+        chunk.content = None
+        self.assertIsNone(extract_stream_chunk_token(chunk, tf))
+

@@ -2397,7 +2397,6 @@ body:has(.app-shell) {
   align-items: center;
   gap: 6px;
   font: 700 10.5px var(--font-mono);
-  text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 3px 9px;
   border-radius: var(--radius-pill);
@@ -2406,6 +2405,10 @@ body:has(.app-shell) {
   color: var(--amber-ink);
   width: fit-content;
   transition: all .2s ease;
+}
+
+.approval-badge > span {
+  text-transform: uppercase;
 }
 
 .approval-badge.is-processing {

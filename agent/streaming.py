@@ -18,7 +18,13 @@ from agent.metrics import aggregate_turn_metrics
 from agent.runner import run_agent
 from agent.status import NODE_STATUS_MAP
 from agent.tools.service import get_user_tools
-from agent.utils import extract_text_content
+from agent.utils import (
+    extract_stream_chunk_token,
+    extract_text_content,
+    extract_turn_response,
+    is_intermediate_plan_step,
+    synthesize_response_from_actions,
+)
 from conversations.models import Message
 
 logger = logging.getLogger(__name__)
@@ -79,24 +85,7 @@ async def event_stream(formatted_message, thread, user):
                 continue
 
             messages = chunk["result"].get("messages", [])
-            latest_human_idx = max(
-                (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
-                default=-1,
-            )
-            turn_ai_messages = [
-                m for m in messages[latest_human_idx + 1:]
-                if isinstance(m, AIMessage) and getattr(m, "content", None)
-            ]
-            if len(turn_ai_messages) > 1:
-                raw_content = "\n\n".join(
-                    extract_text_content(m.content) for m in turn_ai_messages if extract_text_content(m.content).strip()
-                )
-            elif turn_ai_messages:
-                raw_content = extract_text_content(turn_ai_messages[-1].content)
-            elif messages:
-                raw_content = extract_text_content(messages[-1].content)
-            else:
-                raw_content = ""
+            raw_content = extract_turn_response(messages)
             final_content, suggested_title = extract_title_from_text(raw_content)
 
             resolved_title = chunk.get("thread_name") or suggested_title
@@ -116,17 +105,7 @@ async def event_stream(formatted_message, thread, user):
                 ).strip()
 
             if not final_content.strip():
-                completed_actions = [
-                    a for a in (chunk.get("result", {}).get("completed_actions") or [])
-                    if isinstance(a, dict) and a.get("summary") and not a.get("__reset__")
-                ]
-                if completed_actions:
-                    final_content = "\n\n".join(
-                        f"**{a.get('domain', '').capitalize()}:** {a.get('summary', '').strip()}"
-                        for a in completed_actions
-                    )
-                else:
-                    final_content = "I processed your request. Let me know if there's anything else you'd like to do!"
+                final_content = synthesize_response_from_actions(chunk.get("result", {}))
 
             await Message.objects.acreate(
                 thread=thread,
@@ -158,10 +137,17 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
             }
         )
 
+        current_plan = approval.get("plan") if isinstance(approval, dict) else None
+
         async for event in app.astream_events(resume_input, config=config, version="v2"):
             event_type = event["event"]
             metadata = event.get("metadata", {})
             node_name = metadata.get("langgraph_node")
+
+            if event_type == "on_chain_end":
+                out_data = event.get("data", {}).get("output")
+                if isinstance(out_data, dict) and "plan" in out_data:
+                    current_plan = out_data["plan"]
 
             # Emit status events for known nodes (both LLM calls and pure Python steps like advance_plan)
             status_info = NODE_STATUS_MAP.get(node_name)
@@ -172,50 +158,27 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
                 if is_llm_start or is_node_start:
                     yield f"data: {json.dumps({'type': 'status', 'status': status_info.get('status'), 'message': status_info.get('message'), 'node': node_name})}\n\n"
 
-            if node_name not in AGENT_NODES:
+            if node_name not in AGENT_NODES or event_type != "on_chat_model_stream":
                 continue
 
-            if event_type != "on_chat_model_stream":
+            # Suppress conversational tokens during intermediate steps of multi-step plans
+            if is_intermediate_plan_step(current_plan):
                 continue
 
-            chunk = event["data"]["chunk"]
-            chunk_content = getattr(chunk, "content", None)
-            if not chunk_content or not isinstance(chunk_content, str):
-                continue
-
-            user_token = title_filter.process_chunk(chunk_content)
+            user_token = extract_stream_chunk_token(event["data"]["chunk"], title_filter)
             if user_token:
                 yield f"data: {json.dumps({'type': 'token', 'token': user_token})}\n\n"
 
         # Flush remaining title filter buffer
         rem_token, extracted_title = title_filter.finalize()
-        if rem_token:
+        if rem_token and not is_intermediate_plan_step(current_plan):
             yield f"data: {json.dumps({'type': 'token', 'token': rem_token})}\n\n"
 
         # Get final state after graph execution
         state = await app.aget_state(config)
         final_values = state.values
         messages = list(final_values.get("messages", []))
-
-        latest_human_idx = max(
-            (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
-            default=-1,
-        )
-        turn_ai_messages = [
-            m for m in messages[latest_human_idx + 1:]
-            if isinstance(m, AIMessage) and getattr(m, "content", None)
-        ]
-        if len(turn_ai_messages) > 1:
-            raw_message = "\n\n".join(
-                extract_text_content(m.content) for m in turn_ai_messages if extract_text_content(m.content).strip()
-            )
-        elif turn_ai_messages:
-            raw_message = extract_text_content(turn_ai_messages[-1].content)
-        elif messages:
-            raw_message = extract_text_content(messages[-1].content)
-        else:
-            raw_message = ""
-
+        raw_message = extract_turn_response(messages)
         final_text, suggested_title = extract_title_from_text(raw_message)
 
         if not extracted_title and suggested_title:
@@ -246,7 +209,10 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
 
         # Check if graph hit another interrupt (next approval step)
         if state.interrupts:
-            interrupt_content = final_text.strip() or (f"{card_domain.title()} action completed." if approved else "Action cancelled.")
+            interrupt_content = (
+                (final_text.strip() if not is_intermediate_plan_step(final_values.get("plan")) else "")
+                or (f"{card_domain.title()} action completed." if approved else "Action cancelled.")
+            )
             await Message.objects.acreate(
                 thread=thread,
                 role="agent",
@@ -255,7 +221,7 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
                 cards=[card_record],
             )
 
-            yield f"data: {json.dumps({'type': 'approval_required', 'approval': state.interrupts[0].value, 'result': final_text if final_text.strip() else None, 'thread_id': int(thread.id), 'thread_name': thread.name, 'metrics': approval_metrics, 'card_record': card_record})}\n\n"
+            yield f"data: {json.dumps({'type': 'approval_required', 'approval': state.interrupts[0].value, 'result': final_text if (final_text.strip() and not is_intermediate_plan_step(final_values.get('plan'))) else None, 'thread_id': int(thread.id), 'thread_name': thread.name, 'metrics': approval_metrics, 'card_record': card_record})}\n\n"
             return
 
         # No more interrupts — graph completed
@@ -269,17 +235,10 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
             if tool_err:
                 final_text = f"Action failed: {tool_err}"
             else:
-                completed_actions = [
-                    a for a in (final_values.get("completed_actions") or [])
-                    if isinstance(a, dict) and a.get("summary") and not a.get("__reset__")
-                ]
-                if completed_actions:
-                    final_text = "\n\n".join(
-                        f"**{a.get('domain', '').capitalize()}:** {a.get('summary', '').strip()}"
-                        for a in completed_actions
-                    )
-                else:
-                    final_text = "Action executed successfully." if approved else "Action cancelled."
+                final_text = synthesize_response_from_actions(
+                    final_values,
+                    default="Action executed successfully." if approved else "Action cancelled.",
+                )
 
         await Message.objects.acreate(
             thread=thread,
