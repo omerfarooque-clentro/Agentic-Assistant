@@ -15,7 +15,7 @@ RULES:
 DOMAIN_PROMPTS = {
     "email": """EMAIL GUIDELINES:
 - SEARCH/READ: Use Gmail search/read tools. Return message content, not raw IDs.
-- SEND: Requires human approval. Never use create_draft for send actions.
+- SEND: Never use create_draft for send actions.
 - DRAFT: Use create_draft.
 - Format: Greeting on own line, concise purpose paragraph, closing with user name.""",
 
