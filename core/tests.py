@@ -424,7 +424,7 @@ class FormatUserAgentMessageTests(SimpleTestCase):
 from unittest.mock import patch, AsyncMock, MagicMock
 from django.test import TestCase, AsyncClient
 from rest_framework_simplejwt.tokens import RefreshToken
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from conversations.models import Thread, Message, Approval
 
 class ToolApprovalViewTests(TransactionTestCase):

@@ -2,15 +2,21 @@
 planning, cross-domain transition loop, and multi-step execution.
 """
 
-from unittest.mock import MagicMock, patch
-from django.test import SimpleTestCase, TestCase
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import tool
+from langgraph.checkpoint.memory import MemorySaver
 
+from accounts.models import User
+from conversations.models import Message, Thread
 from agent.graph.nodes import advance_plan_node, agent_node, nlp_node, scoped_should_continue
 from agent.graph.state import AgentState
 from agent.routing.query_generator import ParsedPlanStep, generate_routing_query
 from agent.routing.reference_detector import is_compound_multi_domain
 from agent.routing.intent_router import route_intent
+from agent.streaming import event_stream, approval_event_stream
 
 
 class MultiAgentPlanningTests(SimpleTestCase):
@@ -226,3 +232,287 @@ class MultiAgentGraphProgressionTests(SimpleTestCase):
         result = route_intent(messages, available_domains={"calendar", "email"}, plan=plan)
         self.assertEqual(result["domain"], "email")
         self.assertEqual(result["intent"], "email.send")
+
+
+@tool
+def manage_event(summary: str, start_time: str = ""):
+    """Create or update a calendar event."""
+    return f"Event created: {summary}"
+
+
+@tool
+def send_gmail_message(recipient: str, subject: str = "", body: str = ""):
+    """Send an email message via Gmail."""
+    return f"Email sent to {recipient}"
+
+
+@tool
+def slack_send_message(channel: str, message: str = ""):
+    """Post a message to a Slack channel."""
+    return f"Slack message posted to {channel}"
+
+
+class MultiAgentEndToEndExecutionTests(TransactionTestCase):
+    """End-to-end multi-step workflow tests ensuring responses are delivered to FE without silent stalls."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="test_multi_agent@example.com",
+            username="test_multi_agent",
+            password="TestPassword123!",
+        )
+        self.thread = Thread.objects.create(
+            user=self.user,
+            name="Multi-Step Execution Thread",
+        )
+        self.tools = {
+            "calendar": [manage_event],
+            "email": [send_gmail_message],
+            "slack": [slack_send_message],
+        }
+
+    async def test_two_step_workflow_completes_and_feeds_response_to_fe(self):
+        """Verify 2-step workflow executes step 1 -> step 2 and delivers final response to FE."""
+        mock_plan = {
+            "type": "MULTI",
+            "query": "Schedule meeting and email confirmation",
+            "steps": [
+                {"domain": "calendar", "query": "schedule meeting tomorrow at 9pm"},
+                {"domain": "email", "query": "send email to omer@example.com"},
+            ],
+            "metrics": None,
+        }
+        step_responses = [
+            AIMessage(content="Step 1: Calendar meeting booked for tomorrow at 9:00 PM."),
+            AIMessage(content="Step 2: Confirmation email sent to omer@example.com."),
+        ]
+        call_count = 0
+
+        def mock_invoke(*args, **kwargs):
+            nonlocal call_count
+            res = step_responses[min(call_count, len(step_responses) - 1)]
+            call_count += 1
+            return res
+
+        mock_bound = MagicMock()
+        mock_bound.invoke = mock_invoke
+        mock_bound.model_name = "test-model"
+
+        mem = MemorySaver()
+        prompt = "Schedule meeting tomorrow at 9pm and send email to omer@example.com"
+        with patch("agent.graph.builder.memory", mem), \
+             patch("agent.runner.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.runner.get_user_tools", return_value=self.tools), \
+             patch("agent.routing.intent_router.generate_routing_query", return_value=mock_plan), \
+             patch("agent.graph.builder.bind_tools_with_fallback", return_value=mock_bound):
+
+            events = []
+            async for sse in event_stream(prompt, self.thread, self.user):
+                events.append(sse)
+
+            completed_events = [
+                json.loads(e.strip()[5:]) for e in events if '"type": "completed"' in e
+            ]
+            error_events = [
+                json.loads(e.strip()[5:]) for e in events if '"type": "error"' in e
+            ]
+
+            self.assertEqual(len(error_events), 0, f"Workflow failed with error: {error_events}")
+            self.assertEqual(len(completed_events), 1, "Expected exactly 1 completed event delivered to FE")
+
+            completed_payload = completed_events[0]
+            response_text = completed_payload.get("response", "")
+
+            # Confirm both steps' outputs are included and not overwritten
+            self.assertIn("Step 1: Calendar meeting booked", response_text)
+            self.assertIn("Step 2: Confirmation email sent", response_text)
+
+            # Confirm agent message was persisted in the database
+            db_msg = await Message.objects.filter(thread=self.thread, role="agent").alast()
+            self.assertIsNotNone(db_msg)
+            self.assertIn("Step 1: Calendar meeting booked", db_msg.content)
+            self.assertIn("Step 2: Confirmation email sent", db_msg.content)
+
+    async def test_three_step_workflow_completes_without_recursion_limit_failure(self):
+        """Verify 3-step workflow (Calendar -> Email -> Slack) runs through all steps without GraphRecursionError."""
+        mock_plan = {
+            "type": "MULTI",
+            "query": "Schedule meeting, email client, and notify slack",
+            "steps": [
+                {"domain": "calendar", "query": "schedule meeting tomorrow at 9pm"},
+                {"domain": "email", "query": "send email to omer@example.com"},
+                {"domain": "slack", "query": "notify #announcements on slack"},
+            ],
+            "metrics": None,
+        }
+        step_responses = [
+            AIMessage(content="Step 1: Scheduled meeting for tomorrow at 9:00 PM."),
+            AIMessage(content="Step 2: Sent confirmation email to omer@example.com."),
+            AIMessage(content="Step 3: Notified team on Slack #announcements."),
+        ]
+        call_count = 0
+
+        def mock_invoke(*args, **kwargs):
+            nonlocal call_count
+            res = step_responses[min(call_count, len(step_responses) - 1)]
+            call_count += 1
+            return res
+
+        mock_bound = MagicMock()
+        mock_bound.invoke = mock_invoke
+        mock_bound.model_name = "test-model"
+
+        mem = MemorySaver()
+        prompt = "Schedule meeting tomorrow at 9pm and send email to omer@example.com and notify on slack"
+        with patch("agent.graph.builder.memory", mem), \
+             patch("agent.runner.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.runner.get_user_tools", return_value=self.tools), \
+             patch("agent.routing.intent_router.generate_routing_query", return_value=mock_plan), \
+             patch("agent.graph.builder.bind_tools_with_fallback", return_value=mock_bound):
+
+            events = []
+            async for sse in event_stream(prompt, self.thread, self.user):
+                events.append(sse)
+
+            completed_events = [
+                json.loads(e.strip()[5:]) for e in events if '"type": "completed"' in e
+            ]
+            error_events = [
+                json.loads(e.strip()[5:]) for e in events if '"type": "error"' in e
+            ]
+
+            self.assertEqual(len(error_events), 0, f"Workflow hit error: {error_events}")
+            self.assertEqual(len(completed_events), 1, "Terminal completed event must be yielded to FE")
+
+            response_text = completed_events[0].get("response", "")
+            self.assertIn("Step 1: Scheduled meeting", response_text)
+            self.assertIn("Step 2: Sent confirmation email", response_text)
+            self.assertIn("Step 3: Notified team on Slack", response_text)
+
+    async def test_multi_step_workflow_with_approval_interrupt_and_resumption(self):
+        """Verify multi-step workflow pauses for approval on gated tools and resumes to complete next steps."""
+        mock_plan = {
+            "type": "MULTI",
+            "query": "Schedule meeting and email invite",
+            "steps": [
+                {"domain": "calendar", "query": "schedule meeting tomorrow at 9pm"},
+                {"domain": "email", "query": "send email to omer@example.com"},
+            ],
+            "metrics": None,
+        }
+        step_responses = [
+            # Turn 1: Calendar agent generates approval-gated tool call
+            AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "manage_event",
+                    "args": {"summary": "Technical Interview"},
+                    "id": "call_cal_1",
+                    "type": "tool_call",
+                }],
+            ),
+            # Turn 2: Calendar agent receives tool result and confirms
+            AIMessage(content="Calendar event booked."),
+            # Step 2: Email agent executes and confirms
+            AIMessage(content="Confirmation email dispatched to omer@example.com."),
+        ]
+        call_count = 0
+
+        def mock_invoke(*args, **kwargs):
+            nonlocal call_count
+            res = step_responses[min(call_count, len(step_responses) - 1)]
+            call_count += 1
+            return res
+
+        mock_bound = MagicMock()
+        mock_bound.invoke = mock_invoke
+        mock_bound.model_name = "test-model"
+
+        mem = MemorySaver()
+        prompt = "Schedule meeting tomorrow at 9pm and send email to omer@example.com"
+        with patch("agent.graph.builder.memory", mem), \
+             patch("agent.runner.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.runner.get_user_tools", return_value=self.tools), \
+             patch("agent.streaming.get_user_tools", return_value=self.tools), \
+             patch("agent.routing.intent_router.generate_routing_query", return_value=mock_plan), \
+             patch("agent.graph.builder.bind_tools_with_fallback", return_value=mock_bound):
+
+            # Turn 1: Chat request triggers approval interrupt
+            turn1_events = []
+            async for sse in event_stream(prompt, self.thread, self.user):
+                turn1_events.append(sse)
+
+            approval_event = next(
+                (json.loads(e.strip()[5:]) for e in turn1_events if '"type": "approval_required"' in e),
+                None,
+            )
+            self.assertIsNotNone(approval_event, "Must yield approval_required event to FE")
+            self.assertEqual(approval_event["approval"]["domain"], "calendar")
+            self.assertEqual(approval_event["approval"]["tool_name"], "manage_event")
+
+            # Turn 2: User approves Step 1 -> resumes graph, executes tool, advances to Step 2
+            config = {
+                "configurable": {"thread_id": str(self.thread.id)},
+                "recursion_limit": 25,
+            }
+            turn2_events = []
+            async for sse in approval_event_stream(
+                approval=approval_event["approval"],
+                thread=self.thread,
+                user=self.user,
+                config=config,
+                approved=True,
+                modified_args=None,
+                instruction=None,
+            ):
+                turn2_events.append(sse)
+
+            completed_event = next(
+                (json.loads(e.strip()[5:]) for e in turn2_events if '"type": "completed"' in e),
+                None,
+            )
+            self.assertIsNotNone(completed_event, "Resume stream must deliver completed event to FE")
+            self.assertIn("Confirmation email dispatched", completed_event["result"])
+
+    async def test_multi_step_workflow_error_yields_explicit_error_event(self):
+        """Verify unexpected runtime errors in multi-step flow yield an explicit error event instead of hanging."""
+        mock_plan = {
+            "type": "MULTI",
+            "query": "Schedule meeting and email",
+            "steps": [
+                {"domain": "calendar", "query": "schedule meeting tomorrow at 9pm"},
+                {"domain": "email", "query": "send email to omer@example.com"},
+            ],
+            "metrics": None,
+        }
+        mock_bound = MagicMock()
+        mock_bound.invoke.side_effect = RuntimeError("External API gateway timeout")
+        mock_bound.model_name = "test-model"
+
+        mem = MemorySaver()
+        prompt = "Schedule meeting tomorrow at 9pm and send email to omer@example.com"
+        with patch("agent.graph.builder.memory", mem), \
+             patch("agent.runner.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.runner.get_user_tools", return_value=self.tools), \
+             patch("agent.routing.intent_router.generate_routing_query", return_value=mock_plan), \
+             patch("agent.graph.builder.bind_tools_with_fallback", return_value=mock_bound):
+
+            events = []
+            async for sse in event_stream(prompt, self.thread, self.user):
+                events.append(sse)
+
+            error_event = next(
+                (json.loads(e.strip()[5:]) for e in events if '"type": "error"' in e),
+                None,
+            )
+            self.assertIsNotNone(error_event, "Error event must be emitted so FE does not hang silently")
+            self.assertIn("External API gateway timeout", error_event["message"])
+
+            # Verify error message is recorded in the DB
+            db_msg = await Message.objects.filter(thread=self.thread, role="agent").alast()
+            self.assertIsNotNone(db_msg)
+            self.assertIn("External API gateway timeout", db_msg.content)

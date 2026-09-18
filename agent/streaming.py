@@ -6,7 +6,7 @@ import re
 import time
 
 from django.http import StreamingHttpResponse
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from agent.cards import render_cards
@@ -79,7 +79,24 @@ async def event_stream(formatted_message, thread, user):
                 continue
 
             messages = chunk["result"].get("messages", [])
-            raw_content = extract_text_content(messages[-1].content) if messages else ""
+            latest_human_idx = max(
+                (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
+                default=-1,
+            )
+            turn_ai_messages = [
+                m for m in messages[latest_human_idx + 1:]
+                if isinstance(m, AIMessage) and getattr(m, "content", None)
+            ]
+            if len(turn_ai_messages) > 1:
+                raw_content = "\n\n".join(
+                    extract_text_content(m.content) for m in turn_ai_messages if extract_text_content(m.content).strip()
+                )
+            elif turn_ai_messages:
+                raw_content = extract_text_content(turn_ai_messages[-1].content)
+            elif messages:
+                raw_content = extract_text_content(messages[-1].content)
+            else:
+                raw_content = ""
             final_content, suggested_title = extract_title_from_text(raw_content)
 
             resolved_title = chunk.get("thread_name") or suggested_title

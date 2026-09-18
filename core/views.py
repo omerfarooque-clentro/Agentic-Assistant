@@ -326,7 +326,8 @@ async def tool_approval_view(request, thread_id):
     config = {
         "configurable": {
             "thread_id": str(thread.id)
-        }
+        },
+        "recursion_limit": 25,
     }
 
     logger.debug(

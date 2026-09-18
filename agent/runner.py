@@ -39,7 +39,7 @@ async def run_agent(message: str, thread_id: int, user):
             "configurable": {
                 "thread_id": str(thread_id),
             },
-            "recursion_limit": 10,
+            "recursion_limit": 25,
         }
 
         input_message = {

@@ -78,7 +78,8 @@ class RegistrationSerializer(serializers.ModelSerializer):
             "id": instance.id,
             "username": instance.username,
             "email": instance.email,
-            "recovery_code": getattr(instance, "_raw_recovery_code", None),
+            "recovery_code": 
+            getattr(instance, "_raw_recovery_code", None),
         }
         if hasattr(instance, "_generated_password") and instance._generated_password:
             ret["generated_password"] = instance._generated_password
