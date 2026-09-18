@@ -69,11 +69,18 @@ def advance_plan_node(state: AgentState) -> dict[str, Any]:
                 last_content = msg.content.strip()
                 break
 
+    completed_actions = []
     # Mark current in_progress step as completed
     for step in plan:
         if step.get("status") == "in_progress":
             step["status"] = "completed"
-            step["result_summary"] = last_content[:300]
+            step["result_summary"] = last_content[:500]
+            completed_actions.append({
+                "step_id": step.get("id"),
+                "domain": step.get("domain"),
+                "description": step.get("description"),
+                "summary": last_content[:500],
+            })
             break
 
     # Find next pending step
@@ -82,10 +89,13 @@ def advance_plan_node(state: AgentState) -> dict[str, Any]:
     if next_step:
         next_step["status"] = "in_progress"
 
-    return {
+    out: dict[str, Any] = {
         "plan": plan,
         "current_step_index": next_idx,
     }
+    if completed_actions:
+        out["completed_actions"] = completed_actions
+    return out
 
 
 def agent_node(state: AgentState, llm_with_tools: Any, domain: str = "general") -> dict[str, Any]:
@@ -121,13 +131,22 @@ def agent_node(state: AgentState, llm_with_tools: Any, domain: str = "general") 
         has_pending = any(isinstance(s, dict) and s.get("status") == "pending" for s in plan)
         if not has_tool_calls and not has_pending:
             updated_plan = [dict(s) for s in plan]
+            completed_actions = []
             for s in updated_plan:
                 if s.get("status") == "in_progress":
                     s["status"] = "completed"
                     content = getattr(response, "content", "")
-                    if isinstance(content, str):
-                        s["result_summary"] = content.strip()[:300]
+                    if isinstance(content, str) and content.strip():
+                        s["result_summary"] = content.strip()[:500]
+                        completed_actions.append({
+                            "step_id": s.get("id"),
+                            "domain": s.get("domain"),
+                            "description": s.get("description"),
+                            "summary": content.strip()[:500],
+                        })
             output["plan"] = updated_plan
+            if completed_actions:
+                output["completed_actions"] = completed_actions
 
     return output
 

@@ -856,6 +856,60 @@ body:has(.app-shell) {
   color: var(--accent);
 }
 
+/* Authentic Integration Brand Colors for SVG Icons */
+.domain-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+
+.pending-domain-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.starter-icon .domain-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.approval-badge .domain-icon,
+.plan-step-icon .domain-icon {
+  margin-right: 5px;
+  vertical-align: -2px;
+}
+
+.tour-integrations-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 2px 0 6px 0;
+}
+
+.tour-integrations-bar:empty {
+  display: none;
+}
+
+.tour-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
 .connection-row .dot {
   width: 6px;
   height: 6px;
@@ -2814,7 +2868,13 @@ body:has(.app-shell) {
   border: 2px solid rgba(255, 255, 255, 0.35);
   border-top-color: #ffffff;
   border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  animation: btn-spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .btn-ghost.btn-loading .btn-spinner {
@@ -3563,6 +3623,10 @@ body:has(.app-shell) {
   border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
   border-radius: 8px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .starter-info {
@@ -4033,6 +4097,15 @@ body:has(.app-shell) {
     overflow: hidden;
   }
 
+  /* Elevate mobile sidebar drawer when tour is active so the spotlight doesn't obscure it */
+  body.tour-active-mobile .sidebar.mobile-open {
+    z-index: 10003 !important;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  }
+  body.tour-active-mobile .sidebar-backdrop {
+    z-index: 10002 !important;
+  }
+
   /* Polished Floating Bottom-Sheet Tour Card */
   .tour-card {
     position: fixed !important;
@@ -4042,6 +4115,8 @@ body:has(.app-shell) {
     top: auto !important;
     width: auto !important;
     max-width: calc(100vw - 24px) !important;
+    max-height: 52vh;
+    overflow-y: auto;
     margin: 0 !important;
     padding: 16px 18px;
     border-radius: 16px;

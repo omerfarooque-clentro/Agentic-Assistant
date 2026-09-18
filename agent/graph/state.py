@@ -13,6 +13,17 @@ def _merge_metrics(left: list | None, right: list | None) -> list:
     return left + right
 
 
+def _merge_actions(left: list | None, right: list | None) -> list:
+    """Merge completed action summaries within a workflow, allowing a clean reset signal for new turns."""
+    if right and any(isinstance(a, dict) and a.get("__reset__") for a in right):
+        return [a for a in right if not (isinstance(a, dict) and a.get("__reset__"))]
+    if left is None:
+        left = []
+    if right is None:
+        right = []
+    return left + right
+
+
 class PlanStep(TypedDict):
     id: int
     domain: str
@@ -41,6 +52,7 @@ class AgentState(TypedDict):
 
     plan: list[PlanStep]
     current_step_index: int
+    completed_actions: Annotated[list, _merge_actions]
 
     details: dict
     is_re_send: bool

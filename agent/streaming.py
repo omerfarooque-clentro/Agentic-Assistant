@@ -116,7 +116,17 @@ async def event_stream(formatted_message, thread, user):
                 ).strip()
 
             if not final_content.strip():
-                final_content = "I processed your request. Let me know if there's anything else you'd like to do!"
+                completed_actions = [
+                    a for a in (chunk.get("result", {}).get("completed_actions") or [])
+                    if isinstance(a, dict) and a.get("summary") and not a.get("__reset__")
+                ]
+                if completed_actions:
+                    final_content = "\n\n".join(
+                        f"**{a.get('domain', '').capitalize()}:** {a.get('summary', '').strip()}"
+                        for a in completed_actions
+                    )
+                else:
+                    final_content = "I processed your request. Let me know if there's anything else you'd like to do!"
 
             await Message.objects.acreate(
                 thread=thread,
@@ -187,7 +197,25 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
         final_values = state.values
         messages = list(final_values.get("messages", []))
 
-        raw_message = extract_text_content(messages[-1].content) if messages else ""
+        latest_human_idx = max(
+            (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
+            default=-1,
+        )
+        turn_ai_messages = [
+            m for m in messages[latest_human_idx + 1:]
+            if isinstance(m, AIMessage) and getattr(m, "content", None)
+        ]
+        if len(turn_ai_messages) > 1:
+            raw_message = "\n\n".join(
+                extract_text_content(m.content) for m in turn_ai_messages if extract_text_content(m.content).strip()
+            )
+        elif turn_ai_messages:
+            raw_message = extract_text_content(turn_ai_messages[-1].content)
+        elif messages:
+            raw_message = extract_text_content(messages[-1].content)
+        else:
+            raw_message = ""
+
         final_text, suggested_title = extract_title_from_text(raw_message)
 
         if not extracted_title and suggested_title:
@@ -241,7 +269,17 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
             if tool_err:
                 final_text = f"Action failed: {tool_err}"
             else:
-                final_text = "Action executed successfully." if approved else "Action cancelled."
+                completed_actions = [
+                    a for a in (final_values.get("completed_actions") or [])
+                    if isinstance(a, dict) and a.get("summary") and not a.get("__reset__")
+                ]
+                if completed_actions:
+                    final_text = "\n\n".join(
+                        f"**{a.get('domain', '').capitalize()}:** {a.get('summary', '').strip()}"
+                        for a in completed_actions
+                    )
+                else:
+                    final_text = "Action executed successfully." if approved else "Action cancelled."
 
         await Message.objects.acreate(
             thread=thread,

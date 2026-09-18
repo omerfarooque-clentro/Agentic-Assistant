@@ -45,6 +45,7 @@ async def run_agent(message: str, thread_id: int, user):
         input_message = {
             "messages": [HumanMessage(content=message)],
             "call_metrics": [{"__reset__": True}],
+            "completed_actions": [{"__reset__": True}],
             "available_domains": set(available_domains),
             "thread_id": str(thread_id),
             "user_id": str(user.id),
@@ -113,12 +114,22 @@ async def run_agent(message: str, thread_id: int, user):
 
         # Fallback if assistant finished with empty text content
         if not str(last_content).strip():
-            tool_calls = getattr(messages[-1], "tool_calls", None) if messages else None
-            if tool_calls:
-                tool_names = ", ".join(t.get("name", "tool") for t in tool_calls)
-                last_content = f"Operation completed successfully ({tool_names})."
+            completed_actions = [
+                a for a in (final_state.get("completed_actions") or [])
+                if isinstance(a, dict) and a.get("summary") and not a.get("__reset__")
+            ]
+            if completed_actions:
+                last_content = "\n\n".join(
+                    f"**{a.get('domain', '').capitalize()}:** {a.get('summary', '').strip()}"
+                    for a in completed_actions
+                )
             else:
-                last_content = "I processed your request. Let me know if you need anything else!"
+                tool_calls = getattr(messages[-1], "tool_calls", None) if messages else None
+                if tool_calls:
+                    tool_names = ", ".join(t.get("name", "tool") for t in tool_calls)
+                    last_content = f"Operation completed successfully ({tool_names})."
+                else:
+                    last_content = "I processed your request. Let me know if you need anything else!"
             if messages:
                 messages[-1] = AIMessage(content=last_content)
                 final_state["messages"] = messages

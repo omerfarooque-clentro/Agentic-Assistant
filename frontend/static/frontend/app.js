@@ -220,12 +220,39 @@
   const APPROVAL_FIELD_LABELS = { to: 'To', subject: 'Subject', body: 'Body', channel: 'Channel', message: 'Message' };
   const SKIPPED_APPROVAL_KEYS = new Set(['type', 'tool_name', 'is_duplicate', 'domain', 'message', 'args']);
   const titleCase = key => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  const getDomainIconSvg = (domain, size = 16) => {
+    const d = (domain || '').toLowerCase();
+    if (d === 'email' || d === 'gmail') {
+      return `<svg class="domain-icon domain-icon-gmail" width="${size}" height="${size}" viewBox="0 0 24 24"><path fill="#4285F4" d="M4 19h3V9.5L2 6v11.5c0 .8.7 1.5 1.5 1.5h.5z"/><path fill="#34A853" d="M20 19c.8 0 1.5-.7 1.5-1.5V6l-5 3.5V19h3.5z"/><path fill="#EA4335" d="M16.5 9.5V5c0-.8-.7-1.5-1.5-1.5H9c-.8 0-1.5.7-1.5 1.5v4.5l4.5 3.4 4.5-3.4z"/><path fill="#FBBC05" d="M2 6l5.5 4V5c0-.4.2-.8.5-1.1L2 6z"/><path fill="#C5221F" d="M22 6l-5.5 4V5c0-.4-.2-.8-.5-1.1L22 6z"/></svg>`;
+    }
+    if (d === 'calendar') {
+      return `<svg class="domain-icon domain-icon-calendar" width="${size}" height="${size}" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3" fill="#ffffff" stroke="#4285f4" stroke-width="1.5"/><path d="M3.5 6.5C3.5 4.8 4.8 3.5 6.5 3.5H17.5C19.2 3.5 20.5 4.8 20.5 6.5V8.5H3.5V6.5Z" fill="#4285f4"/><rect x="7" y="2" width="2" height="3" rx="1" fill="#1a73e8"/><rect x="15" y="2" width="2" height="3" rx="1" fill="#1a73e8"/><text x="12" y="17" font-size="8.5" font-weight="800" fill="#1a73e8" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">31</text></svg>`;
+    }
+    if (d === 'docs' || d === 'doc') {
+      return `<svg class="domain-icon domain-icon-docs" width="${size}" height="${size}" viewBox="0 0 24 24"><path fill="#4285F4" d="M14.5 2H6C4.9 2 4 2.9 4 4v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V7.5L14.5 2z"/><path fill="#A1C2FA" d="M14 2v6h6L14 2z"/><path fill="#FFFFFF" d="M7.5 11h9v1.5h-9zm0 3h9v1.5h-9zm0 3h6v1.5h-6z"/></svg>`;
+    }
+    if (d === 'sheets' || d === 'sheet') {
+      return `<svg class="domain-icon domain-icon-sheets" width="${size}" height="${size}" viewBox="0 0 24 24"><path fill="#0F9D58" d="M14.5 2H6C4.9 2 4 2.9 4 4v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V7.5L14.5 2z"/><path fill="#87CEAB" d="M14 2v6h6L14 2z"/><path fill="#FFFFFF" d="M7 11h10v7H7zm1.5 1.5v1.5h3v-1.5zm4.5 0v1.5h2.5v-1.5zm-4.5 2.5v1.5h3V15zm4.5 0v1.5h2.5V15z"/></svg>`;
+    }
+    if (d === 'slack') {
+      return `<svg class="domain-icon domain-icon-slack" width="${size}" height="${size}" viewBox="0 0 24 24"><path fill="#E01E5A" d="M5.04 14.5a2.5 2.5 0 1 0-2.5 2.5h2.5v-2.5zm1.25 0a2.5 2.5 0 0 0 5 0v-6.25a2.5 2.5 0 0 0-5 0v6.25z"/><path fill="#36C5F0" d="M9.5 5.04a2.5 2.5 0 1 0-2.5-2.5v2.5h2.5zm0 1.25a2.5 2.5 0 0 0 0 5h6.25a2.5 2.5 0 0 0 0-5H9.5z"/><path fill="#2EB67D" d="M18.96 9.5a2.5 2.5 0 1 0 2.5-2.5h-2.5v2.5zm-1.25 0a2.5 2.5 0 0 0-5 0v6.25a2.5 2.5 0 0 0 5 0V9.5z"/><path fill="#ECB22E" d="M14.5 18.96a2.5 2.5 0 1 0 2.5 2.5v-2.5h-2.5zm0-1.25a2.5 2.5 0 0 0 0-5H8.25a2.5 2.5 0 0 0 0 5H14.5z"/></svg>`;
+    }
+    if (d === 'research' || d === 'search') {
+      return `<svg class="domain-icon domain-icon-research" width="${size}" height="${size}" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>`;
+    }
+    return `<svg class="domain-icon domain-icon-general" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M12 2L14.4 7.6L20 10L14.4 12.4L12 18L9.6 12.4L4 10L9.6 7.6L12 2Z" fill="#38bdf8"/><path d="M18 16L19.2 18.8L22 20L19.2 21.2L18 24L16.8 21.2L14 20L16.8 18.8L18 16Z" fill="#818cf8"/></svg>`;
+  };
+
   const DOMAIN_META = {
-    email: { icon: '✉️', label: 'Email' },
-    calendar: { icon: '📅', label: 'Calendar' },
-    docs: { icon: '📄', label: 'Docs' },
-    sheets: { icon: '📊', label: 'Sheets' },
-    slack: { icon: '💬', label: 'Slack' },
+    email: { icon: getDomainIconSvg('email', 15), label: 'Email' },
+    gmail: { icon: getDomainIconSvg('gmail', 15), label: 'Email' },
+    calendar: { icon: getDomainIconSvg('calendar', 15), label: 'Calendar' },
+    docs: { icon: getDomainIconSvg('docs', 15), label: 'Docs' },
+    sheets: { icon: getDomainIconSvg('sheets', 15), label: 'Sheets' },
+    slack: { icon: getDomainIconSvg('slack', 15), label: 'Slack' },
+    research: { icon: getDomainIconSvg('research', 15), label: 'Research' },
+    general: { icon: getDomainIconSvg('general', 15), label: 'Operations' },
   };
   const escapeHtml = str => String(str).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
@@ -1896,41 +1923,29 @@
           id: 'step-connections',
           selector: '.connections',
           title: '1. Connect Your Workspace Tools',
-          desc: 'One-click connect your Google Workspace (Gmail, Calendar, Docs, Sheets) and Slack. Personal Ops orchestrates actions securely across all connected apps.',
+          desc: 'Connect Gmail, Google Calendar, Slack, Docs, Sheets, and live Web Search. Personal Ops seamlessly executes multi-domain workflows across all your integrated tools.',
           placement: 'right',
-          actionBefore: () => {
-            if (window.innerWidth > 768) setMobileSidebar(true);
-          }
         },
         {
           id: 'step-new-thread',
           selector: '.sidebar-action-wrap',
-          title: '2. Conversations & Threads',
-          desc: 'Start dedicated threads for different projects or tasks. Your conversation context and cross-domain history are preserved automatically.',
+          title: '2. Conversations & Context Threads',
+          desc: 'Start dedicated threads for different projects or tasks. Personal Ops preserves cross-domain state, action history, and links automatically across the conversation.',
           placement: 'right',
-          actionBefore: () => {
-            if (window.innerWidth > 768) setMobileSidebar(true);
-          }
         },
         {
           id: 'step-composer',
           selector: '.composer-input-container',
           title: '3. Natural Language Command Desk',
-          desc: 'Give autonomous multi-step instructions like "Schedule a sync with Omer tomorrow and notify him on Slack". You can also swipe Quick Cards to start instantly.',
+          desc: 'Give autonomous multi-step instructions like "Schedule a sync with Omer tomorrow at 4:00 PM and send him the Google Meet link on Slack".',
           placement: 'top',
-          actionBefore: () => {
-            if (window.innerWidth <= 768) setMobileSidebar(false);
-          }
         },
         {
           id: 'step-hud',
           selector: '#session-token-wrapper',
           title: '4. Token Intelligence & Safety Approvals',
-          desc: 'Tap the token pill anytime for deep session analytics. Critical actions (sending emails, modifying docs) always ask for your confirmation before executing.',
+          desc: 'Live token consumption tracking and safety guardrails. High-impact write actions (sending emails, scheduling events) require your interactive card approval.',
           placement: 'bottom',
-          actionBefore: () => {
-            if (window.innerWidth <= 768) setMobileSidebar(false);
-          }
         }
       ];
 
@@ -1992,31 +2007,45 @@
         if (!step) return;
 
         const isMobile = window.innerWidth <= 768;
-        if (step.actionBefore) step.actionBefore();
+        if (isMobile) {
+          document.body.classList.add('tour-active-mobile');
+          if (step.id === 'step-connections' || step.id === 'step-new-thread') {
+            setMobileSidebar(true);
+          } else {
+            setMobileSidebar(false);
+          }
+        }
 
         setTimeout(() => {
-          let targetEl = null;
-          // On mobile, don't attempt to highlight elements inside the off-screen drawer
-          if (!isMobile || (step.selector !== '.connections' && step.selector !== '.sidebar-action-wrap')) {
-            targetEl = document.querySelector(step.selector);
-          }
+          const targetEl = document.querySelector(step.selector);
           if (targetEl) {
             targetEl.classList.add('tour-target-highlight');
             highlightedEl = targetEl;
             if (targetEl.scrollIntoViewIfNeeded) {
               targetEl.scrollIntoViewIfNeeded({ behavior: 'smooth', block: 'center' });
+            } else if (targetEl.scrollIntoView) {
+              targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
           }
-
           if (tourTitle) tourTitle.textContent = step.title;
-          if (tourDesc) {
-            if (isMobile && (step.id === 'step-connections' || step.id === 'step-new-thread')) {
-              tourDesc.textContent = `${step.desc} (Accessible anytime via the top-left menu ☰)`;
+          if (tourDesc) tourDesc.textContent = step.desc;
+          if (tourBadge) tourBadge.textContent = `Step ${index + 1} of ${tourSteps.length}`;
+
+          const tourBar = document.querySelector('#tour-integrations-bar');
+          if (tourBar) {
+            if (step.id === 'step-connections') {
+              tourBar.innerHTML = `
+                <span class="tour-icon-badge">${getDomainIconSvg('gmail', 14)} Gmail</span>
+                <span class="tour-icon-badge">${getDomainIconSvg('calendar', 14)} Calendar</span>
+                <span class="tour-icon-badge">${getDomainIconSvg('slack', 14)} Slack</span>
+                <span class="tour-icon-badge">${getDomainIconSvg('docs', 14)} Docs</span>
+                <span class="tour-icon-badge">${getDomainIconSvg('sheets', 14)} Sheets</span>
+                <span class="tour-icon-badge">${getDomainIconSvg('research', 14)} Search</span>
+              `;
             } else {
-              tourDesc.textContent = step.desc;
+              tourBar.innerHTML = '';
             }
           }
-          if (tourBadge) tourBadge.textContent = `Step ${index + 1} of ${tourSteps.length}`;
 
           if (btnTourPrev) {
             btnTourPrev.style.visibility = index === 0 ? 'hidden' : 'visible';
@@ -2032,7 +2061,7 @@
           }
 
           positionTourCard(targetEl, step.placement);
-        }, 90);
+        }, isMobile ? 220 : 90);
       };
 
       const startTour = () => {
@@ -2045,6 +2074,7 @@
       const closeTour = () => {
         if (!tourOverlay) return;
         clearTourHighlight();
+        document.body.classList.remove('tour-active-mobile');
         tourOverlay.classList.add('hidden');
         tourOverlay.setAttribute('aria-hidden', 'true');
         localStorage.setItem('ops_tour_seen', 'true');
@@ -2575,7 +2605,7 @@
         const body = item.querySelector('.message-content');
         const text = role === 'agent' ? cleanMessageContent(content) : safeText(content);
         if (pending) {
-          body.innerHTML = '<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>Operations agent thinking…</span></div>';
+          body.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span class="pending-domain-icon">${getDomainIconSvg('general', 16)}</span><span>Operations agent thinking…</span></div>`;
         } else if (role === 'user') {
           body.textContent = text;
         } else {
@@ -2966,7 +2996,7 @@
                   <span class="starter-arrow">→</span>
                 </div>
                 <div class="starter-card-main">
-                  <span class="starter-icon">📅</span>
+                  <span class="starter-icon">${getDomainIconSvg('calendar', 20)} ${getDomainIconSvg('slack', 20)}</span>
                   <div class="starter-info">
                     <span class="starter-title">Schedule & Notify</span>
                     <span class="starter-desc">Book meeting on Google Calendar and ping attendee on Slack to confirm</span>
@@ -2980,7 +3010,7 @@
                   <span class="starter-arrow">→</span>
                 </div>
                 <div class="starter-card-main">
-                  <span class="starter-icon">✉️</span>
+                  <span class="starter-icon">${getDomainIconSvg('gmail', 22)}</span>
                   <div class="starter-info">
                     <span class="starter-title">Inbox Digest</span>
                     <span class="starter-desc">Summarize latest unread messages and highlight urgent requests</span>
@@ -2994,7 +3024,7 @@
                   <span class="starter-arrow">→</span>
                 </div>
                 <div class="starter-card-main">
-                  <span class="starter-icon">🔍</span>
+                  <span class="starter-icon">${getDomainIconSvg('research', 20)} ${getDomainIconSvg('docs', 20)}</span>
                   <div class="starter-info">
                     <span class="starter-title">Live Research & Doc</span>
                     <span class="starter-desc">Search current web facts and synthesize findings into a Google Doc</span>
@@ -3008,7 +3038,7 @@
                   <span class="starter-arrow">→</span>
                 </div>
                 <div class="starter-card-main">
-                  <span class="starter-icon">📊</span>
+                  <span class="starter-icon">${getDomainIconSvg('sheets', 22)}</span>
                   <div class="starter-info">
                     <span class="starter-title">Inspect Spreadsheets</span>
                     <span class="starter-desc">Extract tabular data and summarize key numbers or table rows</span>
@@ -3022,7 +3052,7 @@
                   <span class="starter-arrow">→</span>
                 </div>
                 <div class="starter-card-main">
-                  <span class="starter-icon">💬</span>
+                  <span class="starter-icon">${getDomainIconSvg('slack', 22)}</span>
                   <div class="starter-info">
                     <span class="starter-title">Team Broadcast</span>
                     <span class="starter-desc">Compose and post concise progress updates or status announcements</span>
@@ -3036,7 +3066,7 @@
                   <span class="starter-arrow">→</span>
                 </div>
                 <div class="starter-card-main">
-                  <span class="starter-icon">⚡</span>
+                  <span class="starter-icon">${getDomainIconSvg('general', 22)}</span>
                   <div class="starter-info">
                     <span class="starter-title">Explore Capabilities</span>
                     <span class="starter-desc">Discover connected tools, safety approvals, and autonomous planning</span>
@@ -3318,9 +3348,23 @@
 
         const pending = addMessage('agent', '', true);
         const body = pending.querySelector('.message-content');
-        const setPendingStatus = label => {
+        const setPendingStatus = (label, domainOrNode) => {
           if (!body) return;
-          body.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>${escapeHtml(label)}</span></div>`;
+          let d = domainOrNode;
+          if (d && typeof d === 'string' && d.endsWith('_agent')) d = d.replace('_agent', '');
+          if (!d && typeof label === 'string') {
+            const l = label.toLowerCase();
+            if (l.includes('email') || l.includes('gmail')) d = 'gmail';
+            else if (l.includes('calendar')) d = 'calendar';
+            else if (l.includes('slack')) d = 'slack';
+            else if (l.includes('doc')) d = 'docs';
+            else if (l.includes('sheet')) d = 'sheets';
+            else if (l.includes('research') || l.includes('search')) d = 'research';
+            else if (l.includes('planning') || l.includes('coordinating') || l.includes('ops') || l.includes('connecting')) d = 'general';
+          }
+          const cleanLabel = (label || '').replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]\s*/u, '');
+          const iconHtml = `<span class="pending-domain-icon">${getDomainIconSvg(d || 'general', 16)}</span>`;
+          body.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span>${iconHtml}<span>${escapeHtml(cleanLabel || label)}</span></div>`;
         };
         const currentThreadId = state.threadId;
         let assistantText = '';
@@ -3328,7 +3372,7 @@
         let hasReceivedTokens = false;
         const slowTimer = setTimeout(() => {
           if (!hasReceivedTokens && state.sending) {
-            setPendingStatus('Connecting across tools… network is slow, still processing');
+            setPendingStatus('Connecting across tools… network is slow, still processing', 'general');
           }
         }, 5500);
 
@@ -3344,10 +3388,9 @@
           // Handle new explicit status protocol from backend
           if (data.type === 'status') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-            // Display the backend-provided status message in the pending agent message
-            // Use the backend message as authoritative
+            // Display the backend-provided status message with authentic integration icon
             if (message) {
-              setPendingStatus(message);
+              setPendingStatus(message, data.node || data.agent);
             }
             return;
           }
@@ -3715,10 +3758,24 @@
           thinkingBody = thinkingBubble.querySelector('.message-content');
         };
 
-        const setThinkingStatus = (label) => {
+        const setThinkingStatus = (label, domainOrNode) => {
           ensureThinkingBubble();
           if (!thinkingBody) return;
-          thinkingBody.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span>${escapeHtml(label)}</span></div>`;
+          let d = domainOrNode || domain;
+          if (d && typeof d === 'string' && d.endsWith('_agent')) d = d.replace('_agent', '');
+          if (!d && typeof label === 'string') {
+            const l = label.toLowerCase();
+            if (l.includes('email') || l.includes('gmail')) d = 'gmail';
+            else if (l.includes('calendar')) d = 'calendar';
+            else if (l.includes('slack')) d = 'slack';
+            else if (l.includes('doc')) d = 'docs';
+            else if (l.includes('sheet')) d = 'sheets';
+            else if (l.includes('research') || l.includes('search')) d = 'research';
+            else if (l.includes('planning') || l.includes('coordinating') || l.includes('ops') || l.includes('step')) d = 'general';
+          }
+          const cleanLabel = (label || '').replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]\s*/u, '');
+          const iconHtml = `<span class="pending-domain-icon">${getDomainIconSvg(d || 'general', 16)}</span>`;
+          thinkingBody.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span>${iconHtml}<span>${escapeHtml(cleanLabel || label)}</span></div>`;
         };
 
         // Fallback timer — shows elapsed time if backend goes quiet
@@ -3812,7 +3869,7 @@
                 updateCardStatus(msg);
               } else {
                 // Phase 2: Card is done — show status in thinking bubble
-                setThinkingStatus(msg);
+                setThinkingStatus(msg, node);
               }
               return;
             }

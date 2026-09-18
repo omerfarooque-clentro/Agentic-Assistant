@@ -5,7 +5,7 @@ planning, cross-domain transition loop, and multi-step execution.
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from django.test import SimpleTestCase, TestCase, TransactionTestCase
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -13,6 +13,7 @@ from accounts.models import User
 from conversations.models import Message, Thread
 from agent.graph.nodes import advance_plan_node, agent_node, nlp_node, scoped_should_continue
 from agent.graph.state import AgentState
+from agent.llm.messages import messages_for_llm
 from agent.routing.query_generator import ParsedPlanStep, generate_routing_query
 from agent.routing.reference_detector import is_compound_multi_domain
 from agent.routing.intent_router import route_intent
@@ -232,6 +233,124 @@ class MultiAgentGraphProgressionTests(SimpleTestCase):
         result = route_intent(messages, available_domains={"calendar", "email"}, plan=plan)
         self.assertEqual(result["domain"], "email")
         self.assertEqual(result["intent"], "email.send")
+
+    def test_advance_plan_node_records_completed_actions(self):
+        state: AgentState = {
+            "messages": [
+                AIMessage(content="Successfully scheduled event 'Technical Interview'. Meet link: https://meet.google.com/xyz")
+            ],
+            "plan": [
+                {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule meeting", "status": "in_progress", "result_summary": None},
+                {"id": 2, "domain": "email", "intent": "email.send", "description": "Send link", "status": "pending", "result_summary": None},
+            ],
+            "current_step_index": 0,
+        }
+        update = advance_plan_node(state)
+        self.assertIn("completed_actions", update)
+        self.assertEqual(len(update["completed_actions"]), 1)
+        action = update["completed_actions"][0]
+        self.assertEqual(action["domain"], "calendar")
+        self.assertEqual(action["description"], "Schedule meeting")
+        self.assertIn("https://meet.google.com/xyz", action["summary"])
+
+    def test_agent_node_records_completed_actions_on_final_step(self):
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = AIMessage(content="Email sent to omer.farooque@yahoo.com.")
+
+        state: AgentState = {
+            "messages": [HumanMessage(content="send link")],
+            "plan": [
+                {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule meeting", "status": "completed", "result_summary": "Done"},
+                {"id": 2, "domain": "email", "intent": "email.send", "description": "Send link", "status": "in_progress", "result_summary": None},
+            ],
+            "current_step_index": 1,
+            "domain": "email",
+        }
+        output = agent_node(state, mock_llm, domain="email")
+        self.assertIn("completed_actions", output)
+        self.assertEqual(len(output["completed_actions"]), 1)
+        action = output["completed_actions"][0]
+        self.assertEqual(action["domain"], "email")
+        self.assertIn("Email sent to omer.farooque@yahoo.com", action["summary"])
+
+    def test_messages_for_llm_isolates_context_and_injects_completed_actions(self):
+        state = {
+            "messages": [
+                HumanMessage(content="Schedule interview tomorrow 9pm and email link to omer@example.com"),
+                AIMessage(content="I've scheduled the technical interview for tomorrow at 9:00 PM."),
+            ],
+            "plan": [
+                {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule interview", "status": "completed", "result_summary": "Interview booked"},
+                {"id": 2, "domain": "email", "intent": "email.send", "description": "Email link", "status": "in_progress", "result_summary": None},
+            ],
+            "current_step_index": 1,
+            "completed_actions": [
+                {
+                    "domain": "calendar",
+                    "description": "Schedule interview",
+                    "summary": "Booked Technical Interview on Calendar. Link: https://meet.google.com/abc-defg-hij",
+                }
+            ],
+        }
+
+        # Request messages for the second agent (email)
+        llm_messages = messages_for_llm(state, domain="email")
+
+        # System message (index 0) must contain the PRIOR COMPLETED ACTIONS section
+        sys_content = llm_messages[0].content
+        self.assertIn("PRIOR COMPLETED ACTIONS IN THIS WORKFLOW:", sys_content)
+        self.assertIn("Booked Technical Interview on Calendar", sys_content)
+        self.assertIn("https://meet.google.com/abc-defg-hij", sys_content)
+
+        # In active plan mode, the conversation messages should isolate to the original HumanMessage
+        # and NOT include the trailing AIMessage from calendar_agent which previously silenced email_agent!
+        non_system_messages = llm_messages[1:]
+        self.assertEqual(len(non_system_messages), 1)
+        self.assertIsInstance(non_system_messages[0], HumanMessage)
+        self.assertIn("Schedule interview tomorrow 9pm and email link", non_system_messages[0].content)
+
+    def test_prior_agent_conversational_message_and_disclaimer_excluded_from_next_step(self):
+        """Ensure that when Agent 1 emits conversational text (or says it lacks tools), that AIMessage is NOT fed to Agent 2."""
+        calendar_apology_message = (
+            "I've scheduled the technical interview for tomorrow at 9:00 PM. "
+            "Google Meet link: https://meet.google.com/xyz-123. "
+            "However, I didn't see any tools for email or Slack, sorry! "
+            "I don't have access to email tools so you will need to manually send the link."
+        )
+
+        state: AgentState = {
+            "messages": [
+                HumanMessage(content="Schedule technical interview tomorrow 9pm and email meet link to candidate@example.com"),
+                AIMessage(content=calendar_apology_message),
+            ],
+            "plan": [
+                {"id": 1, "domain": "calendar", "intent": "calendar.create", "description": "Schedule interview", "status": "completed", "result_summary": "Done"},
+                {"id": 2, "domain": "email", "intent": "email.send", "description": "Email meet link", "status": "in_progress", "result_summary": None},
+            ],
+            "current_step_index": 1,
+            "completed_actions": [
+                {
+                    "domain": "calendar",
+                    "description": "Schedule interview",
+                    "summary": "Booked Technical Interview on Calendar. Meet link: https://meet.google.com/xyz-123",
+                }
+            ],
+        }
+
+        # Assemble prompt for Step 2 (email agent)
+        llm_messages = messages_for_llm(state, domain="email")
+
+        # Crucial check: The conversational messages (after SystemMessage) must ONLY contain the original HumanMessage.
+        # The preceding AIMessage with its apologies/disclaimers is completely excluded from the turn!
+        conversation_messages = llm_messages[1:]
+        self.assertEqual(len(conversation_messages), 1)
+        self.assertIsInstance(conversation_messages[0], HumanMessage)
+        self.assertNotIn(calendar_apology_message, [m.content for m in conversation_messages])
+
+        # Step 2 receives the context it needs via PRIOR COMPLETED ACTIONS in the system prompt
+        sys_content = llm_messages[0].content
+        self.assertIn("PRIOR COMPLETED ACTIONS IN THIS WORKFLOW:", sys_content)
+        self.assertIn("https://meet.google.com/xyz-123", sys_content)
 
 
 @tool
@@ -516,3 +635,73 @@ class MultiAgentEndToEndExecutionTests(TransactionTestCase):
             db_msg = await Message.objects.filter(thread=self.thread, role="agent").alast()
             self.assertIsNotNone(db_msg)
             self.assertIn("External API gateway timeout", db_msg.content)
+
+    async def test_workflow_resilient_to_intermediate_agent_apologies_and_disclaimers(self):
+        """Verify workflow completes smoothly even if Step 1 emits an apology saying it lacks tools for Step 2."""
+        mock_plan = {
+            "type": "MULTI",
+            "query": "Schedule meeting and email invite",
+            "steps": [
+                {"domain": "calendar", "query": "schedule meeting tomorrow at 9pm"},
+                {"domain": "email", "query": "send email to omer@example.com"},
+            ],
+            "metrics": None,
+        }
+        step_responses = [
+            # Step 1: Calendar agent creates event and apologizes that it can't send emails
+            AIMessage(
+                content=(
+                    "Meeting booked for tomorrow at 9:00 PM. Link: https://meet.google.com/abc-xyz. "
+                    "Note: I didn't see tool for email, sorry, I don't have email tools so you must manually send it."
+                )
+            ),
+            # Step 2: Email agent receives sanitized prior action and delivers email
+            AIMessage(content="Sent Google Meet link (https://meet.google.com/abc-xyz) to omer@example.com."),
+        ]
+
+        received_prompts = []
+
+        def mock_invoke(messages, *args, **kwargs):
+            received_prompts.append(messages)
+            idx = len(received_prompts) - 1
+            return step_responses[min(idx, len(step_responses) - 1)]
+
+        mock_bound = MagicMock()
+        mock_bound.invoke = mock_invoke
+        mock_bound.model_name = "test-model"
+
+        mem = MemorySaver()
+        prompt = "Schedule meeting tomorrow at 9pm and send email to omer@example.com"
+        with patch("agent.graph.builder.memory", mem), \
+             patch("agent.runner.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.streaming.ensure_checkpointer", new_callable=AsyncMock), \
+             patch("agent.runner.get_user_tools", return_value=self.tools), \
+             patch("agent.routing.intent_router.generate_routing_query", return_value=mock_plan), \
+             patch("agent.graph.builder.bind_tools_with_fallback", return_value=mock_bound):
+
+            events = []
+            async for sse in event_stream(prompt, self.thread, self.user):
+                events.append(sse)
+
+            completed_events = [
+                json.loads(e.strip()[5:]) for e in events if '"type": "completed"' in e
+            ]
+            self.assertEqual(len(completed_events), 1)
+
+            # Check that Step 2 (email agent) was invoked
+            self.assertGreaterEqual(len(received_prompts), 2)
+            email_prompt_msgs = received_prompts[1]
+
+            # Crucial assertion: the conversational AIMessage from Step 1 was NOT passed in the conversation turn
+            conversation_msgs = [m for m in email_prompt_msgs if not isinstance(m, SystemMessage)]
+            self.assertEqual(len(conversation_msgs), 1)
+            self.assertIsInstance(conversation_msgs[0], HumanMessage)
+            conversation_text = "\n".join(str(m.content) for m in conversation_msgs)
+            self.assertNotIn("didn't see tool for email", conversation_text)
+            self.assertNotIn("I don't have email tools", conversation_text)
+            self.assertNotIn("you must manually send it", conversation_text)
+
+            # And the completed response contains both results
+            final_res = completed_events[0]["response"]
+            self.assertIn("https://meet.google.com/abc-xyz", final_res)
+            self.assertIn("Sent Google Meet link", final_res)
