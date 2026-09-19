@@ -19,6 +19,7 @@ A **Django + LangGraph personal operations agent** that orchestrates email, cale
 - [🧠 Adaptive Intent Routing & Modular Pipeline](#-adaptive-intent-routing--modular-pipeline)
 - [🔄 Multi-Agent Sequential Workflows](#-multi-agent-sequential-workflows)
 - [🛡️ Human-in-the-Loop (HITL) Safety & Approval](#️-human-in-the-loop-hitl-safety--approval)
+- [🃏 Typed Result Cards & Interactive UI](#-typed-result-cards--interactive-ui)
 - [🔁 Resilient Multi-Provider LLM Orchestration](#-resilient-multi-provider-llm-orchestration)
 - [📊 Observability & Token Intelligence HUD](#-observability--token-intelligence-hud)
 - [🔐 Authentication & Zero-Knowledge Credential Recovery](#-authentication--zero-knowledge-credential-recovery)
@@ -28,6 +29,7 @@ A **Django + LangGraph personal operations agent** that orchestrates email, cale
 - [📁 Project Layout](#-project-layout)
 - [🚀 Quickstart & Setup](#-quickstart--setup)
 - [🔧 Environment Configuration](#-environment-configuration)
+- [🧪 Testing & Verification](#-testing--verification)
 - [🔌 API Surface](#-api-surface)
 - [⚠️ Known Considerations](#️-known-considerations)
 
@@ -51,6 +53,17 @@ A **Django + LangGraph personal operations agent** that orchestrates email, cale
   - **Edit parameters in-place** before executing (e.g. modifying meeting times or email recipients).
   - **Provide natural language revision instructions** to steer the agent.
   - **Cancel** safely with zero state mutations.
+
+### 🃏 Typed Result Cards (Result Cards v1)
+- Automatically converts structured tool execution outputs into responsive, theme-adaptive cards for:
+  - **Weather**: Live conditions, metric breakdowns, and 7-day daily forecasts via Open-Meteo.
+  - **Email Lists**: Message headers, unread indicators, snippet previews, direct thread links, and one-click action chips (`Draft reply`, `Summarize`).
+  - **Slack Activity**: Clean channel pills, user attribution, sanitized message text, and deep links.
+  - **Google Sheets**: Interactive tabular views with highlighted rows for updates and direct document links.
+  - **Google Calendar**: Upcoming schedule timelines, creation confirmations, attendee badges, and Google Meet/Calendar links.
+  - **Web Search**: Structured key takeaway points with clickable source pill badges.
+- **Adaptive Presentation Routing**: Evaluates conversational intent to display in `card_first` mode (action/lookup directives) or `text_first` mode (open-ended informational questions).
+- **Official Brand Assets**: Clean vector SVG brand icons (Gmail, Google Calendar, Slack, Google Sheets, Google Search) replacing inconsistent emojis.
 
 ### ⚡ Zero-Cost Reference Resolution
 - Rule-based anaphora detector identifies whether a query relies on prior conversational turns (`"it"`, `"that"`, `"send it to him"`).
@@ -176,7 +189,7 @@ route_intent()
 | | `slack.draft` | `slack_send_message_draft`, `resolve_slack_id` |
 | | `slack.search` | `slack_search_public_and_private`, `slack_search_channels`, `slack_search_users`, `slack_read_user_profile` |
 | | `slack.history` | `slack_read_channel`, `slack_read_thread`, `slack_read_canvas`, `slack_read_file`, `slack_get_reactions` |
-| **`research`**| `research.search` | `tavily_search` |
+| **`research`**| `research.search` | `tavily_search`, `get_weather` |
 
 ---
 
@@ -204,6 +217,62 @@ Every state-mutating action pauses execution via a LangGraph interrupt and check
 - **Zero Default Spinners:** Clean button states with immediate visual feedback (`Approving…`, `Cancelling…`, `Revising…`) and animated progress track bars.
 - **In-Place Field Editing:** Expand the edit drawer on any approval card to alter action parameters directly (e.g. adjust start times, change subject line, edit message text) before approval.
 - **Revision Steering:** Type a conversational revision instruction (e.g. *"Make it 30 minutes earlier"* or *"Add Omer as an attendee"*), and the agent updates the proposed action while maintaining context.
+
+---
+
+## 🃏 Typed Result Cards & Interactive UI
+
+Result Cards (Result Cards v1) transform raw tool execution payloads into polished, interactive visual artifacts.
+
+```
+Tool Execution Complete (MCP / Native Tool)
+                 │
+                 ▼
+┌────────────────────────────────────────────────────────┐
+│               build_result_card(messages)              │
+│  - Isolates current turn messages                      │
+│  - Identifies candidate ToolMessage                    │
+│  - Unpacks nested MCP content blocks                   │
+│  - Sanitizes tool debug metadata & context trailers    │
+└────────────────────────┬───────────────────────────────┘
+                         │
+                         ▼
+┌────────────────────────────────────────────────────────┐
+│            Typed Builder & Schema Validation           │
+│  - WeatherData / EmailListData / SlackMentionsData /   │
+│    SheetViewData / SheetUpdateData / CalendarEventData │
+│  - Never raises: defensive fallback to text            │
+└────────────────────────┬───────────────────────────────┘
+                         │
+                         ▼
+┌────────────────────────────────────────────────────────┐
+│          Adaptive Intent Presentation Routing          │
+│  - Questions ("Is it raining?") ➔ text_first           │
+│  - Directives ("Show my emails") ➔ card_first          │
+└────────────────────────┬───────────────────────────────┘
+                         │
+                         ▼
+┌────────────────────────────────────────────────────────┐
+│         SSE Event: {"type": "result_card"}             │
+│  - Saved to Message.cards in PostgreSQL                │
+│  - Rendered with official brand SVGs & action chips    │
+└────────────────────────────────────────────────────────┘
+```
+
+### Supported Card Types
+
+| Card Type | Triggering Tools | Key Interactive & Visual Features |
+|---|---|---|
+| **Weather** | `get_weather` | Real-time temperature & conditions hero, metrics grid (humidity, wind, precipitation chance), 7-day forecast row, Open-Meteo geocoding disambiguation. |
+| **Email List** | `search_gmail_messages`, `get_gmail_*` | Unread status dot, sender name extraction, subject link to Gmail thread, message snippet, and prefilling action chips (`Draft reply`, `Summarize`). |
+| **Slack Activity** | `slack_search_*`, `slack_read_*` | Channel pill (`#dev-learning`, `DM`), clean sender attribution, sanitized message text (stripping raw IDs & context trailers), deep permalinks. |
+| **Google Sheets** | `read_sheet_values`, `modify_sheet_values`, `append_table_rows` | Clean tabular layout, header detection, updated row highlight, and direct spreadsheet link. |
+| **Google Calendar** | `get_events`, `manage_event` | Month/date calendar badge, event title, time span, attendee listing, and direct `Join Meet` / `Calendar` buttons. |
+| **Search Summary** | `tavily_search*`, `search` | Key takeaway bullets with domain-specific tag badges and clickable source pills. |
+
+### Domain Presentation Modes
+- **`card_first` (Directives & Lookups)**: Prompts like *"show recent emails"*, *"weather in tokyo"*, or *"search slack for updates"* place the result card prominently above the assistant text. If the explanation is long, it collapses cleanly into an expandable details drawer.
+- **`text_first` (Questions & Contextual Inquiries)**: Informational questions like *"do I have any meetings tomorrow?"* render the natural conversational answer first, followed by the structured card below for quick reference.
 
 ---
 
@@ -262,6 +331,7 @@ The `POST /api/chat/` and `POST /api/thread/<id>/chat/` endpoints stream Server-
 | `status` | `{ "step": "...", "label": "..." }` | Current processing state ("Consulting Calendar…") |
 | `token` | `{ "token": "..." }` | Real-time token-by-token response streaming |
 | `approval_required` | `{ "thread_id": 96, "interrupt": { ... } }` | Render interactive approval card for mutating action |
+| `result_card` | `{ "kind": "result", "type": "...", "data": { ... } }` | Structured visual card payload emitted upon successful tool completion |
 | `thread_name` | `{ "thread_name": "Project Discussion" }` | Real-time thread title derivation |
 | `completed` | `{ "result": { ... }, "metrics": { ... } }` | Final response state and turn metrics summary |
 | `error` | `{ "message": "..." }` | Structured error messages with graceful disconnect handling |
@@ -274,6 +344,14 @@ The `POST /api/chat/` and `POST /api/thread/<id>/chat/` endpoints stream Server-
 Agentic-Assistant/
 ├── accounts/                  # Custom User model & recovery credential security
 ├── agent/
+│   ├── cards/                 # Typed Result Cards & HITL approval cards
+│   │   ├── approval_cards.py  # Interactive HITL approval card builder
+│   │   ├── builders.py        # Pure parsers for weather, email, Slack, sheets, calendar
+│   │   ├── intent.py          # Query classifier for card_first vs text_first presentation
+│   │   ├── registry.py        # Tool-to-card dispatcher registry
+│   │   ├── result_cards.py    # Orchestrator building typed envelopes from message turns
+│   │   ├── schemas.py         # Pydantic v2 schemas for all card payloads
+│   │   └── weather_tool.py    # Native LangChain tool calling Open-Meteo API
 │   ├── graph/                 # LangGraph state, nodes, approval logic, and builders
 │   ├── integrations/          # OAuth flows, token validation & refresh
 │   ├── llm/                   # Multi-provider clients, fallbacks, prompts & titles
@@ -282,12 +360,17 @@ Agentic-Assistant/
 │   ├── tools/                 # MCP grouping, Slack resolver & tool discovery
 │   ├── models.py              # Per-user MCPIntegration schema
 │   ├── runner.py              # Streaming execution orchestrator (ASGI SSE)
+│   ├── streaming.py           # SSE event generation & card persistence
 │   └── status.py              # Node-to-status messaging map
 ├── config/                    # Django core, ASGI application & URL routing
 ├── conversations/             # Thread, Message, and Approval models & REST APIs
 ├── core/                      # Authentication endpoints, chat serializers, views
 ├── frontend/                  # Modern server-rendered dashboard, templates & assets
-│   ├── static/frontend/       # Vanilla CSS design system & client-side app logic
+│   ├── static/frontend/       # Vanilla CSS design system, result cards UI & app logic
+│   │   ├── app.js             # SSE stream listener, HUD, & message renderer
+│   │   ├── result_cards.js    # Typed Result Card UI library & official brand SVGs
+│   │   ├── app.css            # Base design system & token architecture
+│   │   └── result_cards.css   # Responsive CSS tokens for all typed result cards
 │   └── templates/frontend/    # Dashboard, auth, settings & integration UI
 └── google_workspace_mcp/      # Vendored Google Workspace MCP server
 ```
@@ -362,6 +445,23 @@ GMAIL_MCP_URL=http://127.0.0.1:8001/mcp
 CALENDAR_MCP_URL=http://127.0.0.1:8001/mcp
 DOCS_MCP_URL=http://127.0.0.1:8001/mcp
 SHEETS_MCP_URL=http://127.0.0.1:8001/mcp
+```
+
+---
+
+## 🧪 Testing & Verification
+
+The test suite validates approval card persistence, intent routing, result card builders, and multi-agent safety mechanisms:
+
+```bash
+# Run the complete test suite (90 tests across core, routing, and card systems)
+./my_env/bin/python manage.py test core.tests.ApprovalCardUnitTests core.tests.ApprovalCardPersistenceTests agent.cards.tests agent.routing.test
+
+# Run only the Typed Result Card builder & schema test suite
+./my_env/bin/python manage.py test agent.cards.tests
+
+# Run multi-agent workflow tests
+./my_env/bin/python manage.py test agent.test_multi_agent_workflow
 ```
 
 ---
