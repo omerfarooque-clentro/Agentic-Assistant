@@ -9,7 +9,7 @@ from django.http import StreamingHttpResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from agent.cards import render_cards
+from agent.cards import build_result_card, render_cards
 from agent.constants import AGENT_NODES
 from agent.graph.builder import create_graph, ensure_checkpointer
 from agent.llm import StreamTitleFilter
@@ -107,11 +107,16 @@ async def event_stream(formatted_message, thread, user):
             if not final_content.strip():
                 final_content = synthesize_response_from_actions(chunk.get("result", {}))
 
+            rc = build_result_card(messages)
+            if rc:
+                yield f"data: {json.dumps({'type': 'result_card', 'card': rc})}\n\n"
+
             await Message.objects.acreate(
                 thread=thread,
                 role="agent",
                 content=final_content,
                 metrics=chunk.get("metrics") or {},
+                cards=[rc] if rc else None,
             )
             yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
             return
@@ -240,12 +245,16 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
                     default="Action executed successfully." if approved else "Action cancelled.",
                 )
 
+        rc = build_result_card(messages)
+        if rc:
+            yield f"data: {json.dumps({'type': 'result_card', 'card': rc})}\n\n"
+
         await Message.objects.acreate(
             thread=thread,
             role="agent",
             content=final_text,
             metrics=approval_metrics,
-            cards=[card_record],
+            cards=[card_record, *([rc] if rc else [])],
         )
 
         yield f"data: {json.dumps({'type': 'completed', 'result': final_text, 'thread_id': int(thread.id), 'thread_name': thread.name, 'metrics': approval_metrics, 'card_record': card_record})}\n\n"

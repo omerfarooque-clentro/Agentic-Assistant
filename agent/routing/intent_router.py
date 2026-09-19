@@ -72,7 +72,7 @@ ACTION_MCP_TOOL_NAMES = {
         "slack_get_reactions",
         "slack_search_public_and_private",
     },
-    "research.search": {"tavily_search"},
+    "research.search": {"tavily_search", "get_weather"},
 }
 
 training_data = pd.read_csv(DATA_FILE).dropna(subset=["text", "intent"])

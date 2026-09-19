@@ -491,542 +491,6 @@
     return html;
   };
 
-  const WEATHER_THEMES = {
-    sunny: { theme: 'sunny', icon: '☀️', name: 'Sunny & Clear' },
-    hot: { theme: 'hot', icon: '☀️', name: 'Hot & Sunny' },
-    partly_cloudy: { theme: 'partly-cloudy', icon: '⛅', name: 'Partly Cloudy' },
-    cloudy: { theme: 'cloudy', icon: '☁️', name: 'Overcast' },
-    rain: { theme: 'rain', icon: '🌧️', name: 'Rainy' },
-    shower: { theme: 'rain', icon: '🌦️', name: 'Showers' },
-    storm: { theme: 'storm', icon: '⛈️', name: 'Thunderstorm' },
-    snow: { theme: 'snow', icon: '❄️', name: 'Snow' },
-    fog: { theme: 'fog', icon: '🌫️', name: 'Hazy & Mist' },
-    windy: { theme: 'windy', icon: '💨', name: 'Breezy' },
-    cold: { theme: 'cold', icon: '🧊', name: 'Cold' },
-  };
-
-  const resolveWeatherCondition = text => {
-    const lower = (text || '').toLowerCase();
-    if (/thunder|lightning|severe storm/i.test(lower)) return WEATHER_THEMES.storm;
-    if (/heavy rain|downpour|torrential/i.test(lower)) return WEATHER_THEMES.rain;
-    if (/rain|drizzle|shower|precipitation/i.test(lower)) return WEATHER_THEMES.shower;
-    if (/blizzard|snow|flurr|sleet|hail|freezing/i.test(lower)) return WEATHER_THEMES.snow;
-    if (/heatwave|extreme heat|scorching|4[0-9]\s*°/i.test(lower) || (lower.includes('hot') && !lower.includes('shot'))) return WEATHER_THEMES.hot;
-    if (/partly cloudy|scattered clouds|mostly sunny|partly sunny/i.test(lower)) return WEATHER_THEMES.partly_cloudy;
-    if (/mostly cloudy|overcast|cloudy|clouds/i.test(lower)) return WEATHER_THEMES.cloudy;
-    if (/fog|mist|haze|smog|dust|smoke/i.test(lower)) return WEATHER_THEMES.fog;
-    if (/wind|breeze|breezy|gale|gust/i.test(lower)) return WEATHER_THEMES.windy;
-    if (/cold|chilly|frost/i.test(lower)) return WEATHER_THEMES.cold;
-    if (/sunny|clear|fair/i.test(lower)) return WEATHER_THEMES.sunny;
-    return { theme: 'default', icon: '🌡️', name: 'Weather Outlook' };
-  };
-
-  const weatherIcon = condition => resolveWeatherCondition(condition).icon;
-
-  const extractTemperature = text => {
-    const direct = text.match(/(-?\d{1,3})\s*(?:°\s*|degrees?\s*)?([CF])\b/i) || text.match(/(-?\d{1,3})\s*degrees?\s*(?:celsius|fahrenheit)\b/i);
-    if (direct) {
-      if (direct[2]) return { temp: direct[1], unit: direct[2].toUpperCase() };
-      return { temp: direct[1], unit: /fahrenheit/i.test(direct[0]) ? 'F' : 'C' };
-    }
-    return null;
-  };
-
-  const cleanMetricItem = (label, rawValue) => {
-    const raw = String(rawValue || '').trim();
-    const lowerLabel = label.toLowerCase();
-
-    let value = raw;
-    let subtext = '';
-    let icon = '📊';
-
-    if (/precip|rain|chance of rain/i.test(lowerLabel)) {
-      icon = '💧';
-      const pctMatch = raw.match(/(\d{1,3}\s*%)/);
-      if (pctMatch) {
-        value = pctMatch[1];
-        if (/unlikely|0%|no rain/i.test(raw)) subtext = 'Rain unlikely';
-        else if (/possible|light|scattered/i.test(raw)) subtext = 'Possible showers';
-        else if (/high|heavy|likely/i.test(raw)) subtext = 'Rain expected';
-        else subtext = 'Precipitation chance';
-      } else if (/unlikely|none|zero|no/i.test(raw)) {
-        value = '0%';
-        subtext = 'Clear & dry';
-      } else if (raw.length > 25) {
-        value = raw.slice(0, 18) + '…';
-        subtext = raw;
-      }
-    } else if (/wind/i.test(lowerLabel)) {
-      icon = '💨';
-      const speedMatch = raw.match(/(\d{1,3}(?:\s*[-–]\s*\d{1,3})?\s*(?:km\/h|mph|kts|m\/s|kmh))/i);
-      const dirMatch = raw.match(/(south-east|south-west|north-east|north-west|south|north|east|west|se|sw|ne|nw|s\/w|s\/e|n\/w|n\/e)\b/i);
-      if (speedMatch) {
-        value = speedMatch[1].replace(/\s*kmh/i, ' km/h');
-        if (dirMatch) {
-          const dir = dirMatch[1].toUpperCase();
-          subtext = `Breeze (${dir})`;
-        } else if (/light|gentle/i.test(raw)) {
-          subtext = 'Light breeze';
-        } else if (/moderate/i.test(raw)) {
-          subtext = 'Moderate breeze';
-        } else if (/strong|gust/i.test(raw)) {
-          subtext = 'Strong gusts';
-        } else {
-          subtext = 'Wind speed';
-        }
-      } else if (/light|calm/i.test(raw)) {
-        value = 'Calm';
-        subtext = 'Light breezes';
-      } else if (raw.length > 25) {
-        value = raw.slice(0, 18) + '…';
-        subtext = raw;
-      }
-    } else if (/humid/i.test(lowerLabel)) {
-      icon = '💦';
-      const rangeMatch = raw.match(/(\d{1,2}%?\s*(?:to|-|–)\s*\d{1,2}%?)/i) || raw.match(/(\d{1,3}\s*%)/);
-      if (rangeMatch) {
-        value = rangeMatch[1].replace(/\b(\d{1,2})\b(?!\s*%)/g, '$1%');
-        if (/low|dry/i.test(raw)) subtext = 'Comfortable / dry';
-        else if (/mid|moderate/i.test(raw)) subtext = 'Moderate humidity';
-        else if (/high|oppressive|heavy/i.test(raw)) subtext = 'Humid';
-        else subtext = 'Relative humidity';
-      } else if (/mid-40|low-50|moderate/i.test(raw)) {
-        value = '40–50%';
-        subtext = 'Moderate humidity';
-      } else if (raw.length > 25) {
-        value = raw.slice(0, 18) + '…';
-        subtext = raw;
-      }
-    } else if (/uv/i.test(lowerLabel)) {
-      icon = '☀️';
-      const levelMatch = raw.match(/\b(very high|extreme|high|moderate|low)\b/i) || raw.match(/\b(\d{1,2}(?:\s*[-–]\s*\d{1,2})?)\b/);
-      if (levelMatch) {
-        value = titleCase(levelMatch[1]);
-        if (/sunscreen|shade|outdoors/i.test(raw)) subtext = 'Sunscreen advised';
-        else if (/high|extreme/i.test(value)) subtext = 'High protection';
-        else subtext = 'UV radiation';
-      } else if (/high/i.test(raw)) {
-        value = 'High';
-        subtext = 'Sunscreen advised';
-      } else if (raw.length > 25) {
-        value = raw.slice(0, 18) + '…';
-        subtext = raw;
-      }
-    } else if (/temp|feels like|high|low|pressure|visibility/i.test(lowerLabel)) {
-      if (/feels/i.test(lowerLabel)) icon = '🌡️';
-      else if (/pressure/i.test(lowerLabel)) icon = '⏱️';
-      else if (/visib/i.test(lowerLabel)) icon = '👁️';
-      else icon = '🌡️';
-      if (raw.length > 25) {
-        value = raw.slice(0, 20) + '…';
-        subtext = raw;
-      }
-    }
-
-    return { label, value, subtext, icon };
-  };
-
-  const parseMarkdownTableForecast = lines => {
-    const tableLineIdxs = [];
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes('|')) {
-        tableLineIdxs.push(i);
-      }
-    }
-    if (tableLineIdxs.length < 3) return null;
-
-    const tableLines = [];
-    for (let i = 0; i < tableLineIdxs.length; i++) {
-      if (i > 0 && tableLineIdxs[i] !== tableLineIdxs[i - 1] + 1) break;
-      tableLines.push(lines[tableLineIdxs[i]]);
-    }
-    if (tableLines.length < 3) return null;
-
-    const cleanRow = line => {
-      let c = line.trim();
-      if (c.startsWith('|')) c = c.slice(1);
-      if (c.endsWith('|')) c = c.slice(0, -1);
-      return c.split('|').map(cell => cell.trim());
-    };
-
-    const header = cleanRow(tableLines[0]).map(h => h.toLowerCase());
-    const isForecastTable = header.some(h => /day|date|forecast|condition|high|temp|rain|weather/i.test(h));
-    if (!isForecastTable) return null;
-
-    const dayCol = header.findIndex(h => /^day\b/i.test(h));
-    const dateCol = header.findIndex(h => /^date\b/i.test(h));
-    const condCol = header.findIndex(h => /forecast|condition|weather|sky/i.test(h));
-    const tempCol = header.findIndex(h => /high\s*\/\s*low|high|temp|max\s*\/\s*min/i.test(h));
-    const rainCol = header.findIndex(h => /rain|precip|chance/i.test(h));
-    const windCol = header.findIndex(h => /wind/i.test(h));
-    const notesCol = header.findIndex(h => /notes?|summary|details?/i.test(h));
-
-    const days = [];
-    for (let r = 2; r < tableLines.length; r++) {
-      const row = cleanRow(tableLines[r]);
-      if (row.length < 2) continue;
-
-      const rawDay = dayCol >= 0 ? row[dayCol] : (dateCol >= 0 ? row[dateCol] : row[0]);
-      if (!rawDay) continue;
-
-      const dayShort = (rawDay.match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*/i) || [rawDay])[0].slice(0, 3).toUpperCase();
-      const dateVal = dateCol >= 0 ? row[dateCol] : (rawDay.replace(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i, '').trim());
-      const condVal = condCol >= 0 ? row[condCol] : 'Clear';
-      const condInfo = resolveWeatherCondition(condVal);
-
-      let hi = '—', lo = '';
-      if (tempCol >= 0 && row[tempCol]) {
-        const rawTemp = row[tempCol];
-        const tMatch = rawTemp.match(/(-?\d{1,3})\s*(?:°\s*[CF]?)?\s*(?:\/|\s+to\s+|-|–)\s*(-?\d{1,3})/i);
-        if (tMatch) {
-          hi = `${tMatch[1]}°`;
-          lo = `${tMatch[2]}°`;
-        } else {
-          const singleT = rawTemp.match(/(-?\d{1,3})/);
-          if (singleT) hi = `${singleT[1]}°`;
-        }
-      }
-
-      const rainVal = rainCol >= 0 ? row[rainCol] : '';
-      const rainMatch = rainVal.match(/(\d{1,3}\s*%)/);
-      const rainBadge = rainMatch ? rainMatch[1] : (rainVal && rainVal !== '-' ? rainVal : '');
-
-      const windVal = windCol >= 0 ? row[windCol] : '';
-      const notesVal = notesCol >= 0 ? row[notesCol] : '';
-
-      days.push({
-        day: dayShort || rawDay,
-        date: dateVal,
-        condition: condVal,
-        icon: condInfo.icon,
-        hi,
-        lo,
-        rain: rainBadge,
-        wind: windVal,
-        notes: notesVal
-      });
-    }
-
-    if (days.length >= 2) {
-      return { days, tableLines };
-    }
-    return null;
-  };
-
-  const DAY_HEADER_RE = /^\s*#{0,3}\s*(?:\*{0,2})\s*(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*|(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)|Today|Tomorrow|Day\s*\d+|(?:[A-Z][a-z]+,\s*[A-Z][a-z]+\s+\d{1,2})|(?:\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))|(?:[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?))\s*(?:\*{0,2})\s*:??\s*$/i;
-  const parseMultiDayForecast = text => {
-    const raw = safeText(text);
-    const lower = raw.toLowerCase();
-    if (!/(forecast|today|tomorrow|day\s*\d+|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)/i.test(lower)) return null;
-    const lines = raw.split(/\r?\n/);
-    const sections = [];
-    let current = null;
-    lines.forEach(line => {
-      const headerMatch = line.match(DAY_HEADER_RE);
-      if (headerMatch) {
-        current = { day: line.replace(/^\s*#{0,3}\s*(?:\*{0,2})\s*/, '').replace(/\s*(?:\*{0,2})\s*:??\s*$/, '').trim(), lines: [] };
-        sections.push(current);
-      } else if (current) {
-        current.lines.push(line);
-      }
-    });
-    if (sections.length < 2) return null;
-    const days = sections.map(section => {
-      const bodyText = section.lines.join('\n');
-      const tempMatch = extractTemperature(bodyText) || extractTemperature(section.day);
-      if (!tempMatch) return null;
-      const condInfo = resolveWeatherCondition(bodyText + ' ' + section.day);
-      const dayShort = (section.day.match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*/i) || [section.day])[0].slice(0, 3).toUpperCase();
-      return {
-        day: dayShort || section.day,
-        date: section.day.replace(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i, '').trim(),
-        condition: condInfo.name,
-        icon: condInfo.icon,
-        hi: `${tempMatch.temp}°`,
-        lo: '',
-        rain: '',
-        wind: '',
-        notes: ''
-      };
-    });
-    if (days.some(day => !day)) return null;
-    return days;
-  };
-
-  const parseLocationMeta = text => {
-    const raw = safeText(text);
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const titleLine = lines.find(l => /weather|forecast|outlook/i.test(l) && (l.startsWith('#') || l.startsWith('**') || l.length < 100)) || lines[0] || '';
-
-    let locationStr = '';
-    let forecastLabel = 'Weather Outlook';
-    let dateContext = '';
-
-    const durationMatch = raw.match(/(\d+)\s*[-– ]\s*day\s+(?:weather\s+)?(?:outlook|forecast)/i);
-    if (durationMatch) {
-      forecastLabel = `${durationMatch[1]}-Day Forecast`;
-    } else if (/forecast|outlook/i.test(raw)) {
-      forecastLabel = 'Weather Forecast';
-    }
-
-    const dateMatch = raw.match(/\((?:starting\s+)?([^)]+)\)/i);
-    if (dateMatch) {
-      dateContext = dateMatch[1].replace(/starting\s+/i, '').trim();
-    }
-
-    const locPatterns = [
-      /(?:weather\s+(?:outlook|forecast|report)?\s+(?:for|in)\s+|in\s+|for\s+)([A-Za-z0-9\s,.'-]+?)(?:\s*(?:\(|$|–|-|—|:|\n))/i,
-      /(?:7-day|5-day|10-day|daily|weekly|weekend)\s*(?:weather)?\s*(?:outlook|forecast)?\s*[-–—:]\s*([A-Za-z\s,.'-]+?)(?:\s*(?:\(|$|\n))/i,
-      /^#+\s*(?:[0-9]+-day\s+)?(?:weather\s+)?(?:outlook|forecast)?\s*(?:for|in)?\s*([A-Za-z\s,.'-]+?)(?:\s*(?:\(|$|\n))/i,
-      /([A-Z][a-z]+(?:\s*,\s*[A-Za-z]+)+)/
-    ];
-
-    for (const pat of locPatterns) {
-      const m = titleLine.match(pat) || raw.match(pat);
-      if (m && m[1]) {
-        let candidate = m[1].replace(/\s+/g, ' ').trim().replace(/[.,\-–:]+$/, '');
-        if (candidate.length > 2 && candidate.length < 50 && !/^(the|this|today|tomorrow|starting|weather)$/i.test(candidate)) {
-          locationStr = candidate;
-          break;
-        }
-      }
-    }
-
-    if (!locationStr) {
-      locationStr = 'Current Location';
-    }
-
-    let city = locationStr;
-    let region = '';
-    if (locationStr.includes(',')) {
-      const parts = locationStr.split(',').map(s => s.trim());
-      city = parts[0];
-      region = parts.slice(1).join(', ');
-    }
-
-    return { city, region, fullLocation: locationStr, forecastLabel, dateContext };
-  };
-
-  const parseHeroWeather = (text, parsedDays) => {
-    const raw = safeText(text);
-    const tempMatch = extractTemperature(raw);
-    let temp = tempMatch ? tempMatch.temp : '';
-    let unit = tempMatch ? tempMatch.unit : 'C';
-
-    if (!temp && parsedDays && parsedDays.length > 0 && parsedDays[0].hi !== '—') {
-      temp = parsedDays[0].hi.replace(/°/g, '');
-    }
-
-    let high = '';
-    let low = '';
-    if (parsedDays && parsedDays.length > 0) {
-      if (parsedDays[0].hi !== '—') high = parsedDays[0].hi;
-      if (parsedDays[0].lo) low = parsedDays[0].lo;
-    }
-    if (!high) {
-      const hlMatch = raw.match(/(?:high|max)[:\s]*(-?\d{1,3})\s*°?/i);
-      if (hlMatch) high = `${hlMatch[1]}°`;
-    }
-    if (!low) {
-      const loMatch = raw.match(/(?:low|min)[:\s]*(-?\d{1,3})\s*°?/i);
-      if (loMatch) low = `${loMatch[1]}°`;
-    }
-
-    let feelsLike = '';
-    const feelsMatch = raw.match(/feels\s+like[:\s]*(-?\d{1,3})\s*°?/i);
-    if (feelsMatch) feelsLike = `${feelsMatch[1]}°`;
-
-    const conditionInfo = resolveWeatherCondition(raw);
-
-    return {
-      temp: temp || '—',
-      unit,
-      high,
-      low,
-      feelsLike,
-      condition: conditionInfo.name,
-      icon: conditionInfo.icon,
-      theme: conditionInfo.theme
-    };
-  };
-
-  const parseWeatherMetrics = text => {
-    const raw = safeText(text);
-    const lines = raw.split(/\r?\n/);
-    const bullets = [];
-
-    lines.forEach(line => {
-      const m1 = line.match(/^\s*[-*•]\s+\*\*([^*:]+):?\*\*:?\s*(.*)$/);
-      if (m1) {
-        bullets.push({ label: m1[1].trim(), rawValue: m1[2].replace(/\*\*/g, '').trim() });
-        return;
-      }
-      const m2 = line.match(/^\s*\|?\s*([A-Za-z\s]+)\s*\|\s*([^|]+)\s*\|?\s*$/);
-      if (m2 && !m2[1].includes('---') && !/day|date/i.test(m2[1])) {
-        bullets.push({ label: m2[1].trim(), rawValue: m2[2].trim() });
-        return;
-      }
-      const m3 = line.match(/^\s*(precipitation|rain|wind|humidity|uv(?:\s*index)?|visibility|pressure|air\s*quality)\s*[:=-]\s*(.+)$/i);
-      if (m3) {
-        bullets.push({ label: m3[1].trim(), rawValue: m3[2].trim() });
-      }
-    });
-
-    const metrics = [];
-    const metricLabelsSeen = new Set();
-    let advisoryNote = '';
-
-    bullets.forEach(b => {
-      const lower = b.label.toLowerCase();
-      if (/^temp/i.test(lower)) return;
-      if (/note|advice|advisory|summary|outlook|tip/i.test(lower)) {
-        if (!advisoryNote) advisoryNote = b.rawValue;
-        return;
-      }
-      if (metricLabelsSeen.has(lower)) return;
-      metricLabelsSeen.add(lower);
-
-      const cleaned = cleanMetricItem(b.label, b.rawValue);
-      metrics.push(cleaned);
-    });
-
-    const uvBullet = bullets.find(b => /uv/i.test(b.label));
-    if (uvBullet && uvBullet.rawValue.length > 35 && !advisoryNote) {
-      advisoryNote = uvBullet.rawValue;
-    }
-
-    return { metrics, advisoryNote };
-  };
-
-  const parseWeatherData = text => {
-    const raw = safeText(text);
-    if (!raw) return null;
-    const lower = raw.toLowerCase();
-
-    const hasWeatherSignal = /(weather|forecast|outlook|temperature|humidity|celsius|fahrenheit|°[cf]|sunny|rain|cloudy|thunderstorm|precipitation|heatwave|uv\s*index)/i.test(lower);
-    if (!hasWeatherSignal) return null;
-
-    const lines = raw.split(/\r?\n/);
-    const tableForecast = parseMarkdownTableForecast(lines);
-    const multiDayForecast = !tableForecast ? parseMultiDayForecast(raw) : null;
-
-    const parsedDays = tableForecast ? tableForecast.days : (multiDayForecast || []);
-    const location = parseLocationMeta(raw);
-    const hero = parseHeroWeather(raw, parsedDays);
-    const { metrics, advisoryNote } = parseWeatherMetrics(raw);
-
-    if (hero.temp === '—' && metrics.length === 0 && parsedDays.length === 0) {
-      return null;
-    }
-
-    const restLines = lines.filter(line => {
-      if (tableForecast && tableForecast.tableLines.includes(line)) return false;
-      if (/weather|forecast|outlook/i.test(line) && (line.startsWith('#') || line.startsWith('**') || line.length < 100)) return false;
-      if (/^\s*[-*•]\s+\*\*([^*:]+):?\*\*:?\s*(.*)$/.test(line)) return false;
-      return true;
-    });
-
-    const restMarkdown = restLines.join('\n').trim();
-
-    return {
-      location,
-      hero,
-      metrics,
-      forecastDays: parsedDays,
-      advisory: advisoryNote,
-      restMarkdown
-    };
-  };
-
-  const renderWeatherCard = data => {
-    const { location, hero, metrics, forecastDays, advisory } = data;
-
-    const regionHtml = location.region ? `<span class="weather-loc-region">${escapeHtml(location.region)}</span>` : '';
-    const dateBadgeHtml = location.dateContext ? `<span class="weather-badge weather-date-badge">${escapeHtml(location.dateContext)}</span>` : '';
-
-    const tempDisplay = hero.temp !== '—' ? `${escapeHtml(hero.temp)}<span class="weather-temp-unit">°${escapeHtml(hero.unit)}</span>` : `<span class="weather-temp-placeholder">Weather</span>`;
-    const hiLoHtml = (hero.high || hero.low || hero.feelsLike) ? `
-      <div class="weather-range-tags">
-        ${hero.high ? `<span class="range-tag hi" title="High temperature">↑ ${escapeHtml(hero.high)}</span>` : ''}
-        ${hero.low ? `<span class="range-tag lo" title="Low temperature">↓ ${escapeHtml(hero.low)}</span>` : ''}
-        ${hero.feelsLike ? `<span class="range-tag feels" title="Feels like">Feels ${escapeHtml(hero.feelsLike)}</span>` : ''}
-      </div>` : '';
-
-    const metricsHtml = metrics.length ? `
-      <div class="weather-metrics-grid">
-        ${metrics.map(m => `
-          <div class="weather-metric-tile">
-            <div class="metric-head">
-              <span class="metric-icon">${m.icon}</span>
-              <span class="metric-name">${escapeHtml(m.label)}</span>
-            </div>
-            <div class="metric-val">${escapeHtml(m.value)}</div>
-            ${m.subtext ? `<div class="metric-sub" title="${escapeHtml(m.subtext)}">${escapeHtml(m.subtext)}</div>` : ''}
-          </div>
-        `).join('')}
-      </div>` : '';
-
-    const forecastHtml = (forecastDays && forecastDays.length > 0) ? `
-      <div class="weather-forecast-wrap">
-        <div class="forecast-section-title">
-          <span>${forecastDays.length}-Day Daily Outlook</span>
-          <span class="forecast-hint">Scroll for more →</span>
-        </div>
-        <div class="weather-forecast-strip">
-          ${forecastDays.map(d => `
-            <div class="forecast-day-card">
-              <span class="forecast-d-name">${escapeHtml(d.day)}</span>
-              ${d.date ? `<span class="forecast-d-date">${escapeHtml(d.date)}</span>` : ''}
-              <span class="forecast-d-icon">${d.icon}</span>
-              <div class="forecast-d-temps">
-                <span class="f-hi">${escapeHtml(d.hi)}</span>
-                ${d.lo ? `<span class="f-lo">${escapeHtml(d.lo)}</span>` : ''}
-              </div>
-              ${d.rain ? `<span class="forecast-d-rain">💧 ${escapeHtml(d.rain)}</span>` : (d.condition ? `<span class="forecast-d-cond">${escapeHtml(d.condition)}</span>` : '')}
-            </div>
-          `).join('')}
-        </div>
-      </div>` : '';
-
-    const advisoryHtml = advisory ? `
-      <div class="weather-advisory-banner">
-        <span class="advisory-icon">💡</span>
-        <div class="advisory-content">${escapeHtml(advisory)}</div>
-      </div>` : '';
-
-    return `
-      <div class="weather-card" data-theme="${escapeHtml(hero.theme)}">
-        <div class="weather-card-header">
-          <div class="weather-loc-box">
-            <span class="weather-loc-pin">📍</span>
-            <div class="weather-loc-text">
-              <span class="weather-loc-city">${escapeHtml(location.city)}</span>
-              ${regionHtml}
-            </div>
-          </div>
-          <div class="weather-badge-group">
-            <span class="weather-badge weather-pill-badge">${escapeHtml(location.forecastLabel)}</span>
-            ${dateBadgeHtml}
-          </div>
-        </div>
-
-        <div class="weather-hero-row">
-          <div class="weather-hero-main">
-            <div class="weather-hero-temp">${tempDisplay}</div>
-            <div class="weather-hero-meta">
-              <div class="weather-condition-tag">${hero.icon} ${escapeHtml(hero.condition)}</div>
-              ${hiLoHtml}
-            </div>
-          </div>
-          <div class="weather-hero-art" aria-hidden="true">${hero.icon}</div>
-        </div>
-
-        ${metricsHtml}
-        ${forecastHtml}
-        ${advisoryHtml}
-      </div>`;
-  };
-
   const formatEventTime = value => {
     if (!value) return '';
     const date = new Date(value);
@@ -1217,8 +681,6 @@
   };
 
   window.PersonalOps = {
-    parseWeatherData,
-    renderWeatherCard,
     renderMarkdown,
     bindTheme: initThemeToggle,
     bindLogin() {
@@ -1802,6 +1264,7 @@
       if (!localStorage.getItem('ops_access')) { window.location = '/signin/'; return; }
       const state = {
         threadId: null,
+        pendingResultCard: null,
         threads: [],
         initialThreadPicked: false,
         connectedServices: new Set(),
@@ -2572,7 +2035,7 @@
         `;
       };
 
-      const addMessage = (role, content, pending = false, metrics = null) => {
+      const addMessage = (role, content, pending = false, metrics = null, resultCard = null) => {
         const item = document.createElement('article');
         item.className = `message ${role} ${pending ? 'pending' : ''}`;
         const labelHtml = role === 'user'
@@ -2609,18 +2072,46 @@
         } else if (role === 'user') {
           body.textContent = text;
         } else {
-          const weatherData = parseWeatherData(text);
-          if (weatherData) {
-            const cardWrap = document.createElement('div');
-            cardWrap.innerHTML = renderWeatherCard(weatherData);
-            if (cardWrap.firstElementChild) {
-              body.appendChild(cardWrap.firstElementChild);
-            }
-            if (weatherData.restMarkdown) {
-              const textWrap = document.createElement('div');
-              textWrap.className = 'markdown-body';
-              textWrap.innerHTML = renderMarkdown(weatherData.restMarkdown);
-              body.appendChild(textWrap);
+          const cardToRender = resultCard || (role === 'agent' ? state.pendingResultCard : null);
+          if (cardToRender && cardToRender === state.pendingResultCard) {
+            state.pendingResultCard = null;
+          }
+
+          if (role === 'agent' && cardToRender && typeof renderResultCard === 'function') {
+            const cardEl = renderResultCard(cardToRender);
+            const order = (cardToRender.presentation && cardToRender.presentation.order) || 'text_first';
+
+            if (order === 'card_first') {
+              const sentences = text.match(/[^.!?]+[.!?]+/g) || (text ? [text] : []);
+              const takeaway = sentences.slice(0, 2).join(' ').trim();
+              const rest = text.slice(takeaway.length).trim();
+
+              if (takeaway) {
+                const textWrap = document.createElement('div');
+                textWrap.className = 'markdown-body';
+                textWrap.innerHTML = renderMarkdown(takeaway);
+                body.appendChild(textWrap);
+              }
+              if (cardEl) {
+                body.appendChild(cardEl);
+              }
+              if (rest) {
+                const details = document.createElement('details');
+                details.className = 'rc-details';
+                details.innerHTML = `<summary>More details</summary><div class="rc-details-body markdown-body">${renderMarkdown(rest)}</div>`;
+                body.appendChild(details);
+              }
+            } else {
+              // text_first
+              if (text) {
+                const textWrap = document.createElement('div');
+                textWrap.className = 'markdown-body';
+                textWrap.innerHTML = renderMarkdown(text);
+                body.appendChild(textWrap);
+              }
+              if (cardEl) {
+                body.appendChild(cardEl);
+              }
             }
           } else {
             const textWrap = document.createElement('div');
@@ -3119,11 +2610,16 @@
                 if (role === 'user') {
                   state.lastUserQuery = message.content;
                 }
+                let msgResultCard = null;
                 if (message.cards && Array.isArray(message.cards)) {
                   message.cards.forEach(cardData => {
                     if (cardData && typeof cardData === 'object') {
-                      const cardEl = renderHistoricalCard(cardData);
-                      transcript.appendChild(cardEl);
+                      if (cardData.kind === 'result') {
+                        msgResultCard = cardData;
+                      } else {
+                        const cardEl = renderHistoricalCard(cardData);
+                        transcript.appendChild(cardEl);
+                      }
                     }
                   });
                 }
@@ -3132,7 +2628,8 @@
                   role,
                   message.content,
                   false,
-                  metrics
+                  metrics,
+                  msgResultCard
                 );
               } catch (err) {
                 console.error('Failed to render message:', err);
@@ -3440,6 +2937,12 @@
             } else {
               setPendingStatus(label);
             }
+            return;
+          }
+
+          if (data.type === 'result_card') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            state.pendingResultCard = data.card;
             return;
           }
 
@@ -3937,6 +3440,11 @@
 
               refreshComposerState();
               return 'done';
+            }
+
+            if (data.type === 'result_card') {
+              state.pendingResultCard = data.card;
+              return;
             }
 
             // Completed — graph finished

@@ -178,7 +178,7 @@ class TestDomainAndToolDefinitions(unittest.TestCase):
                 self.assertEqual(get_mcp_tool_names(intent), expected_tools)
 
     def test_research_domain_intents_and_tools(self):
-        expected_tools = {"tavily_search"}
+        expected_tools = {"tavily_search", "get_weather"}
         self.assertIn("research.search", ACTION_MCP_TOOL_NAMES)
         self.assertEqual(get_mcp_tool_names("research.search"), expected_tools)
 

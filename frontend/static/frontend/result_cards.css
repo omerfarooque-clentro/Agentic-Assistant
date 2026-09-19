@@ -1,0 +1,605 @@
+/* ==========================================================================
+   Typed Result Cards Stylesheet (Result Cards v1)
+   ========================================================================== */
+
+.rc-container {
+  width: 100%;
+  max-width: 100%;
+  margin: 10px 0;
+  font-family: var(--font-main, system-ui, sans-serif);
+  color: var(--ink);
+}
+
+.rc-card {
+  background: var(--panel, #ffffff);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: var(--shadow-md, 0 4px 16px -2px rgba(15, 23, 42, 0.06));
+  padding: 16px;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+}
+
+.rc-card:hover {
+  border-color: var(--accent, #4f46e5);
+}
+
+.rc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-subtle, #edf2f7);
+}
+
+.rc-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+}
+
+.rc-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.rc-brand-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.rc-inline-icon {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.rc-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--accent-soft, #eef2ff);
+  color: var(--accent, #4f46e5);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rc-badge.rc-badge-emerald {
+  background: var(--emerald-soft, #d1fae5);
+  color: var(--emerald-ink, #065f46);
+}
+
+.rc-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent, #4f46e5);
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--accent-soft, #eef2ff);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.rc-link-btn:hover {
+  background: var(--accent, #4f46e5);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Weather Card
+   ========================================================================== */
+
+.rc-weather-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px 14px 4px;
+}
+
+.rc-weather-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rc-weather-temp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.rc-weather-temp {
+  font-size: 2.6rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ink, #0f172a);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: -0.04em;
+}
+
+.rc-weather-unit {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+}
+
+.rc-weather-condition {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: capitalize;
+}
+
+.rc-weather-art {
+  font-size: 2.8rem;
+  user-select: none;
+}
+
+.rc-weather-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px;
+  background: var(--paper, #f8fafc);
+  border: 1px solid var(--line-subtle, #edf2f7);
+  border-radius: var(--radius, 10px);
+}
+
+.rc-weather-metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rc-weather-metric-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--faint, #94a3b8);
+  letter-spacing: 0.04em;
+}
+
+.rc-weather-metric-val {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+}
+
+.rc-weather-forecast {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 6px;
+  border-top: 1px solid var(--line-subtle, #edf2f7);
+  padding-top: 12px;
+}
+
+.rc-weather-day-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  background: var(--paper, #f8fafc);
+  border-radius: var(--radius-sm, 6px);
+  text-align: center;
+  gap: 4px;
+  transition: transform 0.15s ease;
+}
+
+.rc-weather-day-item:hover {
+  transform: translateY(-2px);
+}
+
+.rc-weather-day-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+}
+
+.rc-weather-day-icon {
+  font-size: 1.25rem;
+}
+
+.rc-weather-day-temps {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink, #0f172a);
+}
+
+.rc-weather-day-low {
+  color: var(--faint, #94a3b8);
+  font-weight: 400;
+}
+
+.rc-weather-day-rain {
+  font-size: 0.68rem;
+  color: var(--accent, #4f46e5);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Email List Card
+   ========================================================================== */
+
+.rc-email-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rc-email-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--paper, #f8fafc);
+  border: 1px solid var(--line-subtle, #edf2f7);
+  border-radius: var(--radius, 10px);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.rc-email-item:hover {
+  background: var(--panel-hover, #f1f5f9);
+  border-color: var(--line, #e2e8f0);
+}
+
+.rc-email-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rc-email-sender-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rc-dot-unread {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent, #4f46e5);
+  flex-shrink: 0;
+}
+
+.rc-email-sender {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-email-date {
+  font-size: 0.72rem;
+  color: var(--muted, #64748b);
+  flex-shrink: 0;
+}
+
+.rc-email-subject {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink, #0f172a);
+  text-decoration: none;
+}
+
+.rc-email-subject:hover {
+  color: var(--accent, #4f46e5);
+}
+
+.rc-email-snippet {
+  font-size: 0.78rem;
+  color: var(--muted, #64748b);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.rc-email-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line, #e2e8f0);
+}
+
+.rc-action-chip {
+  background: var(--panel, #ffffff);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: var(--radius-pill, 9999px);
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink, #0f172a);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rc-action-chip:hover {
+  background: var(--accent-soft, #eef2ff);
+  border-color: var(--accent, #4f46e5);
+  color: var(--accent, #4f46e5);
+}
+
+/* ==========================================================================
+   Slack Mentions Card
+   ========================================================================== */
+
+.rc-slack-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rc-slack-item {
+  padding: 10px 12px;
+  background: var(--paper, #f8fafc);
+  border: 1px solid var(--line-subtle, #edf2f7);
+  border-radius: var(--radius, 10px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rc-slack-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rc-slack-channel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent, #4f46e5);
+  background: var(--accent-soft, #eef2ff);
+  padding: 2px 7px;
+  border-radius: var(--radius-xs, 4px);
+}
+
+.rc-slack-sender {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+}
+
+.rc-slack-text {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink, #0f172a);
+}
+
+/* ==========================================================================
+   Sheet View / Update Card
+   ========================================================================== */
+
+.rc-sheet-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  background: var(--panel, #ffffff);
+  margin-bottom: 8px;
+}
+
+.rc-sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.rc-sheet-table th {
+  background: var(--paper, #f8fafc);
+  color: var(--muted, #64748b);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line, #e2e8f0);
+  white-space: nowrap;
+}
+
+.rc-sheet-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-subtle, #edf2f7);
+  color: var(--ink, #0f172a);
+  white-space: nowrap;
+}
+
+.rc-sheet-table tr:last-child td {
+  border-bottom: none;
+}
+
+.rc-sheet-row-highlight {
+  background: var(--accent-soft, #eef2ff) !important;
+  font-weight: 600;
+}
+
+.rc-sheet-row-highlight td {
+  color: var(--accent, #4f46e5) !important;
+}
+
+/* ==========================================================================
+   Calendar Event Card
+   ========================================================================== */
+
+.rc-calendar-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rc-calendar-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--paper, #f8fafc);
+  border: 1px solid var(--line-subtle, #edf2f7);
+  border-radius: var(--radius, 10px);
+}
+
+.rc-cal-date-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 6px 4px;
+  background: var(--panel, #ffffff);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: var(--radius-sm, 6px);
+  text-align: center;
+}
+
+.rc-cal-badge-month {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent, #4f46e5);
+}
+
+.rc-cal-badge-day {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ink, #0f172a);
+}
+
+.rc-cal-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-grow: 1;
+}
+
+.rc-cal-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+}
+
+.rc-cal-time {
+  font-size: 0.76rem;
+  color: var(--muted, #64748b);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ==========================================================================
+   Search Summary Card
+   ========================================================================== */
+
+.rc-search-points {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.rc-search-point {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink, #0f172a);
+}
+
+.rc-search-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs, 4px);
+  background: var(--accent-soft, #eef2ff);
+  color: var(--accent, #4f46e5);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.rc-sources-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-subtle, #edf2f7);
+}
+
+.rc-source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--paper, #f8fafc);
+  border: 1px solid var(--line, #e2e8f0);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.rc-source-pill:hover {
+  background: var(--panel-hover, #f1f5f9);
+  color: var(--accent, #4f46e5);
+  border-color: var(--accent, #4f46e5);
+}
+
+/* ==========================================================================
+   Collapsible Details for card-first layout
+   ========================================================================== */
+
+.rc-details {
+  margin-top: 12px;
+  border-top: 1px dashed var(--line, #e2e8f0);
+  padding-top: 8px;
+}
+
+.rc-details summary {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.rc-details summary:hover {
+  color: var(--accent, #4f46e5);
+}
+
+.rc-details-body {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: var(--paper, #f8fafc);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.82rem;
+}

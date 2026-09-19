@@ -34,7 +34,8 @@ DOMAIN_PROMPTS = {
 - Never guess Slack IDs. Use concise Markdown for messages and project updates.""",
 
     "research": """RESEARCH GUIDELINES:
-- Use search tools to retrieve accurate, up-to-date web information. Summarize findings clearly with sources.""",
+- Use search tools to retrieve accurate, up-to-date web information. Summarize findings clearly with sources.
+- Weather questions must use get_weather, not web search.""",
 
     "tasks": """TASK GUIDELINES:
 - Do not return tools used in final response, rather use agent names e.g(Slack agent confirms no new message, Email Agent confirms email sent, Calendar agent did not respond)"""
