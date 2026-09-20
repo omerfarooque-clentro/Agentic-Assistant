@@ -181,10 +181,10 @@ def build_email_list(tool_result: Any, query: str = "") -> dict | None:
 
 
 def _clean_slack_channel(raw: str) -> str:
-    """Clean raw channel name, removing internal IDs like '(ID: C0BN5U1TRPT)'."""
+    """Clean raw channel string like 'DM (ID: D0BDRSYBQP8)' or '#general'."""
     if not raw:
         return "general"
-    s = re.sub(r"\s*\(ID:\s*[A-Z0-9]+\)", "", raw).strip()
+    s = re.sub(r"\s*\(ID:\s*[^)]+\)", "", raw).strip()
     return s.lstrip("#") or "general"
 
 
@@ -192,7 +192,7 @@ def _clean_slack_sender(raw: str) -> str:
     """Clean raw sender string, stripping internal IDs and formatting friendly name."""
     if not raw:
         return "User"
-    s = re.sub(r"\s*\(ID:\s*[A-Z0-9]+\)", "", raw).strip()
+    s = re.sub(r"\s*\(ID:\s*[^)]+\)", "", raw).strip()
     match = re.match(r"^(.*?)\s*<([^>]+)>$", s)
     if match:
         name = match.group(1).strip().strip('"')

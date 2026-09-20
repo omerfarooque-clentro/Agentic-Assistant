@@ -19,15 +19,15 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="{% static 'frontend/app.css' %}?v=20260916_auth_mobile">
-  <link rel="stylesheet" href="{% static 'frontend/result_cards.css' %}">
+  <link rel="stylesheet" href="{% static 'frontend/app.css' %}?v=20260920_cards_v4">
+  <link rel="stylesheet" href="{% static 'frontend/result_cards.css' %}?v=20260920_cards_v4">
 </head>
 
 <body>
   <div class="ambient-glow" aria-hidden="true"></div>
   {% block content %}{% endblock %}
-  <script src="{% static 'frontend/result_cards.js' %}"></script>
-  <script src="{% static 'frontend/app.js' %}?v=20260916_auth_mobile"></script>
+  <script src="{% static 'frontend/result_cards.js' %}?v=20260920_cards_v4"></script>
+  <script src="{% static 'frontend/app.js' %}?v=20260920_cards_v4"></script>
   {% block scripts %}{% endblock %}
 </body>
 

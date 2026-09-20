@@ -1126,7 +1126,7 @@ body:has(.app-shell) {
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  padding: 4px 5vw 20px
+  padding: 4px 5vw 80px;
 }
 
 .empty-state-thread {
@@ -1430,6 +1430,60 @@ body:has(.app-shell) {
 .source-chip:hover .source-arrow {
   transform: translate(1px, -1px);
   color: var(--accent);
+}
+
+/* ===== View in Doc Button ===== */
+.btn-view-in-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  margin: 6px 0;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--panel, #111827);
+  border: 1px solid var(--line, #1e293b);
+  color: var(--ink, #f8fafc);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.2));
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  vertical-align: middle;
+}
+
+.btn-view-in-doc:hover {
+  background: rgba(66, 133, 244, 0.12);
+  border-color: #4285f4;
+  color: #4285f4;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(66, 133, 244, 0.3);
+}
+
+.btn-view-in-doc .doc-brand-icon {
+  width: 17px;
+  height: 17px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.btn-view-in-doc .doc-btn-arrow {
+  font-size: 0.8rem;
+  color: var(--muted, #94a3b8);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.btn-view-in-doc:hover .doc-btn-arrow {
+  transform: translate(2px, -2px);
+  color: #4285f4;
+}
+
+.source-chip.source-chip-doc {
+  border-color: rgba(66, 133, 244, 0.3);
+}
+
+.source-chip.source-chip-doc:hover {
+  background: rgba(66, 133, 244, 0.15);
+  border-color: #4285f4;
 }
 
 /* ===== Slack Activity Stream & Messages ===== */
@@ -4040,7 +4094,7 @@ body:has(.app-shell) {
   .transcript {
     flex: 1;
     min-height: 0;
-    padding: 12px 10px;
+    padding: 12px 10px 80px;
     overflow-y: auto;
     overscroll-behavior: contain;
   }

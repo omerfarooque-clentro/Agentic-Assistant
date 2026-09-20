@@ -184,10 +184,22 @@
     el.style.overflowY = el.scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
   };
   const truncateText = (text, max) => (typeof text === 'string' && text.length > max ? `${text.slice(0, max)}…` : text);
-  const safeText = value => (value === null || value === undefined ? '' : String(value));
   const cleanMessageContent = text => safeText(text).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
-
-  const formatRelativeTime = dateInput => {
+  const cleanRetiredCardMarkdown = (rawText, cardType) => {
+    if (!rawText || typeof rawText !== 'string') return '';
+    if (!['weather', 'email_list', 'slack_mentions'].includes(cardType)) return rawText;
+    let cleaned = rawText;
+    // Strip markdown tables (e.g. | Day | Condition | ... |)
+    cleaned = cleaned.replace(/(?:^|\n)\s*\|[^\n]+\|(?:\n\s*\|[^\n]+\|)+/g, '\n');
+    if (cardType === 'weather') {
+      // Strip redundant metric bullet dumps
+      cleaned = cleaned.replace(/(?:^|\n)\s*[-*]\s*\*{0,2}(?:Temperature|Condition|Humidity|Wind|Rain chance|Feels like)[\s\S]*?(?=\n\n|\n[^\s*-]|$)/gi, '');
+      // Strip subheadings like "Current weather in..." or "7-day outlook"
+      cleaned = cleaned.replace(/(?:^|\n)\s*#{1,6}\s*(?:Current weather|7[-‑]day outlook|7[-‑]day forecast)[^\n]*/gi, '');
+      cleaned = cleaned.replace(/(?:^|\n)\s*\*{1,2}(?:Current weather|7[-‑]day outlook|7[-‑]day forecast)[^\n]*\*{1,2}/gi, '');
+    }
+    return cleaned.replace(/\n{3,}/g, '\n\n').trim();
+  };
     if (!dateInput) return '';
     const date = new Date(dateInput);
     if (isNaN(date.getTime())) return '';
@@ -256,17 +268,29 @@
   };
   const escapeHtml = str => String(str).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
+  const GOOGLE_DOCS_ICON_SVG = `<svg class="doc-brand-icon" width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M14.5 2H6C4.9 2 4 2.9 4 4v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V7.5L14.5 2z"/><path fill="#A1C2FA" d="M14 2v6h6L14 2z"/><path fill="#FFFFFF" d="M7 11h10v1.6H7zm0 3.2h10v1.6H7zm0 3.2h6.5v1.6H7z"/></svg>`;
+
   const renderMarkdown = raw => {
     const source = String(raw == null ? '' : raw).replace(/\r\n/g, '\n');
     const inline = line => {
       let text = escapeHtml(line);
-      // Markdown links: [title](url) -> open in new tab
-      text = text.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      // Markdown links: [title](url) -> open in new tab (or dedicated View in Doc button for Google Docs)
+      text = text.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, (match, title, url) => {
+        if (url.includes('docs.google.com/document/d/')) {
+          return `<a class="btn-view-in-doc" href="${url}" target="_blank" rel="noopener noreferrer">${GOOGLE_DOCS_ICON_SVG}<span>View in Doc</span><span class="doc-btn-arrow">↗</span></a>`;
+        }
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a>`;
+      });
       text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
       text = text.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
       // Auto-link standalone URLs not inside an href attribute
-      text = text.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+      text = text.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, (match, prefix, url) => {
+        if (url.includes('docs.google.com/document/d/')) {
+          return `${prefix}<a class="btn-view-in-doc" href="${url}" target="_blank" rel="noopener noreferrer">${GOOGLE_DOCS_ICON_SVG}<span>View in Doc</span><span class="doc-btn-arrow">↗</span></a>`;
+        }
+        return `${prefix}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+      });
       return text;
     };
 
@@ -469,14 +493,20 @@
 
     // Render interactive source / citation cards footer if sources were cited
     if (extractedSources.length > 0) {
-      const chipsHtml = extractedSources.map(s => `
-        <a class="source-chip" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title)}">
-          <span class="source-icon">🔗</span>
-          <span class="source-title">${escapeHtml(s.title.length > 30 ? s.title.slice(0, 30) + '…' : s.title)}</span>
-          <span class="source-domain">${escapeHtml(s.domain)}</span>
-          <span class="source-arrow">↗</span>
-        </a>
-      `).join('');
+      const chipsHtml = extractedSources.map(s => {
+        const isDoc = s.url.includes('docs.google.com/document/d/');
+        const icon = isDoc ? GOOGLE_DOCS_ICON_SVG : '<span class="source-icon">🔗</span>';
+        const label = isDoc ? 'View in Doc' : escapeHtml(s.title.length > 30 ? s.title.slice(0, 30) + '…' : s.title);
+        const extraClass = isDoc ? ' source-chip-doc' : '';
+        return `
+          <a class="source-chip${extraClass}" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title)}">
+            ${icon}
+            <span class="source-title">${label}</span>
+            <span class="source-domain">${escapeHtml(s.domain)}</span>
+            <span class="source-arrow">↗</span>
+          </a>
+        `;
+      }).join('');
       html += `
         <div class="sources-container">
           <div class="sources-heading">
@@ -2079,12 +2109,14 @@
 
           if (role === 'agent' && cardToRender && typeof renderResultCard === 'function') {
             const cardEl = renderResultCard(cardToRender);
+            const cardType = cardToRender.type;
+            const cleanedText = cleanRetiredCardMarkdown(text, cardType);
             const order = (cardToRender.presentation && cardToRender.presentation.order) || 'text_first';
 
             if (order === 'card_first') {
-              const sentences = text.match(/[^.!?]+[.!?]+/g) || (text ? [text] : []);
+              const sentences = cleanedText.match(/[^.!?]+[.!?]+/g) || (cleanedText ? [cleanedText] : []);
               const takeaway = sentences.slice(0, 2).join(' ').trim();
-              const rest = text.slice(takeaway.length).trim();
+              const rest = cleanedText.slice(takeaway.length).trim();
 
               if (takeaway) {
                 const textWrap = document.createElement('div');
@@ -2103,10 +2135,10 @@
               }
             } else {
               // text_first
-              if (text) {
+              if (cleanedText) {
                 const textWrap = document.createElement('div');
                 textWrap.className = 'markdown-body';
-                textWrap.innerHTML = renderMarkdown(text);
+                textWrap.innerHTML = renderMarkdown(cleanedText);
                 body.appendChild(textWrap);
               }
               if (cardEl) {

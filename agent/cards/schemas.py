@@ -33,12 +33,20 @@ class WeatherDay(BaseModel):
     rain_chance: int
 
 
+class WeatherHourly(BaseModel):
+    time: str
+    temp: float
+    condition: ConditionEnum
+    rain_chance: int = 0
+
+
 class WeatherData(BaseModel):
     city: str
     country: str
     updated_at: str
     current: WeatherCurrent
     days: list[WeatherDay] = Field(default_factory=list)
+    hourly: list[WeatherHourly] = Field(default_factory=list)
 
 
 class EmailItem(BaseModel):

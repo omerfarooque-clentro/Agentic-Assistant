@@ -185,53 +185,74 @@
 
 .rc-weather-forecast {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 6px;
   border-top: 1px solid var(--line-subtle, #edf2f7);
   padding-top: 12px;
+  overflow-x: auto;
+}
+
+@media (max-width: 680px) {
+  .rc-weather-forecast {
+    grid-template-columns: repeat(7, minmax(56px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
 }
 
 .rc-weather-day-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 4px;
+  justify-content: center;
+  padding: 8px 4px 10px 4px;
   background: var(--paper, #f8fafc);
-  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--line-subtle, #edf2f7);
+  border-radius: var(--radius-sm, 8px);
   text-align: center;
   gap: 4px;
-  transition: transform 0.15s ease;
+  min-width: 0;
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
 .rc-weather-day-item:hover {
   transform: translateY(-2px);
+  border-color: var(--accent, #4f46e5);
 }
 
 .rc-weather-day-label {
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--muted, #64748b);
+  white-space: nowrap;
 }
 
 .rc-weather-day-icon {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
+  line-height: 1.2;
 }
 
 .rc-weather-day-temps {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.76rem;
+  font-weight: 700;
   color: var(--ink, #0f172a);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
 }
 
 .rc-weather-day-low {
   color: var(--faint, #94a3b8);
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .rc-weather-day-rain {
   font-size: 0.68rem;
   color: var(--accent, #4f46e5);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 /* ==========================================================================

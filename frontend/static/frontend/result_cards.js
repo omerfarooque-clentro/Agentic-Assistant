@@ -62,11 +62,13 @@
     let daysHtml = '';
     days.forEach(d => {
       const dIcon = getConditionIcon(d.condition);
+      const highVal = (typeof d.high === 'number' && !isNaN(d.high)) ? Math.round(d.high) + '°' : '--';
+      const lowVal = (typeof d.low === 'number' && !isNaN(d.low)) ? Math.round(d.low) + '°' : '--';
       daysHtml += `
         <div class="rc-weather-day-item">
           <span class="rc-weather-day-label">${escapeHtml(d.label || d.date)}</span>
           <span class="rc-weather-day-icon">${dIcon}</span>
-          <span class="rc-weather-day-temps">${Math.round(d.high)}° <span class="rc-weather-day-low">${Math.round(d.low)}°</span></span>
+          <span class="rc-weather-day-temps">${highVal} <span class="rc-weather-day-low">${lowVal}</span></span>
           ${d.rain_chance > 0 ? `<span class="rc-weather-day-rain">💧${d.rain_chance}%</span>` : ''}
         </div>
       `;

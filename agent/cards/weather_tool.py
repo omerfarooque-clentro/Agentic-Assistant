@@ -45,8 +45,8 @@ def map_wmo_code(code: int | None) -> str:
 
 @tool("get_weather")
 def get_weather(city: str, country: str | None = None) -> dict:
-    """Get real-time weather and 7-day forecast for a given city and optional country using Open-Meteo.
-    Always use this tool instead of web search for weather queries.
+    """Get real-time weather, hourly conditions, and 7-day forecast for a given city and optional country using Open-Meteo.
+    Always use this tool instead of web search for ALL weather-related queries (including hourly forecast, current weather, 7-day outlook, precipitation, temperature).
     """
     if not city:
         return {"error": "City name is required"}
@@ -105,6 +105,7 @@ def get_weather(city: str, country: str | None = None) -> dict:
             "longitude": lon,
             "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
             "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+            "hourly": "temperature_2m,precipitation_probability,weather_code",
             "timezone": "auto",
         }
         fc_resp = requests.get(forecast_url, params=params, timeout=10)
@@ -113,6 +114,7 @@ def get_weather(city: str, country: str | None = None) -> dict:
 
         current_raw = fc_data.get("current", {})
         daily_raw = fc_data.get("daily", {})
+        hourly_raw = fc_data.get("hourly", {})
 
         current_condition = map_wmo_code(current_raw.get("weather_code"))
         current_temp = round(float(current_raw.get("temperature_2m", 0.0)), 1)
@@ -153,6 +155,25 @@ def get_weather(city: str, country: str | None = None) -> dict:
                 "rain_chance": rain_prob,
             })
 
+        # Parse up to 24 upcoming hours
+        hourly_times = hourly_raw.get("time", [])
+        hourly_temps = hourly_raw.get("temperature_2m", [])
+        hourly_codes = hourly_raw.get("weather_code", [])
+        hourly_probs = hourly_raw.get("precipitation_probability", [])
+
+        hourly = []
+        for j in range(min(len(hourly_times), 24)):
+            t_str = hourly_times[j]
+            t_code = hourly_codes[j] if j < len(hourly_codes) else 0
+            t_temp = round(float(hourly_temps[j]), 1) if j < len(hourly_temps) else 0.0
+            t_prob = int(hourly_probs[j]) if j < len(hourly_probs) and hourly_probs[j] is not None else 0
+            hourly.append({
+                "time": t_str,
+                "temp": t_temp,
+                "condition": map_wmo_code(t_code),
+                "rain_chance": t_prob,
+            })
+
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
         return {
@@ -169,6 +190,7 @@ def get_weather(city: str, country: str | None = None) -> dict:
                 "rain_chance": current_rain_chance,
             },
             "days": days,
+            "hourly": hourly,
         }
     except Exception as e:
         logger.exception("Error in get_weather for %s: %s", city, e)
