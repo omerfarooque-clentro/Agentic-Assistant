@@ -2110,7 +2110,7 @@ body:has(.app-shell) {
   transition: all .2s ease;
 }
 
-.approval-badge > span {
+.approval-badge>span {
   text-transform: uppercase;
 }
 
@@ -3808,6 +3808,7 @@ body:has(.app-shell) {
     z-index: 10003 !important;
     box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
   }
+
   body.tour-active-mobile .sidebar-backdrop {
     z-index: 10002 !important;
   }

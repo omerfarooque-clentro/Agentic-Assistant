@@ -3303,7 +3303,7 @@
             const orig = copyCodeBtn.textContent;
             copyCodeBtn.textContent = 'Copied!';
             setTimeout(() => { copyCodeBtn.textContent = orig; }, 1500);
-          }).catch(() => {});
+          }).catch(() => { });
           return;
         }
 
@@ -3526,7 +3526,7 @@
 
           if (!response.ok) {
             let errorText = `Request failed (${response.status})`;
-            try { const d = await response.json(); errorText = extractErrorMessage(d) || errorText; } catch {}
+            try { const d = await response.json(); errorText = extractErrorMessage(d) || errorText; } catch { }
             throw new Error(errorText);
           }
 
