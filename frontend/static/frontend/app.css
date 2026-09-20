@@ -5049,15 +5049,16 @@ body:has(.app-shell) {
 }
 
 .message-metrics-container {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
   position: relative;
 }
 
 .message-metrics {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
   font-family: var(--font-mono);
   user-select: none;
@@ -5067,20 +5068,59 @@ body:has(.app-shell) {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 10px;
+  min-height: 32px;
+  padding: 6px 12px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 500;
   color: var(--muted);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+  box-sizing: border-box;
+}
+
+[data-theme="dark"] .metrics-badge,
+.theme-dark .metrics-badge {
+  color: #cbd5e1;
+  background: #1e293b;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.message-metrics:hover .metrics-badge,
+.message-metrics.active .metrics-badge,
+.message-metrics.is-open .metrics-badge,
+.message-metrics:focus-within .metrics-badge {
+  background: var(--panel-hover);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .message-metrics:hover .metrics-badge,
+[data-theme="dark"] .message-metrics.active .metrics-badge,
+[data-theme="dark"] .message-metrics.is-open .metrics-badge,
+[data-theme="dark"] .message-metrics:focus-within .metrics-badge,
+.theme-dark .message-metrics:hover .metrics-badge,
+.theme-dark .message-metrics.active .metrics-badge,
+.theme-dark .message-metrics.is-open .metrics-badge,
+.theme-dark .message-metrics:focus-within .metrics-badge {
+  color: #ffffff;
+  border-color: var(--accent);
 }
 
 .metrics-badge .metric-icon {
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: #f59e0b;
+}
+
+.metrics-badge .metric-icon svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
 }
 
 .metrics-badge .metric-dot {
@@ -5095,17 +5135,8 @@ body:has(.app-shell) {
   transition: transform 0.2s ease;
 }
 
-.message-metrics:hover .metrics-badge,
-.message-metrics.active .metrics-badge,
-.message-metrics:focus-within .metrics-badge {
-  background: var(--panel-hover);
-  border-color: var(--accent);
-  color: var(--ink);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px var(--accent-glow);
-}
-
-.message-metrics.active .hud-expand-caret {
+.message-metrics.active .hud-expand-caret,
+.message-metrics.is-open .hud-expand-caret {
   transform: rotate(180deg);
 }
 
@@ -5133,19 +5164,21 @@ body:has(.app-shell) {
   color: var(--ink);
 }
 
-/* Default placement: top */
+/* Placement relative to action row button */
 .metrics-popover,
 .metrics-popover.placement-top {
   bottom: calc(100% + 8px);
   top: auto;
-  right: 0;
+  left: 0;
+  right: auto;
   transform: translateY(6px) scale(0.97);
 }
 
 .metrics-popover.placement-bottom {
   top: calc(100% + 8px);
   bottom: auto;
-  right: 0;
+  left: 0;
+  right: auto;
   transform: translateY(-6px) scale(0.97);
 }
 
@@ -5153,7 +5186,8 @@ body:has(.app-shell) {
   content: '';
   position: absolute;
   top: 100%;
-  right: 18px;
+  left: 20px;
+  right: auto;
   border-width: 6px;
   border-style: solid;
   border-color: var(--panel) transparent transparent transparent;

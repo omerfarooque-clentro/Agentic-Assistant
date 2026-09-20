@@ -113,6 +113,44 @@ document.addEventListener('DOMContentLoaded', () => {
           <span>Retry</span>
         </button>
       `;
+
+      if (options.metrics) {
+        const metricsWrap = document.createElement('div');
+        metricsWrap.className = 'message-metrics-container';
+        metricsWrap.innerHTML = `
+          <div class="message-metrics" tabindex="0">
+            <div class="metrics-badge" role="button" tabindex="0" title="Click to inspect Turn Performance & Tokens">
+              <span class="metric-icon"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+              <span class="metric-time">${options.metrics.latency_s || '1.24'}s</span>
+              <span class="metric-dot">•</span>
+              <span class="metric-count">${(options.metrics.total_tokens || 820).toLocaleString()} tok</span>
+              <span class="hud-expand-caret">▾</span>
+            </div>
+            <div class="metrics-popover">
+              <div class="popover-header">
+                <div class="popover-title"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Turn Performance & Tokens</div>
+                <span class="popover-model-badge">gpt-4o</span>
+              </div>
+              <div class="popover-stats-grid">
+                <div class="stat-card"><span class="stat-label">Response Latency</span><span class="stat-value">${options.metrics.latency_s || '1.24'}s</span></div>
+                <div class="stat-card"><span class="stat-label">Total Tokens</span><span class="stat-value highlight">${(options.metrics.total_tokens || 820).toLocaleString()}</span></div>
+                <div class="stat-card"><span class="stat-label">Input (Prompt)</span><span class="stat-value">${(options.metrics.input_tokens || 420).toLocaleString()}</span></div>
+                <div class="stat-card"><span class="stat-label">Output (Gen)</span><span class="stat-value">${(options.metrics.output_tokens || 400).toLocaleString()}</span></div>
+              </div>
+            </div>
+          </div>
+        `;
+        const badgeEl = metricsWrap.querySelector('.metrics-badge');
+        if (badgeEl) {
+          badgeEl.onclick = (e) => {
+            e.stopPropagation();
+            const metricsContainer = badgeEl.closest('.message-metrics');
+            if (metricsContainer) metricsContainer.classList.toggle('is-open');
+          };
+        }
+        actionsRow.appendChild(metricsWrap);
+      }
+
       item.appendChild(actionsRow);
     }
 
@@ -123,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // -------------------------------------------------------------
   // Case 1: Question about tool data (text first + 3-row card + Show all)
   // -------------------------------------------------------------
-  renderSectionHeader(1, 'Question about tool data', 'Text first + 3-row email_list card + in-place "Show all 5" toggle.');
+  renderSectionHeader(1, 'Question about tool data', 'Text first + 3-row email_list card + in-place "Show all 5" toggle + unified action row (Copy, Retry, Token HUD).');
   createAgentMessageEl('You have 5 unread messages waiting in your inbox. Most are urgent client follow-ups.', {
     type: 'email_list',
     presentation: { order: 'text_first' },
@@ -136,6 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: '5', sender_name: 'Marcus Vance', sender_email: 'marcus@corp.net', subject: 'Sync tomorrow morning at 10 AM?', snippet: 'Can we reschedule our sync to 10:30 AM? Let me know.', received_at: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString(), unread: false },
       ]
     }
+  }, {
+    metrics: { latency_s: '1.24', total_tokens: 820, input_tokens: 420, output_tokens: 400 }
   });
 
   // -------------------------------------------------------------

@@ -2091,7 +2091,7 @@
         return `
           <div class="message-metrics" tabindex="0" role="region" aria-label="Token and performance metrics">
             <div class="metrics-badge" role="button" tabindex="0" title="Click to inspect Turn Performance & Tokens">
-              <span class="metric-icon">⚡</span>
+              <span class="metric-icon"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
               <span class="metric-time">${latency}s</span>
               <span class="metric-dot">•</span>
               <span class="metric-count">${totalTokens.toLocaleString()} tok</span>
@@ -2099,7 +2099,7 @@
             </div>
             <div class="metrics-popover">
               <div class="popover-header">
-                <div class="popover-title"><span>⚡</span> Turn Performance & Tokens</div>
+                <div class="popover-title"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Turn Performance & Tokens</div>
                 <span class="popover-model-badge">${escapeHtml(modelClean)}</span>
               </div>
               <div class="popover-stats-grid">
@@ -2122,7 +2122,7 @@
               </div>
               ${cachedTokens > 0 ? `
                 <div class="cached-tokens-row">
-                  <span>⚡ Prompt Cache Hit</span>
+                  <span><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Prompt Cache Hit</span>
                   <span class="cache-val">${cachedTokens.toLocaleString()} tokens cached</span>
                 </div>
               ` : ''}
@@ -2224,27 +2224,7 @@
             body.appendChild(textWrap);
           }
 
-          if (metrics && typeof metrics === 'object') {
-            recordTurnMetrics(metrics, state.lastUserQuery || 'Agent Response', item);
-            const metricsWrap = document.createElement('div');
-            metricsWrap.className = 'message-metrics-container';
-            metricsWrap.innerHTML = renderMetricsBadge(metrics);
-            const badgeEl = metricsWrap.querySelector('.metrics-badge');
-            if (badgeEl) {
-              badgeEl.onclick = (e) => {
-                e.stopPropagation();
-                const metricsContainer = badgeEl.closest('.message-metrics');
-                if (metricsContainer) {
-                  const wasOpen = metricsContainer.classList.contains('is-open');
-                  document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
-                  if (!wasOpen) metricsContainer.classList.add('is-open');
-                }
-              };
-            }
-            item.appendChild(metricsWrap);
-          }
-
-          // Append action row (Copy + Retry) for finished agent responses
+          // Action row (Copy + Retry + Token HUD)
           const actionsRow = document.createElement('div');
           actionsRow.className = 'message-actions-row';
           actionsRow.innerHTML = `
@@ -2279,6 +2259,27 @@
               }
             };
           }
+
+          if (metrics && typeof metrics === 'object') {
+            recordTurnMetrics(metrics, state.lastUserQuery || 'Agent Response', item);
+            const metricsWrap = document.createElement('div');
+            metricsWrap.className = 'message-metrics-container';
+            metricsWrap.innerHTML = renderMetricsBadge(metrics);
+            const badgeEl = metricsWrap.querySelector('.metrics-badge');
+            if (badgeEl) {
+              badgeEl.onclick = (e) => {
+                e.stopPropagation();
+                const metricsContainer = badgeEl.closest('.message-metrics');
+                if (metricsContainer) {
+                  const wasOpen = metricsContainer.classList.contains('is-open');
+                  document.querySelectorAll('.message-metrics.is-open').forEach(el => el.classList.remove('is-open'));
+                  if (!wasOpen) metricsContainer.classList.add('is-open');
+                }
+              };
+            }
+            actionsRow.appendChild(metricsWrap);
+          }
+
           item.appendChild(actionsRow);
         }
 
