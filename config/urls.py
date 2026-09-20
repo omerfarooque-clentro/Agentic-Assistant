@@ -19,10 +19,12 @@ from frontend.views import (
     registration_view,
     settings_view,
     reset_password_page_view,
+    card_fixtures_view,
 )
 
 urlpatterns = [
     path('', dashboard_view, name='dashboard'),
+    path('dev/fixtures/', card_fixtures_view, name='card-fixtures'),
     path('signin/', login_view, name='frontend-login'),
     path('register/', registration_view, name='frontend-register'),
     path('reset-password/', reset_password_page_view, name='frontend-reset-password'),

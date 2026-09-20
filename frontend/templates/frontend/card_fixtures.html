@@ -1,0 +1,409 @@
+{% extends "frontend/base.html" %}
+{% load static %}
+
+{% block title %}Result Cards & Agent Replies Test Fixtures - Personal Ops{% endblock %}
+
+{% block content %}
+<div class="fixtures-page-container" style="max-width: 760px; margin: 0 auto; padding: 24px 16px;">
+  <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 16px;">
+    <div>
+      <h1 style="font-size: 18px; font-weight: 600; margin: 0; color: var(--ink);">UI Spec Test Fixtures</h1>
+      <p style="font-size: 13px; color: var(--muted); margin: 4px 0 0 0;">Verifying all 15 spec cases across themes &amp; viewports</p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" id="btn-toggle-theme" class="rc-action-chip" style="min-height: 36px;">Toggle Light / Dark</button>
+    </div>
+  </header>
+
+  <div id="fixtures-transcript" class="transcript-stream" style="display: flex; flex-direction: column; gap: 24px;"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('fixtures-transcript');
+  const themeToggle = document.getElementById('btn-toggle-theme');
+
+  themeToggle.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    if (next === 'dark') document.documentElement.classList.add('theme-dark');
+    else document.documentElement.classList.remove('theme-dark');
+  });
+
+  const renderSectionHeader = (num, title, description) => {
+    const sec = document.createElement('div');
+    sec.style.cssText = 'padding-top: 16px; border-top: 2px dashed var(--line); margin-top: 8px;';
+    sec.innerHTML = `
+      <div style="font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 4px;">Case ${num}</div>
+      <h2 style="font-size: 15px; font-weight: 600; color: var(--ink); margin: 0 0 4px 0;">${title}</h2>
+      <p style="font-size: 13px; color: var(--muted); margin: 0 0 12px 0;">${description}</p>
+    `;
+    container.appendChild(sec);
+  };
+
+  const createAgentMessageEl = (text, cardData = null, options = {}) => {
+    const item = document.createElement('article');
+    item.className = 'message agent';
+    item.innerHTML = `
+      <span class="message-label">
+        <span class="message-label-left">
+          <span class="message-label-avatar agent">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </span>
+          <span>Personal Ops</span>
+        </span>
+      </span>
+      <div class="message-content" dir="auto"></div>
+    `;
+    const body = item.querySelector('.message-content');
+
+    if (cardData && typeof window.renderResultCard === 'function') {
+      const cardEl = window.renderResultCard(cardData);
+      const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)/g) || (text ? [text] : []);
+      const order = (cardData.presentation && cardData.presentation.order) || 'text_first';
+
+      if (order === 'card_first' || sentences.length > 2) {
+        const takeaway = sentences.slice(0, 2).join('').trim();
+        const rest = text.slice(takeaway.length).trim();
+        if (takeaway) {
+          const textWrap = document.createElement('div');
+          textWrap.className = 'markdown-body';
+          textWrap.setAttribute('dir', 'auto');
+          textWrap.innerHTML = window.PersonalOps.renderMarkdown(takeaway);
+          body.appendChild(textWrap);
+        }
+        if (cardEl) body.appendChild(cardEl);
+        if (rest) {
+          const details = document.createElement('details');
+          details.className = 'rc-details';
+          details.innerHTML = `<summary>More details</summary><div class="rc-details-body markdown-body" dir="auto">${window.PersonalOps.renderMarkdown(rest)}</div>`;
+          body.appendChild(details);
+        }
+      } else {
+        if (text) {
+          const textWrap = document.createElement('div');
+          textWrap.className = 'markdown-body';
+          textWrap.setAttribute('dir', 'auto');
+          textWrap.innerHTML = window.PersonalOps.renderMarkdown(text);
+          body.appendChild(textWrap);
+        }
+        if (cardEl) body.appendChild(cardEl);
+      }
+    } else {
+      const textWrap = document.createElement('div');
+      textWrap.className = 'markdown-body';
+      textWrap.setAttribute('dir', 'auto');
+      textWrap.innerHTML = window.PersonalOps.renderMarkdown(text);
+      body.appendChild(textWrap);
+    }
+
+    if (!options.hideActions) {
+      const actionsRow = document.createElement('div');
+      actionsRow.className = 'message-actions-row';
+      actionsRow.innerHTML = `
+        <button class="message-action-btn copy-msg-btn" type="button" title="Copy response">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span>Copy</span>
+        </button>
+        <button class="message-action-btn retry-msg-btn" type="button" title="Retry response">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          <span>Retry</span>
+        </button>
+      `;
+      item.appendChild(actionsRow);
+    }
+
+    container.appendChild(item);
+    return item;
+  };
+
+  // -------------------------------------------------------------
+  // Case 1: Question about tool data (text first + 3-row card + Show all)
+  // -------------------------------------------------------------
+  renderSectionHeader(1, 'Question about tool data', 'Text first + 3-row email_list card + in-place "Show all 5" toggle.');
+  createAgentMessageEl('You have 5 unread messages waiting in your inbox. Most are urgent client follow-ups.', {
+    type: 'email_list',
+    presentation: { order: 'text_first' },
+    data: {
+      emails: [
+        { id: '1', sender_name: 'Sarah Connor', sender_email: 'sarah@skynet.com', subject: 'Q3 Product Roadmap Review', snippet: 'Please review the updated product specs for the agent platform by EOD today.', received_at: new Date(Date.now() - 1000 * 60 * 25).toISOString(), unread: true },
+        { id: '2', sender_name: 'Alex Rivera', sender_email: 'alex@startup.io', subject: 'Contract signature needed', snippet: 'Attached is the revised NDA with our legal teams comments.', received_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(), unread: true },
+        { id: '3', sender_name: 'GitHub', sender_email: 'notifications@github.com', subject: '[PersonalOps] Security advisory alert', snippet: 'Dependabot alert on django simplejwt token handling dependency.', received_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), unread: false },
+        { id: '4', sender_name: 'Elena Rostova', sender_email: 'elena@design.org', subject: 'Design tokens & color audit feedback', snippet: 'I audited the latest palette tokens against WCAG AA standards. Everything passes.', received_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), unread: true },
+        { id: '5', sender_name: 'Marcus Vance', sender_email: 'marcus@corp.net', subject: 'Sync tomorrow morning at 10 AM?', snippet: 'Can we reschedule our sync to 10:30 AM? Let me know.', received_at: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString(), unread: false },
+      ]
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Case 2: Command (one-line takeaway + card)
+  // -------------------------------------------------------------
+  renderSectionHeader(2, 'Command', 'One-line takeaway + calendar_event card.');
+  createAgentMessageEl('Here is your upcoming strategy sync with the leadership team.', {
+    type: 'calendar_event',
+    presentation: { order: 'card_first' },
+    data: {
+      events: [{
+        summary: 'Executive Leadership Sync & Strategy Review',
+        start: new Date(Date.now() + 1000 * 60 * 60 * 2).toISOString(),
+        end: new Date(Date.now() + 1000 * 60 * 60 * 3).toISOString(),
+        attendees: ['alice@corp.com', 'bob@corp.com', 'claire@corp.com'],
+        meet_url: 'https://meet.google.com/xyz-abcd-efg',
+        html_link: 'https://calendar.google.com',
+        status: 'confirmed'
+      }]
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Case 3: Write action (approval card + confirmation line + card)
+  // -------------------------------------------------------------
+  renderSectionHeader(3, 'Write action', 'Approval card + confirmation line + sheet_update result card.');
+  const approvalWrapper = document.createElement('div');
+  approvalWrapper.className = 'approval-card';
+  approvalWrapper.innerHTML = `
+    <div class="approval-header">
+      <div class="approval-badge">
+        <svg class="approval-badge-icon" width="16" height="16" viewBox="0 0 24 24"><path fill="#0F9D58" d="M14.5 2H6C4.9 2 4 2.9 4 4v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V7.5L14.5 2z"/><path fill="#87CEAB" d="M14 2v6h6L14 2z"/><path fill="#FFFFFF" d="M7 11h10v7H7zm1.5 1.5v1.5h3v-1.5zm4.5 0v1.5h2.5v-1.5zm-4.5 2.5v1.5h3V15zm4.5 0v1.5h2.5V15z"/></svg>
+        <span class="approval-title">Approval Required: Google Sheets</span>
+      </div>
+      <span class="approval-time">Just now</span>
+    </div>
+    <div class="approval-body">
+      <p style="margin: 0 0 8px 0; font-size: 14px;">Append a new candidate row to <strong>Candidate Pipeline 2026</strong> sheet?</p>
+      <dl class="approval-fields">
+        <dt>Sheet</dt><dd>Engineering Candidates</dd>
+        <dt>Values</dt><dd>['Devon Miles', 'Senior AI Engineer', 'Passed Final', '$190,000']</dd>
+      </dl>
+    </div>
+    <div class="approval-actions">
+      <button class="approval-btn approval-btn-approve" type="button">Approve</button>
+      <button class="approval-btn approval-btn-instruct" type="button">Edit</button>
+      <button class="approval-btn approval-btn-cancel" type="button">Reject</button>
+    </div>
+  `;
+  container.appendChild(approvalWrapper);
+
+  createAgentMessageEl('Row successfully appended to Candidate Pipeline.', {
+    type: 'sheet_update',
+    presentation: { order: 'text_first' },
+    data: {
+      title: 'Candidate Pipeline 2026',
+      sheet_url: 'https://docs.google.com/spreadsheets/d/mock123',
+      row_index: 42,
+      columns: ['Name', 'Role', 'Status', 'Compensation'],
+      row: ['Devon Miles', 'Senior AI Engineer', 'Passed Final', '$190,000']
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Case 4: Weather with clear city (summary line + weather card)
+  // -------------------------------------------------------------
+  renderSectionHeader(4, 'Weather with clear city', 'Summary line + weather card with 7 days and in-place toggle.');
+  createAgentMessageEl('Expect clear skies and comfortable temperatures throughout the afternoon in San Francisco.', {
+    type: 'weather',
+    presentation: { order: 'text_first' },
+    data: {
+      city: 'San Francisco',
+      country: 'United States',
+      updated_at: '2:15 PM',
+      current: {
+        temp: 21,
+        unit: '°C',
+        condition: 'clear',
+        feels_like: 21,
+        humidity: 58,
+        wind: '14 km/h NW',
+        rain_chance: 5
+      },
+      days: [
+        { date: '2026-09-21', label: 'Mon', condition: 'clear', low: 14, high: 22, rain_chance: 0 },
+        { date: '2026-09-22', label: 'Tue', condition: 'partly_cloudy', low: 13, high: 20, rain_chance: 10 },
+        { date: '2026-09-23', label: 'Wed', condition: 'cloudy', low: 12, high: 19, rain_chance: 25 },
+        { date: '2026-09-24', label: 'Thu', condition: 'rain', low: 11, high: 17, rain_chance: 80 },
+        { date: '2026-09-25', label: 'Fri', condition: 'drizzle', low: 12, high: 18, rain_chance: 40 },
+        { date: '2026-09-26', label: 'Sat', condition: 'partly_cloudy', low: 13, high: 21, rain_chance: 15 },
+        { date: '2026-09-27', label: 'Sun', condition: 'clear', low: 14, high: 23, rain_chance: 5 },
+      ]
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Case 5: Ambiguity choice chips (may send)
+  // -------------------------------------------------------------
+  renderSectionHeader(5, 'Ambiguity choice chips', 'Question followed by tap chips that send choice.');
+  createAgentMessageEl(`Which project roadmap would you like me to inspect?
+
+<chips>
+  <chip data-prompt="Show PersonalOps Agent core roadmap">PersonalOps Agent Core</chip>
+  <chip data-prompt="Show MCP tool connector roadmap">MCP Tool Connectors</chip>
+  <chip data-prompt="Show Enterprise frontend overhaul roadmap">Frontend Overhaul</chip>
+</chips>`);
+
+  // -------------------------------------------------------------
+  // Case 6: Web search, news topic
+  // -------------------------------------------------------------
+  renderSectionHeader(6, 'Web search, news topic', 'Short text + news card + source chips footer.');
+  createAgentMessageEl(`Latest coverage on open-weights reasoning models highlights major breakthrough in autonomous verification.
+
+Sources:
+[Reuters AI Roundup](https://reuters.com/technology/ai-models-2026)
+[The Verge Tech](https://theverge.com/ai-reasoning-breakthrough)
+[MIT Tech Review](https://technologyreview.com/open-weights)`, {
+    type: 'news',
+    presentation: { order: 'text_first' },
+    data: {
+      topic: 'Open-weights AI models',
+      searched_at: '3:45 PM',
+      items: [
+        { headline: 'Autonomous reasoning benchmarks surpass 92% on formal math checks', domain: 'reuters.com', url: 'https://reuters.com/technology/ai-models-2026', published_at: new Date(Date.now() - 1000 * 60 * 120).toISOString() },
+        { headline: 'Open source labs release verified tooling stack for multi-agent coordination', domain: 'theverge.com', url: 'https://theverge.com/ai-reasoning-breakthrough', published_at: new Date(Date.now() - 1000 * 60 * 240).toISOString() },
+        { headline: 'Benchmarking latency tradeoffs in speculative token drafting engines', domain: 'technologyreview.com', url: 'https://technologyreview.com/open-weights', published_at: new Date(Date.now() - 1000 * 60 * 360).toISOString() },
+        { headline: 'Hardware efficiency gains enable on-device local reasoning without cloud inference', domain: 'arstechnica.com', url: 'https://arstechnica.com/hardware-efficiency', published_at: new Date(Date.now() - 1000 * 60 * 600).toISOString() },
+      ]
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Case 7: Web search, live sports score
+  // -------------------------------------------------------------
+  renderSectionHeader(7, 'Web search, live sports score', 'Text answer + source chips + "Updated h:mm pm", NO card.');
+  createAgentMessageEl(`Arsenal defeated Chelsea **3 - 1** at the Emirates Stadium. Goals by Saka (28'), Odegaard (54'), and Havertz (76').
+
+*Updated 4:12 PM*
+
+[BBC Sport](https://bbc.com/sport/football/match123)
+[Sky Sports](https://skysports.com/football/arsenal-chelsea)`);
+
+  // -------------------------------------------------------------
+  // Case 8: Web search + Docs task
+  // -------------------------------------------------------------
+  renderSectionHeader(8, 'Web search + Docs task', 'Summary + search_summary with "Open note" link.');
+  createAgentMessageEl('Synthesized key research findings into your Google Docs workspace.', {
+    type: 'search_summary',
+    presentation: { order: 'text_first' },
+    data: {
+      title: 'State of LLM Evaluation 2026',
+      source_count: 8,
+      doc_url: 'https://docs.google.com/document/d/mock-summary-doc',
+      points: [
+        { tag: 'Benchmark Drift', text: 'Static benchmarks have saturated; dynamic execution-based evaluations now dominant.' },
+        { tag: 'Cost Efficiency', text: 'Tiered router architectures reduce inference spending by up to 68%.' },
+        { tag: 'Human-in-the-Loop', text: 'Approval gates prevent irreversible autonomous operations with zero latency overhead.' },
+        { tag: 'Tool Calling', text: 'Strict schema enforcement eliminates hallucinated tool arguments in over 99.4% of invocations.' }
+      ],
+      sources: [
+        { domain: 'arxiv.org', url: 'https://arxiv.org/abs/2601.12345' },
+        { domain: 'nature.com', url: 'https://nature.com/articles/ai-evals' },
+        { domain: 'openai.com', url: 'https://openai.com/research/index' }
+      ]
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Case 9: Draft request
+  // -------------------------------------------------------------
+  renderSectionHeader(9, 'Draft request', 'Draft in bordered box with "Send (asks for approval)", "Shorter", "Edit" chips.');
+  createAgentMessageEl(`Here is a proposed response to Jordan regarding tomorrow's sprint demo:
+
+<draft to="Jordan Miller <jordan@company.com>" re="Re: Sprint Demo Preparation">Hi Jordan,
+
+Thanks for the heads-up. I have reviewed the frontend test suites and confirmed all 15 spec test fixtures pass. I will join the sync tomorrow morning at 10:00 AM with the visual before/after parity reports ready for the team.
+
+Best,
+Alex</draft>`);
+
+  // -------------------------------------------------------------
+  // Case 10: Concept / comparison question
+  // -------------------------------------------------------------
+  renderSectionHeader(10, 'Concept / comparison question', 'Plain markdown: definition, small table, callout.');
+  createAgentMessageEl(`### Optimistic UI vs. Pessimistic UI
+
+**Optimistic UI** assumes user actions succeed and updates the screen immediately, rolling back only if the server returns an error. **Pessimistic UI** waits for full round-trip server confirmation before rendering any change.
+
+| Strategy | Latency Perception | Complexity | Failure Handling |
+| --- | --- | --- | --- |
+| Optimistic | Near zero (instant) | Higher | Must restore snapshot |
+| Pessimistic | Noticeable (100–500ms) | Simple | Native error banner |
+
+> Personal Ops uses optimistic state updates for non-destructive reads and strict pessimistic confirmation for destructive tool approvals.`);
+
+  // -------------------------------------------------------------
+  // Case 11: Empty result
+  // -------------------------------------------------------------
+  renderSectionHeader(11, 'Empty result', 'Plain sentence + next-step suggestion, NO card.');
+  createAgentMessageEl(`No unread messages or mentions were found across your Slack channels in the last 24 hours.
+
+Would you like me to check earlier messages from the past week or search a specific channel?`);
+
+  // -------------------------------------------------------------
+  // Case 12: Tool error / pool exhausted
+  // -------------------------------------------------------------
+  renderSectionHeader(12, 'Tool error / pool exhausted', 'Calm sentence + Retry chip, NO raw JSON.');
+  createAgentMessageEl(`<div class="rc-empty-state">
+  <span>The Google Workspace connector encountered a temporary rate limit. </span>
+  <button type="button" class="rc-action-chip inline-retry-chip" data-prompt="Retry loading calendar events">Retry</button>
+</div>`);
+
+  // -------------------------------------------------------------
+  // Case 13: Multiple tool results
+  // -------------------------------------------------------------
+  renderSectionHeader(13, 'Multiple tool results', 'LAST result card only (calendar_list rendered, weather omitted).');
+  createAgentMessageEl('Checked your schedule and resolved the conflict.', {
+    type: 'calendar_list',
+    presentation: { order: 'text_first' },
+    data: {
+      title: "Today's Schedule",
+      events: [
+        { time: '10:00 AM - 10:30 AM', title: 'Daily Standup', duration: '30m', people: 'Team (6)', meet_url: 'https://meet.google.com/abc' },
+        { time: '1:00 PM - 2:00 PM', title: 'Architecture Review', duration: '1h', people: 'Sarah, David', meet_url: 'https://meet.google.com/def' },
+        { time: '3:30 PM - 4:00 PM', title: '1-on-1 with Engineering Lead', duration: '30m', people: 'Marcus', meet_url: null },
+        { time: '5:00 PM - 5:30 PM', title: 'Release Candidate Wrap-up', duration: '30m', people: 'Release Guild', meet_url: 'https://meet.google.com/ghi' }
+      ]
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Case 14: History reload
+  // -------------------------------------------------------------
+  renderSectionHeader(14, 'History reload parity', 'Historical card rendered via standard pipeline.');
+  createAgentMessageEl('Retrieved Slack mentions from history snapshot.', {
+    type: 'slack_mentions',
+    presentation: { order: 'text_first' },
+    data: {
+      mentions: [
+        { channel: 'dev-ops', sender: 'Devon Miles', text: '@alex could you verify the static asset bundle cache headers on the staging deployment?', received_at: new Date(Date.now() - 1000 * 60 * 45).toISOString() },
+        { channel: 'general', sender: 'Sarah Connor', text: 'Kudos to the team for the lightning fast reply streaming rollout! Looks incredible.', received_at: new Date(Date.now() - 1000 * 60 * 180).toISOString() }
+      ]
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Case 15: Very long text with card
+  // -------------------------------------------------------------
+  renderSectionHeader(15, 'Very long text with card', 'First 2 sentences above card; card; remainder in collapsed "More details" block.');
+  createAgentMessageEl(`Google Sheets data has been synchronized with the master inventory records. All four critical columns were verified against the warehouse database.
+
+The synchronization completed with zero validation discrepancies across 150 items. In addition, the caching layer was purged and recomputed to guarantee that downstream dashboard consumers see immediate consistency. Automated health checks have verified that the database replica lag remains under 12 milliseconds.`, {
+    type: 'sheet_view',
+    presentation: { order: 'text_first' },
+    data: {
+      title: 'Warehouse Master Inventory 2026',
+      sheet_url: 'https://docs.google.com/spreadsheets/d/mock-inventory',
+      columns: ['SKU', 'Item Name', 'Quantity', 'Status'],
+      rows: [
+        ['SKU-1029', 'H100 PCIe Accelerator', '14', 'In Stock'],
+        ['SKU-1030', 'InfiniBand Switch 64-port', '8', 'Low Stock'],
+        ['SKU-1031', 'Optical Transceiver QSFP', '140', 'In Stock'],
+        ['SKU-1032', 'Cat6A Shielded Patch Cable', '420', 'In Stock'],
+        ['SKU-1033', 'Rackmount UPS 3000VA', '6', 'Reorder Placed'],
+      ],
+      total_rows: 150
+    }
+  });
+});
+</script>
+{% endblock %}

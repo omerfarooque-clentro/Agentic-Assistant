@@ -20,3 +20,8 @@ def settings_view(request):
 def reset_password_page_view(request):
     return render(request, "frontend/reset_password.html")
 
+
+def card_fixtures_view(request):
+    return render(request, "frontend/card_fixtures.html")
+
+

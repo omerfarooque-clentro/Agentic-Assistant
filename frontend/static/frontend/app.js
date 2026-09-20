@@ -254,9 +254,35 @@
       return `<svg class="domain-icon domain-icon-slack" width="${size}" height="${size}" viewBox="0 0 24 24"><path fill="#E01E5A" d="M5.04 14.5a2.5 2.5 0 1 0-2.5 2.5h2.5v-2.5zm1.25 0a2.5 2.5 0 0 0 5 0v-6.25a2.5 2.5 0 0 0-5 0v6.25z"/><path fill="#36C5F0" d="M9.5 5.04a2.5 2.5 0 1 0-2.5-2.5v2.5h2.5zm0 1.25a2.5 2.5 0 0 0 0 5h6.25a2.5 2.5 0 0 0 0-5H9.5z"/><path fill="#2EB67D" d="M18.96 9.5a2.5 2.5 0 1 0 2.5-2.5h-2.5v2.5zm-1.25 0a2.5 2.5 0 0 0-5 0v6.25a2.5 2.5 0 0 0 5 0V9.5z"/><path fill="#ECB22E" d="M14.5 18.96a2.5 2.5 0 1 0 2.5 2.5v-2.5h-2.5zm0-1.25a2.5 2.5 0 0 0 0-5H8.25a2.5 2.5 0 0 0 0 5H14.5z"/></svg>`;
     }
     if (d === 'research' || d === 'search') {
-      return `<svg class="domain-icon domain-icon-research" width="${size}" height="${size}" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>`;
+      return `<svg class="domain-icon domain-icon-research" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
     }
     return `<svg class="domain-icon domain-icon-general" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M12 2L14.4 7.6L20 10L14.4 12.4L12 18L9.6 12.4L4 10L9.6 7.6L12 2Z" fill="#38bdf8"/><path d="M18 16L19.2 18.8L22 20L19.2 21.2L18 24L16.8 21.2L14 20L16.8 18.8L18 16Z" fill="#818cf8"/></svg>`;
+  };
+
+  const getStreamSafeMarkdown = raw => {
+    if (!raw || typeof raw !== 'string') return '';
+    let text = raw;
+    // Hold back unclosed code fence until it closes
+    const fenceMatches = text.match(/```/g);
+    if (fenceMatches && fenceMatches.length % 2 === 1) {
+      const lastFenceIdx = text.lastIndexOf('```');
+      text = text.slice(0, lastFenceIdx);
+    }
+    // Hold back incomplete table rows until closed
+    const lines = text.split('\n');
+    let lastTableIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].trim().startsWith('|')) {
+        lastTableIdx = i;
+      } else {
+        break;
+      }
+    }
+    if (lastTableIdx !== -1) {
+      lines.splice(lastTableIdx);
+      text = lines.join('\n');
+    }
+    return text;
   };
 
   const DOMAIN_META = {
@@ -310,7 +336,8 @@
     const closeCodeBlock = () => {
       if (codeBlockOpen) {
         const langClass = codeBlockLang ? ` class="language-${escapeHtml(codeBlockLang)}"` : '';
-        html += `<pre><code${langClass}>${escapeHtml(codeBlockContent)}</code></pre>`;
+        const langLabel = escapeHtml(codeBlockLang || 'code');
+        html += `<div class="code-block-wrap"><div class="code-block-header"><span>${langLabel}</span><button class="code-copy-btn" type="button" data-code="${escapeHtml(codeBlockContent)}">Copy</button></div><pre><code${langClass}>${escapeHtml(codeBlockContent)}</code></pre></div>`;
         codeBlockOpen = false;
         codeBlockLang = '';
         codeBlockContent = '';
@@ -332,10 +359,61 @@
       }
     }
 
-    const lines = source.split('\n');
+    // Custom support for Ambiguity choice chips
+    let processedSource = source.replace(/<chips>([\s\S]*?)<\/chips>/gi, (m, inner) => {
+      const chipItems = [];
+      const chipRegex = /<chip(?:\s+data-prompt="([^"]*)")?>([\s\S]*?)<\/chip>/gi;
+      let cm;
+      while ((cm = chipRegex.exec(inner)) !== null) {
+        const prompt = cm[1] ? escapeHtml(cm[1]) : escapeHtml(cm[2].trim());
+        const label = escapeHtml(cm[2].trim());
+        chipItems.push(`<button class="ambiguity-chip" type="button" data-prompt="${prompt}">${label}</button>`);
+      }
+      return `\n\n:::RAW_HTML:::<div class="ambiguity-chips-container">${chipItems.join('')}</div>:::END_RAW_HTML:::\n\n`;
+    });
+
+    // Custom support for Draft request box
+    processedSource = processedSource.replace(/<draft(?:\s+to="([^"]*)")?(?:\s+re="([^"]*)")?>([\s\S]*?)<\/draft>/gi, (m, to, re, body) => {
+      const toHtml = to ? `<span><strong>To:</strong> ${escapeHtml(to)}</span>` : '';
+      const reHtml = re ? `<span><strong>Re:</strong> ${escapeHtml(re)}</span>` : '';
+      const metaHtml = (toHtml || reHtml) ? `<div class="rc-draft-meta">${toHtml}${reHtml}</div>` : '';
+      const bodyHtml = `<div class="rc-draft-body">${escapeHtml(body.trim())}</div>`;
+      const actionsHtml = `
+        <div class="rc-draft-actions">
+          <button class="rc-action-chip" type="button" data-prompt="Send this draft: ${escapeHtml(body.trim())}">Send (asks for approval)</button>
+          <button class="rc-action-chip" type="button" data-prompt="Make this draft shorter: ${escapeHtml(body.trim())}">Shorter</button>
+          <button class="rc-action-chip" type="button" data-prompt="Edit draft: ${escapeHtml(body.trim())}">Edit</button>
+        </div>
+      `;
+      return `\n\n:::RAW_HTML:::<div class="rc-draft-box">${metaHtml}${bodyHtml}${actionsHtml}</div>:::END_RAW_HTML:::\n\n`;
+    });
+
+    const lines = processedSource.split('\n');
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
+
+      if (line.startsWith(':::RAW_HTML:::') && line.endsWith(':::END_RAW_HTML:::')) {
+        closeList();
+        closeSlackFeed();
+        closeCodeBlock();
+        html += line.replace(':::RAW_HTML:::', '').replace(':::END_RAW_HTML:::', '');
+        i++;
+        continue;
+      }
+      if (line.startsWith('<div class="ambiguity-chips-container">') || line.startsWith('<div class="rc-draft-box">') || line.startsWith('<div class="rc-empty-state">')) {
+        closeList();
+        closeSlackFeed();
+        closeCodeBlock();
+        let rawBlock = line;
+        while (i + 1 < lines.length && !lines[i].includes('</div>')) {
+          i++;
+          rawBlock += '\n' + lines[i];
+        }
+        html += rawBlock;
+        i++;
+        continue;
+      }
 
       // Handle code fences
       if (line.match(/^```/)) {
@@ -494,11 +572,13 @@
     closeSlackFeed();
     closeCodeBlock();
 
-    // Render interactive source / citation cards footer if sources were cited
+    // Render interactive source / citation cards footer if sources were cited (max 3 + "+N", SVG icons only)
     if (extractedSources.length > 0) {
-      const chipsHtml = extractedSources.map(s => {
+      const displaySources = extractedSources.slice(0, 3);
+      const remainingCount = extractedSources.length - 3;
+      const chipsHtml = displaySources.map(s => {
         const isDoc = s.url.includes('docs.google.com/document/d/');
-        const icon = isDoc ? GOOGLE_DOCS_ICON_SVG : '<span class="source-icon">🔗</span>';
+        const icon = isDoc ? GOOGLE_DOCS_ICON_SVG : '<svg class="rc-inline-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
         const label = isDoc ? 'View in Doc' : escapeHtml(s.title.length > 30 ? s.title.slice(0, 30) + '…' : s.title);
         const extraClass = isDoc ? ' source-chip-doc' : '';
         return `
@@ -510,13 +590,14 @@
           </a>
         `;
       }).join('');
+      const plusChip = remainingCount > 0 ? `<span class="source-chip" style="cursor: default;" title="${remainingCount} more sources">+${remainingCount}</span>` : '';
       html += `
         <div class="sources-container">
           <div class="sources-heading">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
             Sources & References
           </div>
-          <div class="sources-grid">${chipsHtml}</div>
+          <div class="sources-grid">${chipsHtml}${plusChip}</div>
         </div>
       `;
     }
@@ -2075,31 +2156,16 @@
           ? `<span class="message-label"><span class="message-label-left">You</span></span>`
           : `<span class="message-label">
                <span class="message-label-left">
-                 <span class="message-label-avatar agent">⚡</span>
+                 <span class="message-label-avatar agent">
+                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                 </span>
                  <span>Personal Ops</span>
                </span>
-               <span class="message-actions">
-                 <button class="copy-msg-btn" type="button" title="Copy response">
-                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                   <span>Copy</span>
-                 </button>
-               </span>
              </span>`;
-        item.innerHTML = `${labelHtml}<div class="message-content"></div>`;
-        const copyBtn = item.querySelector('.copy-msg-btn');
-        if (copyBtn) {
-          copyBtn.onclick = (e) => {
-            e.stopPropagation();
-            const rawContent = (typeof content === 'string' ? content : (item.querySelector('.message-content') ? item.querySelector('.message-content').innerText : '')).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
-            navigator.clipboard.writeText(rawContent).then(() => {
-              const span = copyBtn.querySelector('span') || copyBtn;
-              span.textContent = 'Copied!';
-              setTimeout(() => { span.textContent = 'Copy'; }, 1800);
-            }).catch(() => { });
-          };
-        }
+        item.innerHTML = `${labelHtml}<div class="message-content" dir="auto"></div>`;
         const body = item.querySelector('.message-content');
         const text = role === 'agent' ? cleanMessageContent(content) : safeText(content);
+
         if (pending) {
           body.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span><span class="pending-domain-icon">${getDomainIconSvg('general', 16)}</span><span>Operations agent thinking…</span></div>`;
         } else if (role === 'user') {
@@ -2115,15 +2181,16 @@
             const cardType = cardToRender.type;
             const cleanedText = cleanRetiredCardMarkdown(text, cardType);
             const order = (cardToRender.presentation && cardToRender.presentation.order) || 'text_first';
+            const sentences = cleanedText.match(/[^.!?]+[.!?]+(?:\s+|$)/g) || (cleanedText ? [cleanedText] : []);
 
-            if (order === 'card_first') {
-              const sentences = cleanedText.match(/[^.!?]+[.!?]+/g) || (cleanedText ? [cleanedText] : []);
-              const takeaway = sentences.slice(0, 2).join(' ').trim();
+            if (order === 'card_first' || sentences.length > 2) {
+              const takeaway = sentences.slice(0, 2).join('').trim();
               const rest = cleanedText.slice(takeaway.length).trim();
 
               if (takeaway) {
                 const textWrap = document.createElement('div');
                 textWrap.className = 'markdown-body';
+                textWrap.setAttribute('dir', 'auto');
                 textWrap.innerHTML = renderMarkdown(takeaway);
                 body.appendChild(textWrap);
               }
@@ -2133,14 +2200,15 @@
               if (rest) {
                 const details = document.createElement('details');
                 details.className = 'rc-details';
-                details.innerHTML = `<summary>More details</summary><div class="rc-details-body markdown-body">${renderMarkdown(rest)}</div>`;
+                details.innerHTML = `<summary>More details</summary><div class="rc-details-body markdown-body" dir="auto">${renderMarkdown(rest)}</div>`;
                 body.appendChild(details);
               }
             } else {
-              // text_first
+              // text_first with <= 2 sentences
               if (cleanedText) {
                 const textWrap = document.createElement('div');
                 textWrap.className = 'markdown-body';
+                textWrap.setAttribute('dir', 'auto');
                 textWrap.innerHTML = renderMarkdown(cleanedText);
                 body.appendChild(textWrap);
               }
@@ -2151,9 +2219,11 @@
           } else {
             const textWrap = document.createElement('div');
             textWrap.className = 'markdown-body';
+            textWrap.setAttribute('dir', 'auto');
             textWrap.innerHTML = renderMarkdown(text);
             body.appendChild(textWrap);
           }
+
           if (metrics && typeof metrics === 'object') {
             recordTurnMetrics(metrics, state.lastUserQuery || 'Agent Response', item);
             const metricsWrap = document.createElement('div');
@@ -2173,9 +2243,50 @@
             }
             item.appendChild(metricsWrap);
           }
+
+          // Append action row (Copy + Retry) for finished agent responses
+          const actionsRow = document.createElement('div');
+          actionsRow.className = 'message-actions-row';
+          actionsRow.innerHTML = `
+            <button class="message-action-btn copy-msg-btn" type="button" title="Copy response">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span>Copy</span>
+            </button>
+            <button class="message-action-btn retry-msg-btn" type="button" title="Retry response">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              <span>Retry</span>
+            </button>
+          `;
+          const copyBtn = actionsRow.querySelector('.copy-msg-btn');
+          if (copyBtn) {
+            copyBtn.onclick = (e) => {
+              e.stopPropagation();
+              const rawContent = (typeof content === 'string' ? content : (body ? body.innerText : '')).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
+              navigator.clipboard.writeText(rawContent).then(() => {
+                const span = copyBtn.querySelector('span') || copyBtn;
+                span.textContent = 'Copied!';
+                setTimeout(() => { span.textContent = 'Copy'; }, 1800);
+              }).catch(() => { });
+            };
+          }
+          const retryBtn = actionsRow.querySelector('.retry-msg-btn');
+          if (retryBtn) {
+            retryBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (state.lastUserQuery && !state.sending && !state.pendingApproval) {
+                item.remove();
+                send(state.lastUserQuery);
+              }
+            };
+          }
+          item.appendChild(actionsRow);
         }
+
+        const isNearBottom = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) <= 40;
         transcript.appendChild(item);
-        transcript.scrollTop = transcript.scrollHeight;
+        if (isNearBottom || role === 'user') {
+          transcript.scrollTop = transcript.scrollHeight;
+        }
         state.messageCount += 1;
         return item;
       };
@@ -2902,6 +3013,25 @@
         let assistantText = '';
         let completedHandled = false;
         let hasReceivedTokens = false;
+        let rafId = null;
+        let renderScheduled = false;
+
+        const scheduleRender = () => {
+          if (renderScheduled) return;
+          renderScheduled = true;
+          rafId = requestAnimationFrame(() => {
+            renderScheduled = false;
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            const isNearBottom = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) <= 40;
+            const cleanText = assistantText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
+            const safeMd = getStreamSafeMarkdown(cleanText);
+            body.innerHTML = `<div class="markdown-body" dir="auto">${renderMarkdown(safeMd)}</div>`;
+            if (isNearBottom) {
+              transcript.scrollTop = transcript.scrollHeight;
+            }
+          });
+        };
+
         const slowTimer = setTimeout(() => {
           if (!hasReceivedTokens && state.sending) {
             setPendingStatus('Connecting across tools… network is slow, still processing', 'general');
@@ -2940,26 +3070,13 @@
             return;
           }
 
-          // Handle token streaming - transition from status to actual response
-          if (data.type === 'token') {
-            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
-            // On first token, clear any pending status and start accumulating response
-            hasReceivedTokens = true;
-            assistantText += safeText(token);
-            pending.classList.remove('pending');
-            body.textContent = assistantText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
-            transcript.scrollTop = transcript.scrollHeight;
-            return;
-          }
-
-          // Fallback for older backend payloads that use status field for tokens
-          if (data.type === 'chunk' || data.type === 'delta' || status === 'in_progress') {
+          // Handle token streaming via rAF - transition from status to markdown response
+          if (data.type === 'token' || data.type === 'chunk' || data.type === 'delta' || status === 'in_progress') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
             hasReceivedTokens = true;
             assistantText += safeText(token);
             pending.classList.remove('pending');
-            body.textContent = assistantText;
-            transcript.scrollTop = transcript.scrollHeight;
+            scheduleRender();
             return;
           }
 
@@ -2983,6 +3100,8 @@
 
           if (data.type === 'approval_required' || status === 'approval_required') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            if (rafId) cancelAnimationFrame(rafId);
+            renderScheduled = false;
             if (!state.threadId && data.thread_id) {
               state.threadId = data.thread_id;
               try {
@@ -2999,6 +3118,8 @@
 
           if (data.type === 'completed' || status === 'completed') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            if (rafId) cancelAnimationFrame(rafId);
+            renderScheduled = false;
             completedHandled = true;
             const rawResponse = typeof response === 'string' ? response : response && typeof response === 'object' ? (response.content || response.text || JSON.stringify(response)) : assistantText;
             const finalText = safeText(rawResponse).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
@@ -3028,6 +3149,8 @@
 
           if (data.type === 'error' || status === 'error') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            if (rafId) cancelAnimationFrame(rafId);
+            renderScheduled = false;
             setPendingStatus('Something went wrong…');
             throw new Error(message || data.message || 'Agent request failed.');
           }
@@ -3037,7 +3160,7 @@
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
             assistantText += message;
             pending.classList.remove('pending');
-            body.textContent = assistantText;
+            scheduleRender();
           }
         };
 
@@ -3121,6 +3244,8 @@
               if (result === 'approval') return;
             }
             // Handle stream ending: if we never got a completed event but have assistant text, save it
+            if (rafId) cancelAnimationFrame(rafId);
+            renderScheduled = false;
             if (!completedHandled && assistantText) {
               pending.remove();
               addMessage('agent', assistantText);
@@ -3130,10 +3255,28 @@
             break;
           }
         } catch (error) {
+          if (rafId) cancelAnimationFrame(rafId);
+          renderScheduled = false;
           if (error && error.name === 'AbortError') return;
           if (!completedHandled && assistantText) {
             pending.remove();
-            addMessage('agent', assistantText);
+            const errorMsgEl = addMessage('agent', assistantText);
+            const errInline = document.createElement('div');
+            errInline.className = 'rc-empty-state';
+            errInline.style.marginTop = '8px';
+            errInline.innerHTML = `<span>Connection lost. </span><button type="button" class="rc-action-chip inline-retry-chip">Retry</button>`;
+            const retryBtn = errInline.querySelector('.inline-retry-chip');
+            if (retryBtn) {
+              retryBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (state.lastUserQuery) {
+                  errorMsgEl.remove();
+                  send(state.lastUserQuery);
+                }
+              };
+            }
+            const msgContent = errorMsgEl.querySelector('.message-content');
+            if (msgContent) msgContent.appendChild(errInline);
           } else {
             pending.remove();
           }
@@ -3149,10 +3292,50 @@
         }
       };
 
+      // Delegated event listener for transcript (code-copy-btn, ambiguity-chip, rc-action-chip)
+      transcript.addEventListener('click', e => {
+        const copyCodeBtn = e.target.closest('.code-copy-btn');
+        if (copyCodeBtn) {
+          e.stopPropagation();
+          const code = copyCodeBtn.getAttribute('data-code') || '';
+          navigator.clipboard.writeText(code).then(() => {
+            const orig = copyCodeBtn.textContent;
+            copyCodeBtn.textContent = 'Copied!';
+            setTimeout(() => { copyCodeBtn.textContent = orig; }, 1500);
+          }).catch(() => {});
+          return;
+        }
+
+        const ambChip = e.target.closest('.ambiguity-chip');
+        if (ambChip) {
+          e.stopPropagation();
+          const prompt = ambChip.getAttribute('data-prompt') || ambChip.textContent.trim();
+          if (prompt && !state.sending && !state.pendingApproval) {
+            state.lastUserQuery = prompt;
+            addMessage('user', prompt);
+            send(prompt);
+          }
+          return;
+        }
+
+        const actChip = e.target.closest('.rc-action-chip');
+        if (actChip) {
+          e.stopPropagation();
+          const prompt = actChip.getAttribute('data-prompt') || actChip.dataset.prompt;
+          if (prompt) {
+            input.value = prompt;
+            autoGrowTextarea(input);
+            input.focus();
+          }
+          return;
+        }
+      });
+
       document.querySelector('#chat-form').addEventListener('submit', event => {
         event.preventDefault();
         const message = input.value.trim();
         if (!message || state.sending || state.pendingApproval) return;
+        state.lastUserQuery = message;
         addMessage('user', message);
         input.value = '';
         autoGrowTextarea(input);

@@ -2,11 +2,31 @@ import logging
 from typing import Any
 from langchain_core.messages import HumanMessage, ToolMessage
 
-from .intent import get_presentation
 from .registry import resolve_builder
 from .schemas import ResultCardEnvelope
 
 logger = logging.getLogger(__name__)
+
+QUESTION_STARTERS = {
+    "is", "are", "did", "does", "do", "any", "has", "have",
+    "who", "what", "when", "where", "was", "were", "can", "could",
+    "should", "would", "how", "why", "which"
+}
+
+
+def is_question(text: str) -> bool:
+    if not text:
+        return False
+    stripped = text.strip()
+    if stripped.endswith("?"):
+        return True
+    first_word = stripped.split()[0].lower() if stripped.split() else ""
+    return first_word in QUESTION_STARTERS
+
+
+def get_presentation(user_text: str) -> dict[str, Any]:
+    order = "text_first" if is_question(user_text) else "card_first"
+    return {"order": order, "max_rows": 3}
 
 
 def build_result_card(messages: list[Any]) -> dict | None:

@@ -1,46 +1,71 @@
 /* ==========================================================================
-   Typed Result Cards Stylesheet (Result Cards v1)
+   Typed Result Cards Stylesheet (Result Cards Spec Compliant)
+   All styling strictly scoped under .rc- with design tokens only.
    ========================================================================== */
 
 .rc-container {
   width: 100%;
   max-width: 100%;
-  margin: 10px 0;
-  font-family: var(--font-main, system-ui, sans-serif);
+  margin: 12px 0;
+  font-family: var(--font-main);
   color: var(--ink);
+  direction: auto;
 }
 
+/* Card Shell: Surface bg, 1px subtle border, 14px radius, 14-16px padding.
+   Strictly NO shadows, glow, or gradients. */
 .rc-card {
-  background: var(--panel, #ffffff);
-  border: 1px solid var(--line, #e2e8f0);
-  border-radius: var(--radius-lg, 14px);
-  box-shadow: var(--shadow-md, 0 4px 16px -2px rgba(15, 23, 42, 0.06));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
   padding: 16px;
   overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   position: relative;
+  transition: border-color 150ms ease;
 }
 
 .rc-card:hover {
-  border-color: var(--accent, #4f46e5);
+  border-color: var(--line);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .rc-card,
+  .rc-link-btn,
+  .rc-action-chip,
+  .rc-toggle-btn,
+  .rc-source-pill,
+  .rc-weather-day-item {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Common Header */
 .rc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--line-subtle, #edf2f7);
+  border-bottom: 1px solid var(--line-subtle);
 }
 
 .rc-header-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: var(--ink, #0f172a);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.rc-header-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rc-header-icon {
@@ -50,64 +75,202 @@
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+  color: var(--accent);
 }
 
-.rc-brand-icon {
+.rc-brand-icon,
+.rc-inline-svg {
   width: 18px;
   height: 18px;
   display: block;
+  flex-shrink: 0;
 }
 
-.rc-inline-icon {
-  display: inline-block;
-  vertical-align: middle;
-}
-
+/* Badges: 6px radius, labels 12px */
 .rc-badge {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: var(--radius-pill, 9999px);
-  background: var(--accent-soft, #eef2ff);
-  color: var(--accent, #4f46e5);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .rc-badge.rc-badge-emerald {
-  background: var(--emerald-soft, #d1fae5);
-  color: var(--emerald-ink, #065f46);
+  background: var(--emerald-soft);
+  color: var(--emerald-ink);
 }
 
+/* Links & Chips with 44px min tap target */
 .rc-link-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--accent, #4f46e5);
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
   text-decoration: none;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm, 6px);
-  background: var(--accent-soft, #eef2ff);
-  transition: background 0.15s ease, color 0.15s ease;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  transition: background 150ms ease, color 150ms ease;
+  box-sizing: border-box;
 }
 
 .rc-link-btn:hover {
-  background: var(--accent, #4f46e5);
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.rc-link-btn:focus-visible,
+.rc-action-chip:focus-visible,
+.rc-toggle-btn:focus-visible,
+.rc-source-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.rc-action-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 150ms ease;
+  box-sizing: border-box;
+}
+
+[data-theme="dark"] .rc-action-chip,
+.theme-dark .rc-action-chip {
+  color: #cbd5e1;
+  background: #1e293b;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.rc-action-chip:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+  background: var(--panel-hover);
+}
+
+.rc-action-chip.rc-chip-primary {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.rc-action-chip.rc-chip-primary:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* In-place List Toggle Chip */
+.rc-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 150ms ease;
+  box-sizing: border-box;
+}
+
+.rc-toggle-btn:hover {
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ==========================================================================
-   Weather Card
+   Card Skeletons, Empty & Error States
+   ========================================================================== */
+
+.rc-skeleton {
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+}
+
+.rc-skeleton-line {
+  height: 14px;
+  border-radius: var(--radius-xs);
+  background: var(--line);
+  animation: rc-pulse 1.5s ease-in-out infinite;
+}
+
+.rc-skeleton-line.short { width: 40%; }
+.rc-skeleton-line.medium { width: 70%; }
+.rc-skeleton-line.full { width: 100%; }
+
+@keyframes rc-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.rc-empty-state {
+  padding: 12px 0;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.rc-error-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   1. Weather Card
+   40px current temp + SVG condition + "Condition · Feels like N"
+   Humidity, wind, rain chance row.
+   Up to 7 slim rows: weekday, icon, temperature range bar, low, high.
    ========================================================================== */
 
 .rc-weather-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 4px 14px 4px;
+  padding: 6px 0 14px 0;
 }
 
 .rc-weather-hero-main {
@@ -123,140 +286,175 @@
 }
 
 .rc-weather-temp {
-  font-size: 2.6rem;
-  font-weight: 800;
+  font-size: 40px;
+  font-weight: 700;
   line-height: 1;
-  color: var(--ink, #0f172a);
-  font-family: var(--font-mono, monospace);
-  letter-spacing: -0.04em;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  letter-spacing: -0.03em;
 }
 
 .rc-weather-unit {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: var(--muted, #64748b);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--muted);
 }
 
-.rc-weather-condition {
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--muted, #64748b);
+.rc-weather-condition-text {
+  font-size: 13px;
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 6px;
-  text-transform: capitalize;
 }
 
-.rc-weather-art {
-  font-size: 2.8rem;
-  user-select: none;
+.rc-weather-condition-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.rc-weather-art-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.rc-weather-art-icon svg {
+  width: 48px;
+  height: 48px;
 }
 
 .rc-weather-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 14px;
-  padding: 10px;
-  background: var(--paper, #f8fafc);
-  border: 1px solid var(--line-subtle, #edf2f7);
-  border-radius: var(--radius, 10px);
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius);
 }
 
 .rc-weather-metric-item {
   display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rc-weather-metric-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+}
+
+.rc-weather-metric-info {
+  display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .rc-weather-metric-label {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 12px;
+  font-family: var(--font-mono);
   text-transform: uppercase;
-  color: var(--faint, #94a3b8);
-  letter-spacing: 0.04em;
+  color: var(--muted);
+  letter-spacing: 0.3px;
 }
 
 .rc-weather-metric-val {
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: var(--ink, #0f172a);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
-.rc-weather-forecast {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
-  border-top: 1px solid var(--line-subtle, #edf2f7);
-  padding-top: 12px;
-  overflow-x: auto;
-}
-
-@media (max-width: 680px) {
-  .rc-weather-forecast {
-    grid-template-columns: repeat(7, minmax(56px, 1fr));
-    overflow-x: auto;
-    padding-bottom: 6px;
-  }
-}
-
-.rc-weather-day-item {
+/* Weather 7-Day Slim Rows */
+.rc-weather-forecast-list {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line-subtle);
+  padding-top: 12px;
+}
+
+.rc-weather-day-row {
+  display: grid;
+  grid-template-columns: 68px 24px 1fr 34px 34px;
   align-items: center;
-  justify-content: center;
-  padding: 8px 4px 10px 4px;
-  background: var(--paper, #f8fafc);
-  border: 1px solid var(--line-subtle, #edf2f7);
-  border-radius: var(--radius-sm, 8px);
-  text-align: center;
-  gap: 4px;
-  min-width: 0;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--ink);
 }
 
-.rc-weather-day-item:hover {
-  transform: translateY(-2px);
-  border-color: var(--accent, #4f46e5);
+.rc-weather-day-row:hover {
+  background: var(--paper);
 }
 
-.rc-weather-day-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--muted, #64748b);
+.rc-weather-day-name {
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.rc-weather-day-icon {
-  font-size: 1.3rem;
-  line-height: 1.2;
-}
-
-.rc-weather-day-temps {
-  font-size: 0.76rem;
-  font-weight: 700;
-  color: var(--ink, #0f172a);
-  white-space: nowrap;
+.rc-weather-day-icon-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+
+.rc-weather-day-icon-wrap svg {
+  width: 18px;
+  height: 18px;
+}
+
+.rc-weather-range-bar-wrap {
+  width: 100%;
+  height: 5px;
+  background: var(--line-subtle);
+  border-radius: var(--radius-pill);
+  position: relative;
+  overflow: hidden;
+}
+
+.rc-weather-range-bar-fill {
+  position: absolute;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  min-width: 8px;
 }
 
 .rc-weather-day-low {
-  color: var(--faint, #94a3b8);
-  font-weight: 500;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: right;
+  font-family: var(--font-mono);
 }
 
-.rc-weather-day-rain {
-  font-size: 0.68rem;
-  color: var(--accent, #4f46e5);
-  font-weight: 600;
-  white-space: nowrap;
+.rc-weather-day-high {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: right;
+  font-family: var(--font-mono);
 }
 
 /* ==========================================================================
-   Email List Card
+   2. Email List Card
    ========================================================================== */
 
 .rc-email-items {
@@ -268,17 +466,11 @@
 .rc-email-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  background: var(--paper, #f8fafc);
-  border: 1px solid var(--line-subtle, #edf2f7);
-  border-radius: var(--radius, 10px);
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.rc-email-item:hover {
-  background: var(--panel-hover, #f1f5f9);
-  border-color: var(--line, #e2e8f0);
+  gap: 6px;
+  padding: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius);
 }
 
 .rc-email-item-header {
@@ -291,48 +483,66 @@
 .rc-email-sender-wrap {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
+}
+
+.rc-avatar-initials {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.rc-email-sender {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rc-dot-unread {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent, #4f46e5);
+  background: var(--accent);
   flex-shrink: 0;
 }
 
-.rc-email-sender {
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: var(--ink, #0f172a);
+.rc-email-date {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.rc-email-subject {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.rc-email-date {
-  font-size: 0.72rem;
-  color: var(--muted, #64748b);
-  flex-shrink: 0;
-}
-
-.rc-email-subject {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--ink, #0f172a);
-  text-decoration: none;
-}
-
 .rc-email-subject:hover {
-  color: var(--accent, #4f46e5);
+  color: var(--accent);
 }
 
 .rc-email-snippet {
-  font-size: 0.78rem;
-  color: var(--muted, #64748b);
-  line-height: 1.4;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -343,32 +553,14 @@
 .rc-email-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--line, #e2e8f0);
-}
-
-.rc-action-chip {
-  background: var(--panel, #ffffff);
-  border: 1px solid var(--line, #e2e8f0);
-  border-radius: var(--radius-pill, 9999px);
-  padding: 3px 10px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--ink, #0f172a);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.rc-action-chip:hover {
-  background: var(--accent-soft, #eef2ff);
-  border-color: var(--accent, #4f46e5);
-  color: var(--accent, #4f46e5);
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-subtle);
 }
 
 /* ==========================================================================
-   Slack Mentions Card
+   3. Slack Mentions Card
    ========================================================================== */
 
 .rc-slack-items {
@@ -378,13 +570,13 @@
 }
 
 .rc-slack-item {
-  padding: 10px 12px;
-  background: var(--paper, #f8fafc);
-  border: 1px solid var(--line-subtle, #edf2f7);
-  border-radius: var(--radius, 10px);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius);
 }
 
 .rc-slack-item-header {
@@ -394,147 +586,255 @@
   gap: 8px;
 }
 
-.rc-slack-channel {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--accent, #4f46e5);
-  background: var(--accent-soft, #eef2ff);
-  padding: 2px 7px;
-  border-radius: var(--radius-xs, 4px);
+.rc-slack-meta {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.rc-slack-sender {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--ink, #0f172a);
+.rc-slack-time {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
 }
 
 .rc-slack-text {
-  font-size: 0.82rem;
-  line-height: 1.45;
-  color: var(--ink, #0f172a);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.rc-slack-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-subtle);
 }
 
 /* ==========================================================================
-   Sheet View / Update Card
+   4 & 5. Sheet View & Sheet Update Card
+   Table preview: max 5 rows x 4 cols, horizontal scroll inside card only.
    ========================================================================== */
 
 .rc-sheet-wrap {
+  width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--line, #e2e8f0);
-  border-radius: var(--radius, 10px);
-  background: var(--panel, #ffffff);
-  margin-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .rc-sheet-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8rem;
-  text-align: left;
+  font-size: 13px;
+  line-height: 1.5;
+  min-width: 320px;
 }
 
 .rc-sheet-table th {
-  background: var(--paper, #f8fafc);
-  color: var(--muted, #64748b);
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 0.7rem;
-  letter-spacing: 0.04em;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
   padding: 8px 12px;
-  border-bottom: 1px solid var(--line, #e2e8f0);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+  text-align: left;
   white-space: nowrap;
 }
 
 .rc-sheet-table td {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line-subtle, #edf2f7);
-  color: var(--ink, #0f172a);
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-subtle);
+  color: var(--ink);
   white-space: nowrap;
 }
 
-.rc-sheet-table tr:last-child td {
+.rc-sheet-table tbody tr:last-child td {
   border-bottom: none;
 }
 
 .rc-sheet-row-highlight {
-  background: var(--accent-soft, #eef2ff) !important;
-  font-weight: 600;
+  background: var(--emerald-soft);
+  color: var(--emerald-ink);
 }
 
-.rc-sheet-row-highlight td {
-  color: var(--accent, #4f46e5) !important;
+.rc-sheet-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rc-sheet-meta {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
 }
 
 /* ==========================================================================
-   Calendar Event Card
+   6. Calendar Event Card
+   Date block (weekday + day), title 15px/500, time range, attendees, badge.
    ========================================================================== */
 
-.rc-calendar-items {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.rc-calendar-item {
+.rc-calendar-event-body {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 10px 12px;
-  background: var(--paper, #f8fafc);
-  border: 1px solid var(--line-subtle, #edf2f7);
-  border-radius: var(--radius, 10px);
+  gap: 14px;
 }
 
-.rc-cal-date-badge {
+.rc-cal-date-block {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  padding: 6px 4px;
-  background: var(--panel, #ffffff);
-  border: 1px solid var(--line, #e2e8f0);
-  border-radius: var(--radius-sm, 6px);
-  text-align: center;
+  min-width: 48px;
+  height: 52px;
+  border-radius: var(--radius);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  flex-shrink: 0;
 }
 
-.rc-cal-badge-month {
-  font-size: 0.65rem;
-  font-weight: 700;
+.rc-cal-date-weekday {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
   text-transform: uppercase;
-  color: var(--accent, #4f46e5);
+  color: var(--accent);
 }
 
-.rc-cal-badge-day {
-  font-size: 1.1rem;
-  font-weight: 800;
-  color: var(--ink, #0f172a);
+.rc-cal-date-number {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
 }
 
-.rc-cal-info {
+.rc-cal-event-details {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  flex-grow: 1;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
 }
 
-.rc-cal-title {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--ink, #0f172a);
+.rc-cal-event-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.rc-cal-time {
-  font-size: 0.76rem;
-  color: var(--muted, #64748b);
+.rc-cal-event-time {
+  font-size: 13px;
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
+.rc-cal-event-attendees {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.rc-cal-event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-subtle);
+}
+
 /* ==========================================================================
-   Search Summary Card
+   7. Calendar List Card (NEW)
+   Date header + count, rows: time | title + "duration · people" | video icon
+   ========================================================================== */
+
+.rc-cal-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rc-cal-list-item {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius);
+}
+
+.rc-cal-list-time {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.rc-cal-list-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rc-cal-list-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-cal-list-sub {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-cal-list-video {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+/* ==========================================================================
+   8. Search Summary Card
+   Title + "N points · M sources", tagged points, domain source chips.
    ========================================================================== */
 
 .rc-search-points {
@@ -548,79 +848,220 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  color: var(--ink, #0f172a);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
 }
 
 .rc-search-tag {
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: var(--radius-xs, 4px);
-  background: var(--accent-soft, #eef2ff);
-  color: var(--accent, #4f46e5);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 1px;
+  white-space: nowrap;
 }
 
 .rc-sources-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding-top: 10px;
-  border-top: 1px solid var(--line-subtle, #edf2f7);
+  border-top: 1px solid var(--line-subtle);
 }
 
 .rc-source-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: var(--radius-pill, 9999px);
-  background: var(--paper, #f8fafc);
-  border: 1px solid var(--line, #e2e8f0);
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--muted, #64748b);
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--muted);
   text-decoration: none;
-  transition: all 0.15s ease;
+  box-sizing: border-box;
+  transition: all 150ms ease;
 }
 
 .rc-source-pill:hover {
-  background: var(--panel-hover, #f1f5f9);
-  color: var(--accent, #4f46e5);
-  border-color: var(--accent, #4f46e5);
+  border-color: var(--accent);
+  color: var(--ink);
 }
 
 /* ==========================================================================
-   Collapsible Details for card-first layout
+   9. News Card (NEW)
+   Header "News" + "Searched h:mm pm"
+   Rows: "domain · 2 hours ago" (12px muted) over headline (14px)
+   ========================================================================== */
+
+.rc-news-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rc-news-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius);
+}
+
+.rc-news-meta {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+.rc-news-headline {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.rc-news-headline:hover {
+  color: var(--accent);
+}
+
+.rc-news-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-subtle);
+}
+
+/* ==========================================================================
+   Draft Request Box (Bordered Box, To/Re muted, 14px body)
+   ========================================================================== */
+
+.rc-draft-box {
+  margin: 10px 0;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rc-draft-meta {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-subtle);
+  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rc-draft-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.rc-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-subtle);
+}
+
+/* ==========================================================================
+   Details Collapsible Container ("More" block)
    ========================================================================== */
 
 .rc-details {
-  margin-top: 12px;
-  border-top: 1px dashed var(--line, #e2e8f0);
-  padding-top: 8px;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  overflow: hidden;
 }
 
 .rc-details summary {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--muted, #64748b);
+  padding: 10px 14px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
   cursor: pointer;
+  box-sizing: border-box;
   user-select: none;
-  padding: 4px 0;
 }
 
 .rc-details summary:hover {
-  color: var(--accent, #4f46e5);
+  color: var(--ink);
+}
+
+.rc-details summary:focus-visible {
+  outline: 2px solid var(--accent);
 }
 
 .rc-details-body {
-  margin-top: 6px;
-  padding: 8px 12px;
-  background: var(--paper, #f8fafc);
-  border-radius: var(--radius-sm, 6px);
-  font-size: 0.82rem;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line-subtle);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Mobile Adjustments (at 380px) */
+@media (max-width: 480px) {
+  .rc-card {
+    padding: 12px;
+    border-radius: var(--radius);
+  }
+  .rc-weather-day-row {
+    grid-template-columns: 52px 20px 1fr 28px 28px;
+    gap: 4px;
+    font-size: 12px;
+  }
+  .rc-cal-list-item {
+    grid-template-columns: 1fr auto;
+  }
+  .rc-cal-list-time {
+    grid-column: 1 / -1;
+  }
+}
+
+/* In-place toggle helper classes */
+.rc-row-hidden {
+  display: none !important;
+}
+
+.rc-weather-day-row.rc-row-expanded {
+  display: grid !important;
+}
+
+.rc-cal-list-item.rc-row-expanded {
+  display: grid !important;
+}
+
+.rc-email-item.rc-row-expanded,
+.rc-slack-item.rc-row-expanded,
+.rc-news-item.rc-row-expanded {
+  display: flex !important;
 }
