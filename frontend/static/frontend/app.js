@@ -184,6 +184,7 @@
     el.style.overflowY = el.scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
   };
   const truncateText = (text, max) => (typeof text === 'string' && text.length > max ? `${text.slice(0, max)}…` : text);
+  const safeText = value => (value === null || value === undefined ? '' : String(value));
   const cleanMessageContent = text => safeText(text).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
   const cleanRetiredCardMarkdown = (rawText, cardType) => {
     if (!rawText || typeof rawText !== 'string') return '';
@@ -200,6 +201,8 @@
     }
     return cleaned.replace(/\n{3,}/g, '\n\n').trim();
   };
+
+  const formatRelativeTime = dateInput => {
     if (!dateInput) return '';
     const date = new Date(dateInput);
     if (isNaN(date.getTime())) return '';
