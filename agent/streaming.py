@@ -4,12 +4,14 @@ import json
 import logging
 import re
 import time
+from typing import Any
 
 from django.http import StreamingHttpResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from agent.cards import build_result_card, render_cards
+from agent.cards.registry import TOOL_REGISTRY
 from agent.constants import AGENT_NODES
 from agent.graph.builder import create_graph, ensure_checkpointer
 from agent.llm import StreamTitleFilter
@@ -28,6 +30,20 @@ from agent.utils import (
 from conversations.models import Message
 
 logger = logging.getLogger(__name__)
+
+
+def _build_early_card_from_tool(tool_name: str, tool_output: Any, user_prompt: str) -> dict | None:
+    """Safely build a result card from a tool execution output, or return None."""
+    if not tool_name or tool_name not in TOOL_REGISTRY or tool_output is None:
+        return None
+    content = tool_output.content if hasattr(tool_output, "content") else tool_output
+    call_id = getattr(tool_output, "tool_call_id", "call_1")
+    try:
+        tm = ToolMessage(content=content, name=tool_name, tool_call_id=call_id)
+        return build_result_card([HumanMessage(content=user_prompt), tm])
+    except Exception as e:
+        logger.debug("Failed early card build: %s", e)
+        return None
 
 
 def stream_agent_response(formatted_message, thread, user):
@@ -55,6 +71,7 @@ def stream_approval_response(approval, thread, user, config, approved, modified_
 async def event_stream(formatted_message, thread, user):
     """Async generator that streams agent tokens, status updates, and results as SSE events."""
     local_save = []
+    early_card = None
 
     try:
         async for chunk in run_agent(message=formatted_message, thread_id=thread.id, user=user):
@@ -62,6 +79,27 @@ async def event_stream(formatted_message, thread, user):
 
             if chunk_type == "status":
                 yield f"data: {json.dumps({'type': 'status', 'status': chunk.get('status'), 'message': chunk.get('message')})}\n\n"
+                continue
+            if chunk_type == "tool_start":
+                tool_name = chunk.get("tool")
+                if tool_name in TOOL_REGISTRY:
+                    card_type, _ = TOOL_REGISTRY[tool_name]
+                    yield f"data: {json.dumps({'type': 'card_loading', 'card_type': card_type, 'tool': tool_name})}\n\n"
+                continue
+            if chunk_type == "tool_end":
+                tool_name = chunk.get("tool")
+                tool_output = chunk.get("output")
+                early = _build_early_card_from_tool(tool_name, tool_output, formatted_message)
+                if early:
+                    early_card = early
+                    yield f"data: {json.dumps({'type': 'result_card', 'card': early_card})}\n\n"
+                continue
+            if chunk_type == "card_loading":
+                yield f"data: {json.dumps({'type': 'card_loading', 'card_type': chunk.get('card_type'), 'tool': chunk.get('tool')})}\n\n"
+                continue
+            if chunk_type == "result_card":
+                early_card = chunk.get("card")
+                yield f"data: {json.dumps({'type': 'result_card', 'card': early_card})}\n\n"
                 continue
             if chunk_type == "token":
                 local_save.append(chunk['token'])
@@ -109,8 +147,8 @@ async def event_stream(formatted_message, thread, user):
 
             if final_content:
                 final_content = re.sub(r"【[^】]*】", "", final_content).strip()
-            rc = build_result_card(messages)
-            if rc:
+            rc = early_card or build_result_card(messages)
+            if rc and not early_card:
                 yield f"data: {json.dumps({'type': 'result_card', 'card': rc})}\n\n"
 
             await Message.objects.acreate(
@@ -146,6 +184,8 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
 
         current_plan = approval.get("plan") if isinstance(approval, dict) else None
 
+        early_card = None
+
         async for event in app.astream_events(resume_input, config=config, version="v2"):
             event_type = event["event"]
             metadata = event.get("metadata", {})
@@ -164,6 +204,20 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
 
                 if is_llm_start or is_node_start:
                     yield f"data: {json.dumps({'type': 'status', 'status': status_info.get('status'), 'message': status_info.get('message'), 'node': node_name})}\n\n"
+
+            if event_type == "on_tool_start":
+                tool_name = event.get("name")
+                if tool_name in TOOL_REGISTRY:
+                    card_type, _ = TOOL_REGISTRY[tool_name]
+                    yield f"data: {json.dumps({'type': 'card_loading', 'card_type': card_type, 'tool': tool_name})}\n\n"
+
+            if event_type == "on_tool_end":
+                tool_name = event.get("name")
+                tool_output = event.get("data", {}).get("output")
+                early = _build_early_card_from_tool(tool_name, tool_output, instruction or "")
+                if early:
+                    early_card = early
+                    yield f"data: {json.dumps({'type': 'result_card', 'card': early_card})}\n\n"
 
             if node_name not in AGENT_NODES or event_type != "on_chat_model_stream":
                 continue
@@ -250,8 +304,8 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
         if final_text:
             final_text = re.sub(r"【[^】]*】", "", final_text).strip()
 
-        rc = build_result_card(messages)
-        if rc:
+        rc = early_card or build_result_card(messages)
+        if rc and not early_card:
             yield f"data: {json.dumps({'type': 'result_card', 'card': rc})}\n\n"
 
         await Message.objects.acreate(

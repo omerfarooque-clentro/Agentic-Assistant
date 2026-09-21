@@ -3034,6 +3034,30 @@
         let hasReceivedTokens = false;
         let rafId = null;
         let renderScheduled = false;
+        let streamingCardType = null;
+        let streamingCardEl = null;
+        let streamingTextEl = null;
+        let streamingCardSlot = null;
+
+        const ensureStreamSlots = (order = 'text_first') => {
+          if (!streamingTextEl) {
+            body.innerHTML = '';
+            streamingTextEl = document.createElement('div');
+            streamingTextEl.className = 'markdown-body streaming-text';
+            streamingTextEl.setAttribute('dir', 'auto');
+
+            streamingCardSlot = document.createElement('div');
+            streamingCardSlot.className = 'streaming-card-slot';
+
+            if (order === 'card_first') {
+              body.appendChild(streamingCardSlot);
+              body.appendChild(streamingTextEl);
+            } else {
+              body.appendChild(streamingTextEl);
+              body.appendChild(streamingCardSlot);
+            }
+          }
+        };
 
         const scheduleRender = () => {
           if (renderScheduled) return;
@@ -3044,7 +3068,11 @@
             const isNearBottom = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) <= 40;
             const cleanText = assistantText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
             const safeMd = getStreamSafeMarkdown(cleanText);
-            body.innerHTML = `<div class="markdown-body" dir="auto">${renderMarkdown(safeMd)}</div>`;
+            if (streamingCardSlot) {
+              streamingTextEl.innerHTML = renderMarkdown(safeMd);
+            } else {
+              body.innerHTML = `<div class="markdown-body" dir="auto">${renderMarkdown(safeMd)}</div>`;
+            }
             if (isNearBottom) {
               transcript.scrollTop = transcript.scrollHeight;
             }
@@ -3111,9 +3139,33 @@
             return;
           }
 
+          if (data.type === 'card_loading') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            streamingCardType = data.card_type || data.tool;
+            pending.classList.remove('pending');
+            ensureStreamSlots();
+            if (streamingCardSlot && !streamingCardEl && typeof renderCardSkeleton === 'function') {
+              streamingCardEl = renderCardSkeleton(streamingCardType);
+              streamingCardSlot.innerHTML = '';
+              streamingCardSlot.appendChild(streamingCardEl);
+            }
+            return;
+          }
+
           if (data.type === 'result_card') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
             state.pendingResultCard = data.card;
+            const order = (data.card && data.card.presentation && data.card.presentation.order) || 'text_first';
+            ensureStreamSlots(order);
+            if (streamingCardSlot && typeof renderResultCard === 'function') {
+              const cardEl = renderResultCard(data.card);
+              if (cardEl) {
+                cardEl.classList.add('rc-card-enter');
+                streamingCardSlot.innerHTML = '';
+                streamingCardSlot.appendChild(cardEl);
+                streamingCardEl = cardEl;
+              }
+            }
             return;
           }
 

@@ -586,15 +586,131 @@
     `;
   }
 
-  // Skeleton Loader State
-  function renderCardSkeleton() {
+  function getCardSkeletonHtml(cardType) {
+    const type = (cardType || '').toLowerCase();
+    let iconSvg = SVG_ICONS.search;
+    let title = 'Preparing card';
+    let statusLabel = 'Fetching details…';
+    let bodyHtml = '';
+
+    if (type.includes('weather')) {
+      iconSvg = SVG_ICONS.weatherClear;
+      title = 'Weather';
+      statusLabel = 'Loading forecast…';
+      bodyHtml = `
+        <div class="rc-skeleton-weather-body">
+          <div class="rc-shimmer-box rc-skeleton-weather-temp"></div>
+          <div class="rc-skeleton-weather-meta">
+            <div class="rc-shimmer-box rc-skeleton-line short"></div>
+            <div class="rc-shimmer-box rc-skeleton-line medium"></div>
+          </div>
+        </div>
+        <div class="rc-skeleton-weather-days">
+          <div class="rc-shimmer-box rc-skeleton-weather-day-chip"></div>
+          <div class="rc-shimmer-box rc-skeleton-weather-day-chip"></div>
+          <div class="rc-shimmer-box rc-skeleton-weather-day-chip"></div>
+          <div class="rc-shimmer-box rc-skeleton-weather-day-chip"></div>
+        </div>
+      `;
+    } else if (type.includes('calendar')) {
+      iconSvg = SVG_ICONS.calendar;
+      title = 'Google Calendar';
+      statusLabel = 'Loading schedule…';
+      bodyHtml = `
+        <div class="rc-skeleton-list">
+          <div class="rc-skeleton-list-item">
+            <div class="rc-shimmer-box" style="width: 60px; height: 16px; border-radius: 4px;"></div>
+            <div class="rc-shimmer-box" style="flex: 1; height: 16px; border-radius: 4px;"></div>
+          </div>
+          <div class="rc-skeleton-list-item">
+            <div class="rc-shimmer-box" style="width: 60px; height: 16px; border-radius: 4px;"></div>
+            <div class="rc-shimmer-box" style="flex: 0.75; height: 16px; border-radius: 4px;"></div>
+          </div>
+        </div>
+      `;
+    } else if (type.includes('email') || type.includes('gmail')) {
+      iconSvg = SVG_ICONS.gmail;
+      title = 'Gmail';
+      statusLabel = 'Fetching messages…';
+      bodyHtml = `
+        <div class="rc-skeleton-list">
+          <div class="rc-skeleton-list-item">
+            <div class="rc-shimmer-box rc-skeleton-avatar"></div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <div class="rc-shimmer-box rc-skeleton-line short"></div>
+              <div class="rc-shimmer-box rc-skeleton-line full"></div>
+            </div>
+          </div>
+          <div class="rc-skeleton-list-item">
+            <div class="rc-shimmer-box rc-skeleton-avatar"></div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <div class="rc-shimmer-box rc-skeleton-line short"></div>
+              <div class="rc-shimmer-box rc-skeleton-line medium"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (type.includes('slack')) {
+      iconSvg = SVG_ICONS.slack;
+      title = 'Slack';
+      statusLabel = 'Reading messages…';
+      bodyHtml = `
+        <div class="rc-skeleton-list">
+          <div class="rc-skeleton-list-item">
+            <div class="rc-shimmer-box rc-skeleton-avatar"></div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <div class="rc-shimmer-box rc-skeleton-line short"></div>
+              <div class="rc-shimmer-box rc-skeleton-line full"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (type.includes('sheet')) {
+      iconSvg = SVG_ICONS.sheets;
+      title = 'Google Sheets';
+      statusLabel = 'Loading data…';
+      bodyHtml = `
+        <div class="rc-skeleton-list">
+          <div class="rc-shimmer-box" style="height: 22px; border-radius: 4px;"></div>
+          <div class="rc-shimmer-box" style="height: 18px; border-radius: 4px;"></div>
+          <div class="rc-shimmer-box" style="height: 18px; border-radius: 4px;"></div>
+        </div>
+      `;
+    } else {
+      bodyHtml = `
+        <div class="rc-skeleton-list">
+          <div class="rc-shimmer-box rc-skeleton-line full"></div>
+          <div class="rc-shimmer-box rc-skeleton-line medium"></div>
+          <div class="rc-shimmer-box rc-skeleton-line short"></div>
+        </div>
+      `;
+    }
+
     return `
-      <div class="rc-card rc-skeleton" role="status" aria-label="Loading card content">
-        <div class="rc-skeleton-line short"></div>
-        <div class="rc-skeleton-line full"></div>
-        <div class="rc-skeleton-line medium"></div>
+      <div class="rc-card rc-skeleton-card" role="status" aria-label="Loading card content">
+        <div class="rc-skeleton-header">
+          <div class="rc-skeleton-header-left">
+            ${iconSvg}
+            <span style="font-size: 13px; font-weight: 600; color: var(--ink);">${escapeHtml(title)}</span>
+          </div>
+          <div class="rc-skeleton-badge">
+            <span class="rc-skeleton-dot"></span>
+            <span>${escapeHtml(statusLabel)}</span>
+          </div>
+        </div>
+        <div class="rc-skeleton-content">
+          ${bodyHtml}
+        </div>
       </div>
     `;
+  }
+
+  // Skeleton Loader State
+  function renderCardSkeleton(cardType) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'rc-container rc-skeleton-container';
+    wrapper.innerHTML = getCardSkeletonHtml(cardType);
+    return wrapper;
   }
 
   // --- Main Dispatcher ---
@@ -635,7 +751,7 @@
           html = renderNewsCard(data);
           break;
         case 'skeleton':
-          html = renderCardSkeleton();
+          html = getCardSkeletonHtml(data.card_type || data.type);
           break;
         default:
           return null;

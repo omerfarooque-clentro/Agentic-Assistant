@@ -79,6 +79,19 @@ async def run_agent(message: str, thread_id: int, user):
                     **status_info,
                 }
 
+            if event_type == "on_tool_start":
+                yield {
+                    "type": "tool_start",
+                    "tool": event.get("name"),
+                }
+
+            if event_type == "on_tool_end":
+                yield {
+                    "type": "tool_end",
+                    "tool": event.get("name"),
+                    "output": event.get("data", {}).get("output"),
+                }
+
             if node_name not in AGENT_NODES or event_type != "on_chat_model_stream":
                 continue
 

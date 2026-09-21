@@ -1,8 +1,10 @@
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 from django.test import TestCase
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agent.cards.result_cards import build_result_card
+from conversations.models import Message, Thread
 
 
 class ResultCardsOrchestratorTests(TestCase):
@@ -201,3 +203,114 @@ class ResultCardsOrchestratorTests(TestCase):
         self.assertEqual(event["end"], "2026-03-23T16:00:00")
         self.assertEqual(event["attendees"], ["alice@example.com", "bob@example.com"])
         self.assertEqual(event["html_link"], "https://calendar.google.com/event?eid=xyz")
+
+    @patch("agent.runner.ensure_checkpointer", new_callable=AsyncMock)
+    @patch("agent.runner.get_user_tools", new_callable=AsyncMock)
+    @patch("agent.runner.create_graph")
+    async def test_runner_emits_tool_start_and_tool_end(self, mock_create_graph, mock_get_tools, mock_ensure_cp):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = await User.objects.acreate_user(username="runneruser", email="runner@example.com")
+        thread = await Thread.objects.acreate(name="Test Thread", user=user)
+        mock_get_tools.return_value = {"research": []}
+
+        weather_json = json.dumps(self.sample_weather_data)
+
+        async def fake_astream_events(*args, **kwargs):
+            # 1. Tool starts
+            yield {
+                "event": "on_tool_start",
+                "name": "get_weather",
+                "metadata": {"langgraph_node": "tools"},
+            }
+            # 2. Tool ends with output
+            yield {
+                "event": "on_tool_end",
+                "name": "get_weather",
+                "metadata": {"langgraph_node": "tools"},
+                "data": {"output": ToolMessage(content=weather_json, name="get_weather", tool_call_id="call_w")},
+            }
+            # 3. Agent streams tokens
+            yield {
+                "event": "on_chat_model_stream",
+                "metadata": {"langgraph_node": "general_agent"},
+                "data": {"chunk": AIMessage(content="Here is the weather.")},
+            }
+
+        mock_app = MagicMock()
+        mock_app.astream_events = fake_astream_events
+        mock_state = MagicMock()
+        mock_state.interrupts = []
+        mock_state.values = {
+            "messages": [
+                HumanMessage(content="weather in Berlin"),
+                ToolMessage(content=weather_json, name="get_weather", tool_call_id="call_w"),
+                AIMessage(content="Here is the weather."),
+            ],
+            "call_metrics": [],
+        }
+        mock_app.aget_state = AsyncMock(return_value=mock_state)
+        mock_create_graph.return_value = mock_app
+
+        from agent.runner import run_agent
+        events = []
+        async for item in run_agent(message="weather in Berlin", thread_id=thread.id, user=user):
+            events.append(item)
+
+        types = [e["type"] for e in events]
+        self.assertIn("tool_start", types)
+        self.assertIn("tool_end", types)
+        self.assertIn("token", types)
+        self.assertIn("completed", types)
+
+        start_event = next(e for e in events if e["type"] == "tool_start")
+        self.assertEqual(start_event["tool"], "get_weather")
+
+        end_event = next(e for e in events if e["type"] == "tool_end")
+        self.assertEqual(end_event["tool"], "get_weather")
+
+    @patch("agent.streaming.run_agent")
+    async def test_event_stream_translates_tool_events_to_cards(self, mock_run_agent):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = await User.objects.acreate_user(username="streamuser", email="stream@example.com")
+        thread = await Thread.objects.acreate(name="Test Thread", user=user)
+        weather_json = json.dumps(self.sample_weather_data)
+
+        async def fake_run_agent(*args, **kwargs):
+            yield {"type": "tool_start", "tool": "get_weather"}
+            yield {"type": "tool_end", "tool": "get_weather", "output": ToolMessage(content=weather_json, name="get_weather", tool_call_id="call_w")}
+            yield {"type": "token", "token": "Weather is sunny."}
+            yield {
+                "type": "completed",
+                "result": {"messages": [AIMessage(content="Weather is sunny.")]},
+                "metrics": {},
+            }
+
+        mock_run_agent.side_effect = fake_run_agent
+
+        from agent.streaming import event_stream
+        sse_events = []
+        async for chunk in event_stream(formatted_message="weather in Berlin", thread=thread, user=user):
+            if chunk.startswith("data: "):
+                sse_events.append(json.loads(chunk[6:].strip()))
+
+        sse_types = [e["type"] for e in sse_events]
+        self.assertIn("card_loading", sse_types)
+        self.assertIn("result_card", sse_types)
+        self.assertIn("token", sse_types)
+        self.assertIn("completed", sse_types)
+
+        # Ensure result_card is NOT duplicated
+        self.assertEqual(sse_types.count("result_card"), 1)
+
+        card_event = next(e for e in sse_events if e["type"] == "result_card")
+        self.assertEqual(card_event["card"]["type"], "weather")
+        self.assertEqual(card_event["card"]["data"]["city"], "Berlin")
+
+        # Ensure message is saved to DB with the card attached
+        saved_msg = await Message.objects.filter(thread=thread, role="agent").alast()
+        self.assertIsNotNone(saved_msg)
+        self.assertIsNotNone(saved_msg.cards)
+        self.assertEqual(saved_msg.cards[0]["type"], "weather")
+
