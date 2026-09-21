@@ -78,6 +78,9 @@ def build_result_card(messages: list[Any]) -> dict | None:
             if not card_data:
                 continue
 
+            if card_type == "calendar_event" and isinstance(card_data, dict) and len(card_data.get("events", [])) > 1:
+                card_type = "calendar_list"
+
             presentation = get_presentation(user_text)
 
             envelope_dict = {

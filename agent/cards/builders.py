@@ -4,6 +4,7 @@ import logging
 import re
 from typing import Any
 from urllib.parse import urlparse
+import dateutil.parser
 
 from .schemas import (
     CalendarEventData,
@@ -21,6 +22,13 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+MEET_URL_PATTERN = re.compile(r"(?:Meeting|Google Meet|Conference):\s*(https?://[^\s\r\n]+)", re.IGNORECASE)
+
+SOCIAL_OR_COMMENT_DOMAINS = {
+    "facebook.com", "x.com", "twitter.com", "instagram.com",
+    "reddit.com", "tiktok.com", "threads.net"
+}
 
 
 def _safe_load_payload(raw: Any) -> Any:
@@ -53,6 +61,47 @@ def _safe_load_payload(raw: Any) -> Any:
     return raw_str
 
 
+def _validate_meet_url(url: str | None) -> str | None:
+    """Accept only https URLs whose host is meet.google.com, zoom.us, or teams.microsoft.com."""
+    if not url or not isinstance(url, str):
+        return None
+    url = url.strip()
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return None
+        host = (parsed.hostname or "").lower()
+        if (
+            host == "meet.google.com"
+            or host == "zoom.us"
+            or host.endswith(".zoom.us")
+            or host == "teams.microsoft.com"
+        ):
+            return url
+    except Exception:
+        return None
+    return None
+
+
+def _clean_iso_datetime(raw: str) -> str:
+    """Clean date/time string into ISO 8601, removing bracketed notes like '[weekday: Wednesday; ISO weekday: 3]'."""
+    if not raw or not isinstance(raw, str):
+        return ""
+    cleaned = re.sub(r"\[.*?\]", "", raw)
+    cleaned = re.sub(r"\(.*?\)", "", cleaned).strip()
+    if not cleaned:
+        return ""
+    # If range like "2026-03-23T15:00:00 to 2026-03-23T16:00:00"
+    if " to " in cleaned:
+        parts = cleaned.split(" to ")
+        return f"{_clean_iso_datetime(parts[0])} to {_clean_iso_datetime(parts[1])}"
+    try:
+        dt = dateutil.parser.parse(cleaned)
+        return dt.isoformat()
+    except Exception:
+        return cleaned
+
+
 def build_weather(tool_result: Any) -> dict | None:
     try:
         data = _safe_load_payload(tool_result)
@@ -75,9 +124,15 @@ def _parse_email_address(raw: str) -> tuple[str, str]:
         return "Unknown", ""
     match = re.match(r"^(.*?)\s*<([^>]+)>$", raw.strip())
     if match:
-        name, email = match.group(1).strip().strip('"'), match.group(2).strip()
+        name = match.group(1).strip().strip('"\'')
+        email = match.group(2).strip()
         return name or email, email
-    return raw.strip(), raw.strip()
+    clean = raw.strip().strip('"\'')
+    if "@" in clean:
+        parts = clean.split("@")
+        name = parts[0].replace(".", " ").replace("_", " ").title()
+        return name or clean, clean
+    return clean, clean
 
 
 def build_email_list(tool_result: Any, query: str = "") -> dict | None:
@@ -93,6 +148,8 @@ def build_email_list(tool_result: Any, query: str = "") -> dict | None:
                 sender_raw = item.get("from") or item.get("sender") or "Unknown"
                 name, email = _parse_email_address(sender_raw)
                 msg_id = str(item.get("id") or item.get("message_id") or "")
+                raw_date = str(item.get("date") or item.get("received_at") or "")
+                received_at = _clean_iso_datetime(raw_date) if raw_date else ""
                 items.append(
                     EmailItem(
                         id=msg_id,
@@ -100,7 +157,7 @@ def build_email_list(tool_result: Any, query: str = "") -> dict | None:
                         sender_email=email,
                         subject=item.get("subject") or "(No Subject)",
                         snippet=item.get("snippet") or item.get("body", "")[:150],
-                        received_at=item.get("date") or item.get("received_at") or "",
+                        received_at=received_at,
                         unread=bool(item.get("unread", False)),
                         thread_url=item.get("thread_url") or (f"https://mail.google.com/mail/u/0/#inbox/{msg_id}" if msg_id else None),
                     )
@@ -115,6 +172,8 @@ def build_email_list(tool_result: Any, query: str = "") -> dict | None:
                 sender_raw = item.get("from") or item.get("sender") or "Unknown"
                 name, email = _parse_email_address(sender_raw)
                 msg_id = str(item.get("id") or item.get("message_id") or "")
+                raw_date = str(item.get("date") or item.get("received_at") or "")
+                received_at = _clean_iso_datetime(raw_date) if raw_date else ""
                 items.append(
                     EmailItem(
                         id=msg_id,
@@ -122,7 +181,7 @@ def build_email_list(tool_result: Any, query: str = "") -> dict | None:
                         sender_email=email,
                         subject=item.get("subject") or "(No Subject)",
                         snippet=item.get("snippet") or item.get("body", "")[:150],
-                        received_at=item.get("date") or item.get("received_at") or "",
+                        received_at=received_at,
                         unread=bool(item.get("unread", False)),
                         thread_url=item.get("thread_url") or (f"https://mail.google.com/mail/u/0/#inbox/{msg_id}" if msg_id else None),
                     )
@@ -146,7 +205,8 @@ def build_email_list(tool_result: Any, query: str = "") -> dict | None:
                 name, email = _parse_email_address(sender_raw)
                 raw_subj = subj_m.group(1).strip() if subj_m else "(No Subject)"
                 subject = "(No Subject)" if raw_subj.lower() == "(no subject)" else raw_subj
-                received_at = date_m.group(1).strip() if date_m and "(unknown date)" not in date_m.group(1) else ""
+                raw_date = date_m.group(1).strip() if date_m and "(unknown date)" not in date_m.group(1) else ""
+                received_at = _clean_iso_datetime(raw_date) if raw_date else ""
                 snippet = snip_m.group(1).strip() if snip_m else ""
                 thread_url = link_m.group(1).strip() if link_m and link_m.group(1).strip() != "N/A" else f"https://mail.google.com/mail/u/0/#inbox/{msg_id}"
 
@@ -166,11 +226,10 @@ def build_email_list(tool_result: Any, query: str = "") -> dict | None:
         if not items:
             return None
 
-        total = len(items)
-        unread = sum(1 for it in items if it.unread)
+        unread = sum(1 for item in items if item.unread)
         data = EmailListData(
-            query=query or "Recent emails",
-            total=total,
+            query=query or "Recent Emails",
+            total=len(items),
             unread=unread,
             items=items,
         )
@@ -178,6 +237,18 @@ def build_email_list(tool_result: Any, query: str = "") -> dict | None:
     except Exception as e:
         logger.debug("Failed building email list card: %s", e)
         return None
+
+
+def _resolve_slack_mention_id(slack_id: str) -> str:
+    """Resolve a Slack user ID (e.g. U0A1MQ7FYEB) to display name from database cache, or return empty string."""
+    try:
+        from agent.models import SlackResource
+        res = SlackResource.objects.filter(slack_id=slack_id).first()
+        if res and res.name:
+            return f"@{res.name.lstrip('@#').title()}"
+    except Exception:
+        pass
+    return ""
 
 
 def _clean_slack_channel(raw: str) -> str:
@@ -193,6 +264,13 @@ def _clean_slack_sender(raw: str) -> str:
     if not raw:
         return "User"
     s = re.sub(r"\s*\(ID:\s*[^)]+\)", "", raw).strip()
+    # Check if raw ID like <@U0A1MQ7FYEB> or U0A1MQ7FYEB
+    mention_match = re.match(r"^<?@?([A-Z0-9]{8,14})>?$", s)
+    if mention_match:
+        resolved = _resolve_slack_mention_id(mention_match.group(1))
+        if resolved:
+            return resolved.lstrip("@")
+        return "User"
     match = re.match(r"^(.*?)\s*<([^>]+)>$", s)
     if match:
         name = match.group(1).strip().strip('"')
@@ -202,10 +280,16 @@ def _clean_slack_sender(raw: str) -> str:
 
 
 def _clean_slack_text(raw: str) -> str:
-    """Clean message body, stripping trailing Context after/before metadata blocks."""
+    """Clean message body, resolving mentions and stripping trailing Context after/before metadata blocks."""
     if not raw:
         return ""
-    cleaned = re.split(r"\bContext (?:after|before):\s*", raw, flags=re.IGNORECASE)[0]
+    # Resolve user mentions like <@U0A1MQ7FYEB>
+    cleaned = re.sub(
+        r"<@([A-Z0-9]{8,14})>",
+        lambda m: _resolve_slack_mention_id(m.group(1)) or "@user",
+        raw,
+    )
+    cleaned = re.split(r"\bContext (?:after|before):\s*", cleaned, flags=re.IGNORECASE)[0]
     cleaned = re.sub(r"(?:\n|^)\s*---+\s*$", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"\s*---+\s*$", "", cleaned)
     cleaned = re.sub(r"\bMessage_ts:\s*[\d.]+", "", cleaned, flags=re.IGNORECASE)
@@ -352,11 +436,12 @@ def build_sheet_view(tool_result: Any) -> dict | None:
                 if line.startswith("Row") and ":" in line:
                     val_str = line.split(":", 1)[1].strip()
                     try:
-                        parsed_val = ast.literal_eval(val_str)
-                        if isinstance(parsed_val, list):
-                            parsed_rows.append(parsed_val)
+                        parsed_row = ast.literal_eval(val_str)
+                        if isinstance(parsed_row, list):
+                            parsed_rows.append(parsed_row)
                     except Exception:
                         pass
+
             if parsed_rows:
                 columns = [str(c) for c in parsed_rows[0]]
                 rows = parsed_rows[1:] if len(parsed_rows) > 1 else []
@@ -364,7 +449,12 @@ def build_sheet_view(tool_result: Any) -> dict | None:
         if not columns and not rows:
             return None
 
-        data = SheetViewData(title=title, columns=columns, rows=rows, url=url)
+        data = SheetViewData(
+            title=title,
+            columns=columns,
+            rows=rows,
+            url=url,
+        )
         return data.model_dump()
     except Exception as e:
         logger.debug("Failed building sheet view card: %s", e)
@@ -374,55 +464,40 @@ def build_sheet_view(tool_result: Any) -> dict | None:
 def build_sheet_update(tool_result: Any) -> dict | None:
     try:
         payload = _safe_load_payload(tool_result)
-        title = "Sheet Updated"
+        title = "Sheet Update"
         columns: list[str] = []
         rows: list[list[Any]] = []
         row_number: int | None = None
         url: str | None = None
 
         if isinstance(payload, dict):
-            title = payload.get("title") or payload.get("range") or title
+            title = payload.get("title") or title
+            columns = payload.get("columns") or []
+            rows = payload.get("rows") or []
+            row_number = payload.get("row_number") or payload.get("highlight_row_index")
             url = payload.get("url")
-            columns = payload.get("columns", [])
-            rows = payload.get("rows") or payload.get("values") or []
-            row_number = payload.get("row_number")
         elif isinstance(payload, str):
+            # Parse `Successfully updated range 'Sheet1!A4:C4' in spreadsheet abc123`
+            # or `Successfully appended 1 row(s) to table 'Table1' in spreadsheet abc123`
             range_m = re.search(r"range '([^']+)'", payload)
             if range_m:
-                range_name = range_m.group(1)
-                title = f"Updated {range_name}"
-                # Try finding row number from range like Sheet1!A5:D5
-                clean_range = range_name.split("!")[-1] if "!" in range_name else range_name
-                num_m = re.search(r"[A-Za-z]+(\d+)", clean_range)
-                if num_m:
-                    row_number = int(num_m.group(1))
+                title = range_m.group(1)
+                # Try to extract row number from range (e.g., Sheet1!A4:C4 -> 4)
+                range_part = range_m.group(1).split("!")[-1]
+                row_m = re.search(r"[A-Za-z]+(\d+)", range_part)
+                if row_m:
+                    row_number = int(row_m.group(1))
+            else:
+                table_m = re.search(r"table '([^']+)'", payload)
+                if table_m:
+                    title = f"Table {table_m.group(1)}"
 
             sheet_id_m = re.search(r"spreadsheet ([A-Za-z0-9_-]+)", payload)
             if sheet_id_m:
                 url = f"https://docs.google.com/spreadsheets/d/{sheet_id_m.group(1)}/edit"
 
-            # Check for appended row message
-            append_m = re.search(r"appended (\d+) row\(s\) to table '([^']+)'", payload)
-            if append_m:
-                title = f"Appended to {append_m.group(2)}"
-
-            # If values were rendered in output
-            for line in payload.splitlines():
-                if line.strip().startswith("Row") and ":" in line:
-                    val_str = line.split(":", 1)[1].strip()
-                    try:
-                        parsed_val = ast.literal_eval(val_str)
-                        if isinstance(parsed_val, list):
-                            rows.append(parsed_val)
-                    except Exception:
-                        pass
-
-        if not rows and not columns and not url and not row_number:
-            # At least need title or success confirmation
-            if isinstance(payload, str) and "Successfully" in payload:
-                title = "Sheet Updated Successfully"
-            else:
-                return None
+        if not url and not row_number and "Successfully" not in str(payload):
+            return None
 
         data = SheetUpdateData(
             title=title,
@@ -449,13 +524,13 @@ def build_calendar_event(tool_result: Any) -> dict | None:
                 if not isinstance(ev, dict) or ("summary" not in ev and "title" not in ev):
                     continue
                 title = ev.get("summary") or ev.get("title") or "Event"
-                start = str(ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date") or ev.get("start") or "")
-                end = str(ev.get("end", {}).get("dateTime") or ev.get("end", {}).get("date") or ev.get("end") or "")
+                start = _clean_iso_datetime(str(ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date") or ev.get("start") or ""))
+                end = _clean_iso_datetime(str(ev.get("end", {}).get("dateTime") or ev.get("end", {}).get("date") or ev.get("end") or ""))
                 attendees = [
                     a.get("email") if isinstance(a, dict) else str(a)
                     for a in ev.get("attendees", [])
                 ]
-                meet_url = ev.get("hangoutLink") or ev.get("meet_url")
+                meet_url = _validate_meet_url(ev.get("hangoutLink") or ev.get("meet_url"))
                 html_link = ev.get("htmlLink") or ev.get("html_link")
                 status = ev.get("status")
                 events.append(
@@ -470,60 +545,140 @@ def build_calendar_event(tool_result: Any) -> dict | None:
                     )
                 )
         elif isinstance(payload, str):
-            # Check for creation/update confirmation
-            # e.g.: Successfully created event 'Strategic Partnership Kickoff' for 2026-03-23T15:00:00 to 2026-03-23T16:00:00 (UTC). Attendees: ... Link: ...
+            # 1. Creation / update confirmation
+            # Matches:
+            # - Successfully created event '...' for ... Link: ... Google Meet: ...
+            # - Successfully modified event '...' (ID: ...) for ... Link: ... Conference: ...
             created_m = re.search(
-                r"Successfully (?:created|updated) event '([^']+)'(?: for (.*?)(?: to (.*?)(?:\s*\((.*?)\))?)?)?(?:\.|$)",
+                r"Successfully (?:created|updated|modified) event '([^']+)'(?: \(ID:[^)]+\))?(?: for (.*?)(?: to (.*?)(?:\s*\((.*?)\))?)?)?(?:\.|$)",
                 payload,
+                re.IGNORECASE,
             )
             if created_m:
                 title = created_m.group(1).strip()
-                start = (created_m.group(2) or "").strip()
-                end = (created_m.group(3) or "").strip()
+                start = _clean_iso_datetime(created_m.group(2) or "")
+                end = _clean_iso_datetime(created_m.group(3) or "")
                 link_m = re.search(r"Link:\s*([^\s\r\n]+)", payload)
                 att_m = re.search(r"Attendees:\s*(.*?)(?:\.\s*Link:|\.\s*$|Link:|$)", payload)
                 attendees = [a.strip() for a in att_m.group(1).split(",") if a.strip()] if att_m else []
+
+                meet_m = MEET_URL_PATTERN.search(payload)
+                meet_url = _validate_meet_url(meet_m.group(1)) if meet_m else None
+
                 events.append(
                     CalendarEventItem(
                         title=title,
                         start=start,
                         end=end,
                         attendees=attendees,
+                        meet_url=meet_url,
+                        html_link=link_m.group(1).strip() if link_m and link_m.group(1).strip() != "No Link" else None,
+                        status="confirmed",
+                    )
+                )
+            elif re.search(r"Event (?:created|updated|modified) successfully", payload, re.IGNORECASE):
+                title_m = re.search(r"(?:Title|Summary|Event):\s*([^\r\n]+)", payload, re.IGNORECASE)
+                starts_m = re.search(r"(?:Starts?|Start Time):\s*([^\r\n]+)", payload, re.IGNORECASE)
+                ends_m = re.search(r"(?:Ends?|End Time):\s*([^\r\n]+)", payload, re.IGNORECASE)
+                link_m = re.search(r"Link:\s*([^\s\r\n]+)", payload)
+                meet_m = MEET_URL_PATTERN.search(payload)
+                meet_url = _validate_meet_url(meet_m.group(1)) if meet_m else None
+
+                att_list = []
+                att_section = re.search(r"Attendees:\s*([\s\S]*?)(?=\n-\s*[A-Za-z]+:|\n[A-Za-z]+:|\Z)", payload)
+                if att_section:
+                    att_str = att_section.group(1).strip()
+                    for att_item in att_str.split(","):
+                        cleaned_att = re.sub(r"^[-*\s]+", "", att_item).strip()
+                        if cleaned_att and not cleaned_att.startswith("Link"):
+                            att_list.append(cleaned_att)
+
+                events.append(
+                    CalendarEventItem(
+                        title=title_m.group(1).strip() if title_m else "Scheduled Event",
+                        start=_clean_iso_datetime(starts_m.group(1).strip()) if starts_m else "",
+                        end=_clean_iso_datetime(ends_m.group(1).strip()) if ends_m else "",
+                        attendees=att_list,
+                        meet_url=meet_url,
                         html_link=link_m.group(1).strip() if link_m and link_m.group(1).strip() != "No Link" else None,
                         status="confirmed",
                     )
                 )
 
-            # Single event format:
-            # - Title: Team Sync\n- Starts: 2026-03-29 10:00:00\n- Ends: ...\n- Link: ...
-            if not events and ("- Title:" in payload or "Title:" in payload):
-                title_m = re.search(r"Title:\s*([^\r\n]+)", payload)
-                starts_m = re.search(r"Starts?:\s*([^\r\n]+)", payload)
-                ends_m = re.search(r"Ends?:\s*([^\r\n]+)", payload)
-                link_m = re.search(r"Link:\s*([^\r\n]+)", payload)
+            # 2. Single event format (e.g. from get_events with detailed=True or single event):
+            # Event Details:
+            # - Title: Team Sync
+            # - Starts: 2026-03-29 10:00:00
+            # - Ends: ...
+            # - Link: ...
+            if not events and (
+                "Event Details:" in payload
+                or (re.search(r"(?:^|\n)(?:Title|Summary|Event):\s*", payload, re.IGNORECASE) and "Successfully retrieved" not in payload and not payload.strip().startswith("-"))
+            ):
+                title_m = re.search(r"(?:Title|Summary|Event):\s*([^\r\n]+)", payload, re.IGNORECASE)
+                starts_m = re.search(r"(?:Starts?|Start Time):\s*([^\r\n]+)", payload, re.IGNORECASE)
+                ends_m = re.search(r"(?:Ends?|End Time):\s*([^\r\n]+)", payload, re.IGNORECASE)
+                link_m = re.search(r"Link:\s*([^\s\r\n]+)", payload)
+                meet_m = MEET_URL_PATTERN.search(payload)
+                meet_url = _validate_meet_url(meet_m.group(1)) if meet_m else None
+
+                # Extract attendees if present
+                att_list = []
+                att_section = re.search(r"Attendees:\s*([\s\S]*?)(?=\n-\s*[A-Za-z]+:|\n[A-Za-z]+:|\Z)", payload)
+                if att_section:
+                    att_str = att_section.group(1).strip()
+                    if "\n" in att_str:
+                        for att_line in att_str.splitlines():
+                            att_line = re.sub(r"^[-*\s]+", "", att_line).strip()
+                            if att_line and not att_line.startswith("Event ID") and not att_line.startswith("Link"):
+                                att_list.append(att_line)
+                    else:
+                        for a in att_str.split(","):
+                            a = a.strip()
+                            if a and a != "None":
+                                att_list.append(a)
+
                 if title_m:
                     events.append(
                         CalendarEventItem(
                             title=title_m.group(1).strip(),
-                            start=starts_m.group(1).strip() if starts_m else "",
-                            end=ends_m.group(1).strip() if ends_m else "",
+                            start=_clean_iso_datetime(starts_m.group(1).strip()) if starts_m else "",
+                            end=_clean_iso_datetime(ends_m.group(1).strip()) if ends_m else "",
+                            attendees=att_list,
+                            meet_url=meet_url,
                             html_link=link_m.group(1).strip() if link_m and link_m.group(1).strip() != "No Link" else None,
+                            status=None,  # Not confirmed on read
                         )
                     )
-            # Multiple events format: - "Title" (Starts: ..., Ends: ...)\n Link: ...
+
+            # 3. Multiple events format (from get_events):
+            # - "Title" (Starts: ..., Ends: ...) Meeting: ... ID: ... | Link: ...
             if not events:
                 multi_matches = re.finditer(
-                    r'-\s*"([^"]+)"\s*\((?:Starts?:\s*([^,]+),\s*Ends?:\s*([^)]+))\)(?:[\s\S]*?Link:\s*([^\s\r\n]+))?',
+                    r'-\s*"([^"]+)"\s*\((?:Starts?:\s*([^,]+),\s*Ends?:\s*([^)]+))\)([\s\S]*?)(?=(?:\n-\s*"|\Z))',
                     payload,
                 )
                 for m in multi_matches:
-                    link = m.group(4) if m.group(4) and m.group(4) != "No Link" else None
+                    title = m.group(1).strip()
+                    start = _clean_iso_datetime(m.group(2).strip())
+                    end = _clean_iso_datetime(m.group(3).strip())
+                    segment = m.group(4)
+
+                    # Scope Link: and Meeting: to THIS event's segment only
+                    link_m = re.search(r"Link:\s*([^\s\r\n]+)", segment)
+                    link = link_m.group(1).strip() if link_m and link_m.group(1).strip() != "No Link" else None
+
+                    meet_m = MEET_URL_PATTERN.search(segment)
+                    meet_url = _validate_meet_url(meet_m.group(1)) if meet_m else None
+
                     events.append(
                         CalendarEventItem(
-                            title=m.group(1).strip(),
-                            start=m.group(2).strip(),
-                            end=m.group(3).strip(),
+                            title=title,
+                            start=start,
+                            end=end,
+                            meet_url=meet_url,
                             html_link=link,
+                            status=None,
                         )
                     )
 
@@ -535,6 +690,41 @@ def build_calendar_event(tool_result: Any) -> dict | None:
     except Exception as e:
         logger.debug("Failed building calendar event card: %s", e)
         return None
+
+
+def _clean_search_domain(domain: str) -> str:
+    """Normalize domain by lowercasing and removing 'www.' prefix."""
+    if not domain:
+        return "source"
+    d = domain.lower().strip()
+    if d.startswith("www."):
+        d = d[4:]
+    return d
+
+
+def _is_social_or_comment_domain(domain: str) -> bool:
+    """Check if domain is a social media or comment platform."""
+    clean_d = _clean_search_domain(domain)
+    for blocked in SOCIAL_OR_COMMENT_DOMAINS:
+        if clean_d == blocked or clean_d.endswith("." + blocked):
+            return True
+    return False
+
+
+def _clean_search_sentence(raw: str) -> str:
+    """Strip markdown headers, bold, bullets, backticks into a clean sentence."""
+    if not raw:
+        return ""
+    # Strip markdown headings like ### Title
+    cleaned = re.sub(r"#{1,6}\s*", "", raw)
+    # Strip bullet indicators
+    cleaned = re.sub(r"^[-*•▪▫\d.)\s]+", "", cleaned)
+    # Strip bold / italics / code markers
+    cleaned = re.sub(r"[*_`]", "", cleaned)
+    cleaned = cleaned.strip()
+    # Ensure one sentence: split at first period followed by space
+    first_sent = re.split(r"(?<=[.!?])\s+", cleaned)[0]
+    return first_sent.strip()
 
 
 def build_search_summary(tool_result: Any) -> dict | None:
@@ -558,31 +748,44 @@ def build_search_summary(tool_result: Any) -> dict | None:
                 if not isinstance(item, dict):
                     continue
                 url = item.get("url") or ""
-                domain = urlparse(url).netloc if url else "source"
-                if domain and domain not in seen_domains:
-                    seen_domains.add(domain)
-                    sources.append(SearchSource(domain=domain, url=url))
+                raw_domain = urlparse(url).netloc if url else ""
+                clean_dom = _clean_search_domain(raw_domain)
+
+                # Skip social-media / comment domains
+                if _is_social_or_comment_domain(clean_dom):
+                    continue
+
+                if clean_dom and clean_dom not in seen_domains:
+                    seen_domains.add(clean_dom)
+                    sources.append(SearchSource(domain=clean_dom, url=url))
 
                 content = item.get("content") or item.get("snippet") or item.get("title") or ""
                 if content:
-                    first_sent = content.strip().split(". ")[0]
-                    points.append(SearchPoint(tag=item.get("title", "Result")[:30], text=first_sent))
+                    # Skip comment threads
+                    if re.search(r"^(?:Replying to|View more comments|\d+ comments|\d+ points|Posted by)\b", content.strip(), re.IGNORECASE):
+                        continue
+                    cleaned_point = _clean_search_sentence(content)
+                    if cleaned_point and len(cleaned_point) > 15:
+                        points.append(SearchPoint(tag=clean_dom, text=cleaned_point))
         elif isinstance(payload, str):
             # Parse text with URLs
             url_matches = re.findall(r"https?://[^\s)\]]+", payload)
             for url in url_matches:
-                domain = urlparse(url).netloc
-                if domain and domain not in seen_domains:
-                    seen_domains.add(domain)
-                    sources.append(SearchSource(domain=domain, url=url))
+                raw_domain = urlparse(url).netloc
+                clean_dom = _clean_search_domain(raw_domain)
+                if _is_social_or_comment_domain(clean_dom):
+                    continue
+                if clean_dom and clean_dom not in seen_domains:
+                    seen_domains.add(clean_dom)
+                    sources.append(SearchSource(domain=clean_dom, url=url))
 
             for line in payload.splitlines():
                 line = line.strip()
-                if (line.startswith("-") or line.startswith("*") or (len(line) > 3 and line[:2].isdigit() and line[2] in ".)")):
-                    clean = re.sub(r"^[-*\d.)\s]+", "", line).strip()
-                    if clean and len(clean) > 10:
-                        tag = clean.split(":")[0][:25] if ":" in clean else "Key Point"
-                        points.append(SearchPoint(tag=tag, text=clean))
+                if line.startswith("-") or line.startswith("*") or (len(line) > 3 and line[:2].isdigit() and line[2] in ".)"):
+                    cleaned_point = _clean_search_sentence(line)
+                    if cleaned_point and len(cleaned_point) > 15:
+                        default_tag = sources[0].domain if sources else "Summary"
+                        points.append(SearchPoint(tag=default_tag, text=cleaned_point))
 
         if not sources and not points:
             return None

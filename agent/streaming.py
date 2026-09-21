@@ -90,7 +90,7 @@ async def event_stream(formatted_message, thread, user):
 
             resolved_title = chunk.get("thread_name") or suggested_title
 
-            if resolved_title and thread.name in ("New Thread", "New Conversation", "", None):
+            if resolved_title and (thread.name in ("New Thread", "New Conversation", "", None) or chunk.get("thread_name")):
                 thread.name = resolved_title
                 await thread.asave(update_fields=["name", "updated_at"])
             else:
@@ -106,6 +106,9 @@ async def event_stream(formatted_message, thread, user):
 
             if not final_content.strip():
                 final_content = synthesize_response_from_actions(chunk.get("result", {}))
+
+            if final_content:
+                final_content = re.sub(r"【[^】]*】", "", final_content).strip()
 
             rc = build_result_card(messages)
             if rc:
@@ -244,6 +247,9 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
                     final_values,
                     default="Action executed successfully." if approved else "Action cancelled.",
                 )
+
+        if final_text:
+            final_text = re.sub(r"【[^】]*】", "", final_text).strip()
 
         rc = build_result_card(messages)
         if rc:

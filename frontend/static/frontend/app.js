@@ -185,20 +185,17 @@
   };
   const truncateText = (text, max) => (typeof text === 'string' && text.length > max ? `${text.slice(0, max)}…` : text);
   const safeText = value => (value === null || value === undefined ? '' : String(value));
-  const cleanMessageContent = text => safeText(text).replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
+  const cleanMessageContent = text => safeText(text)
+    .replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '')
+    .replace(/【[^】]*】/g, '')
+    .replace(/[\u202F\u2009\u00A0]/g, ' ')
+    .replace(/<@[A-Z0-9]+>/g, '')
+    .trim();
   const cleanRetiredCardMarkdown = (rawText, cardType) => {
     if (!rawText || typeof rawText !== 'string') return '';
-    if (!['weather', 'email_list', 'slack_mentions'].includes(cardType)) return rawText;
     let cleaned = rawText;
     // Strip markdown tables (e.g. | Day | Condition | ... |)
     cleaned = cleaned.replace(/(?:^|\n)\s*\|[^\n]+\|(?:\n\s*\|[^\n]+\|)+/g, '\n');
-    if (cardType === 'weather') {
-      // Strip redundant metric bullet dumps
-      cleaned = cleaned.replace(/(?:^|\n)\s*[-*]\s*\*{0,2}(?:Temperature|Condition|Humidity|Wind|Rain chance|Feels like)[\s\S]*?(?=\n\n|\n[^\s*-]|$)/gi, '');
-      // Strip subheadings like "Current weather in..." or "7-day outlook"
-      cleaned = cleaned.replace(/(?:^|\n)\s*#{1,6}\s*(?:Current weather|7[-‑]day outlook|7[-‑]day forecast)[^\n]*/gi, '');
-      cleaned = cleaned.replace(/(?:^|\n)\s*\*{1,2}(?:Current weather|7[-‑]day outlook|7[-‑]day forecast)[^\n]*\*{1,2}/gi, '');
-    }
     return cleaned.replace(/\n{3,}/g, '\n\n').trim();
   };
 
@@ -300,9 +297,13 @@
   const GOOGLE_DOCS_ICON_SVG = `<svg class="doc-brand-icon" width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M14.5 2H6C4.9 2 4 2.9 4 4v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V7.5L14.5 2z"/><path fill="#A1C2FA" d="M14 2v6h6L14 2z"/><path fill="#FFFFFF" d="M7 11h10v1.6H7zm0 3.2h10v1.6H7zm0 3.2h6.5v1.6H7z"/></svg>`;
 
   const renderMarkdown = raw => {
-    const source = String(raw == null ? '' : raw).replace(/\r\n/g, '\n');
+    let source = String(raw == null ? '' : raw).replace(/\r\n/g, '\n');
+    source = source.replace(/【[^】]*】/g, '');
+    source = source.replace(/[\u202F\u2009\u00A0]/g, ' ');
+    source = source.replace(/<@[A-Z0-9]+>/g, '');
     const inline = line => {
       let text = escapeHtml(line);
+      text = text.replace(/&lt;@[A-Z0-9]+&gt;|<@[A-Z0-9]+>/g, '');
       // Markdown links: [title](url) -> open in new tab (or dedicated View in Doc button for Google Docs)
       text = text.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, (match, title, url) => {
         if (url.includes('docs.google.com/document/d/')) {
@@ -573,9 +574,11 @@
     closeCodeBlock();
 
     // Render interactive source / citation cards footer if sources were cited (max 3 + "+N", SVG icons only)
-    if (extractedSources.length > 0) {
-      const displaySources = extractedSources.slice(0, 3);
-      const remainingCount = extractedSources.length - 3;
+    // Drop "Sources & References" row when its only link is the created Doc already linked above
+    const nonDocSources = extractedSources.filter(s => !s.url.includes('docs.google.com/document/d/'));
+    if (extractedSources.length > 0 && nonDocSources.length > 0) {
+      const displaySources = nonDocSources.slice(0, 3);
+      const remainingCount = nonDocSources.length - 3;
       const chipsHtml = displaySources.map(s => {
         const isDoc = s.url.includes('docs.google.com/document/d/');
         const icon = isDoc ? GOOGLE_DOCS_ICON_SVG : '<svg class="rc-inline-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
@@ -2179,42 +2182,57 @@
           if (role === 'agent' && cardToRender && typeof renderResultCard === 'function') {
             const cardEl = renderResultCard(cardToRender);
             const cardType = cardToRender.type;
-            const cleanedText = cleanRetiredCardMarkdown(text, cardType);
+            let cleanedText = cleanRetiredCardMarkdown(text, cardType);
+            if (cardType === 'slack_mentions') {
+              // Avoid showing both a quote and a card for the same Slack message
+              cleanedText = cleanedText.replace(/(?:^|\n)\s*>[^\n]*(?:\n\s*>[^\n]*)*/g, '\n').trim();
+            }
             const order = (cardToRender.presentation && cardToRender.presentation.order) || 'text_first';
-            const sentences = cleanedText.match(/[^.!?]+[.!?]+(?:\s+|$)/g) || (cleanedText ? [cleanedText] : []);
 
-            if (order === 'card_first' || sentences.length > 2) {
-              const takeaway = sentences.slice(0, 2).join('').trim();
-              const rest = cleanedText.slice(takeaway.length).trim();
+            const paragraphs = cleanedText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+            let takeaway = '';
+            let rest = '';
 
-              if (takeaway) {
-                const textWrap = document.createElement('div');
-                textWrap.className = 'markdown-body';
-                textWrap.setAttribute('dir', 'auto');
-                textWrap.innerHTML = renderMarkdown(takeaway);
-                body.appendChild(textWrap);
+            if (paragraphs.length > 1) {
+              takeaway = paragraphs[0];
+              rest = paragraphs.slice(1).join('\n\n').trim();
+            } else if (paragraphs.length === 1) {
+              if (order === 'card_first') {
+                const sents = paragraphs[0].match(/[^.!?\n]+[.!?]+(?:\s+|$)/g);
+                if (sents && sents.length > 2) {
+                  takeaway = sents.slice(0, 2).join('').trim();
+                  const remainder = paragraphs[0].slice(takeaway.length).trim();
+                  if (remainder && remainder.length >= 40) {
+                    rest = remainder;
+                  }
+                } else {
+                  takeaway = paragraphs[0];
+                  rest = '';
+                }
+              } else {
+                takeaway = paragraphs[0];
+                rest = '';
               }
-              if (cardEl) {
-                body.appendChild(cardEl);
-              }
-              if (rest) {
-                const details = document.createElement('details');
-                details.className = 'rc-details';
-                details.innerHTML = `<summary>More details</summary><div class="rc-details-body markdown-body" dir="auto">${renderMarkdown(rest)}</div>`;
-                body.appendChild(details);
-              }
-            } else {
-              // text_first with <= 2 sentences
-              if (cleanedText) {
-                const textWrap = document.createElement('div');
-                textWrap.className = 'markdown-body';
-                textWrap.setAttribute('dir', 'auto');
-                textWrap.innerHTML = renderMarkdown(cleanedText);
-                body.appendChild(textWrap);
-              }
-              if (cardEl) {
-                body.appendChild(cardEl);
-              }
+            }
+
+            // Hide "More details" when remaining text is empty or a fragment (< 40 chars or punctuation)
+            const showDetails = Boolean(rest && rest.length >= 40 && !/^[\s,.)(\]}:;]+$/.test(rest));
+
+            if (takeaway) {
+              const textWrap = document.createElement('div');
+              textWrap.className = 'markdown-body';
+              textWrap.setAttribute('dir', 'auto');
+              textWrap.innerHTML = renderMarkdown(takeaway);
+              body.appendChild(textWrap);
+            }
+            if (cardEl) {
+              body.appendChild(cardEl);
+            }
+            if (showDetails) {
+              const details = document.createElement('details');
+              details.className = 'rc-details';
+              details.innerHTML = `<summary>More details</summary><div class="rc-details-body markdown-body" dir="auto">${renderMarkdown(rest)}</div>`;
+              body.appendChild(details);
             }
           } else {
             const textWrap = document.createElement('div');

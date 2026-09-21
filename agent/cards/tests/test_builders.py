@@ -138,7 +138,107 @@ Row  3: ['Implement API', 'Bob', 'In Progress']
         self.assertIsNotNone(res)
         self.assertEqual(len(res["events"]), 1)
         self.assertEqual(res["events"][0]["title"], "Product Review")
-        self.assertEqual(res["events"][0]["start"], "2026-09-20 14:00:00")
+        self.assertEqual(res["events"][0]["start"], "2026-09-20T14:00:00")
+        self.assertIsNone(res["events"][0]["meet_url"])
+        self.assertIsNone(res["events"][0]["status"])
+
+    def test_calendar_read_basic(self):
+        text = """- "Weekly Sync" (Starts: 2026-09-22 10:00:00, Ends: 2026-09-22 11:00:00)
+  Meeting: https://meet.google.com/abc-defg-hij
+  Link: https://calendar.google.com/calendar/event?eid=123"""
+        res = build_calendar_event(text)
+        self.assertIsNotNone(res)
+        self.assertEqual(len(res["events"]), 1)
+        ev = res["events"][0]
+        self.assertEqual(ev["title"], "Weekly Sync")
+        self.assertEqual(ev["start"], "2026-09-22T10:00:00")
+        self.assertEqual(ev["meet_url"], "https://meet.google.com/abc-defg-hij")
+        self.assertEqual(ev["html_link"], "https://calendar.google.com/calendar/event?eid=123")
+        self.assertIsNone(ev["status"])  # Read event does not have confirmed status
+
+    def test_calendar_read_detailed(self):
+        text = """Event: Team Retrospective
+Start: 2026-09-23 15:00:00 [weekday: Wednesday; ISO weekday: 3]
+End: 2026-09-23 16:00:00 [weekday: Wednesday; ISO weekday: 3]
+Meeting: https://meet.google.com/xyz-uvwx-rst
+Attendees: alice@example.com, bob@example.com
+Link: https://calendar.google.com/calendar/event?eid=456"""
+        res = build_calendar_event(text)
+        self.assertIsNotNone(res)
+        self.assertEqual(len(res["events"]), 1)
+        ev = res["events"][0]
+        self.assertEqual(ev["title"], "Team Retrospective")
+        self.assertEqual(ev["start"], "2026-09-23T15:00:00")
+        self.assertEqual(ev["end"], "2026-09-23T16:00:00")
+        self.assertEqual(ev["meet_url"], "https://meet.google.com/xyz-uvwx-rst")
+        self.assertEqual(ev["attendees"], ["alice@example.com", "bob@example.com"])
+        self.assertIsNone(ev["status"])
+
+    def test_calendar_create_with_meet(self):
+        text = """Event created successfully!
+Summary: Sprint Planning
+Starts: 2026-09-24 09:00:00
+Ends: 2026-09-24 10:00:00
+Google Meet: https://meet.google.com/jkl-mnop-qrs
+Link: https://calendar.google.com/calendar/event?eid=789"""
+        res = build_calendar_event(text)
+        self.assertIsNotNone(res)
+        self.assertEqual(len(res["events"]), 1)
+        ev = res["events"][0]
+        self.assertEqual(ev["title"], "Sprint Planning")
+        self.assertEqual(ev["meet_url"], "https://meet.google.com/jkl-mnop-qrs")
+        self.assertEqual(ev["status"], "confirmed")
+
+    def test_calendar_modify_with_conference(self):
+        text = """Event updated successfully:
+Title: Client Demo
+Start: 2026-09-25 11:00:00
+End: 2026-09-25 12:00:00
+Conference: https://zoom.us/j/1234567890
+Link: https://calendar.google.com/calendar/event?eid=999"""
+        res = build_calendar_event(text)
+        self.assertIsNotNone(res)
+        self.assertEqual(len(res["events"]), 1)
+        ev = res["events"][0]
+        self.assertEqual(ev["title"], "Client Demo")
+        self.assertEqual(ev["meet_url"], "https://zoom.us/j/1234567890")
+        self.assertEqual(ev["status"], "confirmed")
+
+    def test_calendar_multi_event_scoped_links(self):
+        text = """- "Standup" (Starts: 2026-09-22 09:00:00, Ends: 2026-09-22 09:15:00)
+  Meeting: https://meet.google.com/aaa-bbbb-ccc
+  Link: https://calendar.google.com/event1
+
+- "Focus Time" (Starts: 2026-09-22 10:00:00, Ends: 2026-09-22 12:00:00)
+
+- "Architecture Review" (Starts: 2026-09-22 14:00:00, Ends: 2026-09-22 15:00:00)
+  Meeting: https://teams.microsoft.com/l/meetup-join/19%3ameeting
+  Link: https://calendar.google.com/event3"""
+        res = build_calendar_event(text)
+        self.assertIsNotNone(res)
+        self.assertEqual(len(res["events"]), 3)
+
+        ev0 = res["events"][0]
+        self.assertEqual(ev0["title"], "Standup")
+        self.assertEqual(ev0["meet_url"], "https://meet.google.com/aaa-bbbb-ccc")
+        self.assertEqual(ev0["html_link"], "https://calendar.google.com/event1")
+
+        ev1 = res["events"][1]
+        self.assertEqual(ev1["title"], "Focus Time")
+        self.assertIsNone(ev1["meet_url"])
+        self.assertIsNone(ev1["html_link"])
+
+        ev2 = res["events"][2]
+        self.assertEqual(ev2["title"], "Architecture Review")
+        self.assertEqual(ev2["meet_url"], "https://teams.microsoft.com/l/meetup-join/19%3ameeting")
+        self.assertEqual(ev2["html_link"], "https://calendar.google.com/event3")
+
+    def test_calendar_invalid_meet_hosts_dropped(self):
+        text = """- "Suspicious Event" (Starts: 2026-09-22 10:00:00, Ends: 2026-09-22 11:00:00)
+  Meeting: https://phishing.com/meet/123"""
+        res = build_calendar_event(text)
+        self.assertIsNotNone(res)
+        self.assertIsNone(res["events"][0]["meet_url"])
 
     def test_build_search_summary_json(self):
         payload = {

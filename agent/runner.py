@@ -130,17 +130,34 @@ async def run_agent(message: str, thread_id: int, user):
                 "token": last_content,
             }
 
-        if not extracted_title and needs_title and last_content:
+        msg_count = await Message.objects.filter(thread_id=thread_id).acount()
+        retitled = bool((final_state.get("details") or {}).get("retitled", False))
+        allow_retitling = needs_title or (
+            msg_count >= 10
+            and not retitled
+            and is_substantive_for_title(user_prompt=message, assistant_response=str(last_content))
+        )
+
+        if not extracted_title and allow_retitling and last_content:
             _, extracted_title = extract_title_from_text(str(last_content))
 
-        if not extracted_title and needs_title and is_substantive_for_title(user_prompt=message, assistant_response=str(last_content)):
+        if not extracted_title and allow_retitling and is_substantive_for_title(user_prompt=message, assistant_response=str(last_content)):
             extracted_title = await generate_title_from_context(user_prompt=message, assistant_response=str(last_content))
 
         thread_name = thread_obj.name if thread_obj else ""
-        if extracted_title and thread_obj and thread_obj.name in ("New Thread", "New Conversation", "", None):
+        if extracted_title and thread_obj and (thread_obj.name in ("New Thread", "New Conversation", "", None) or allow_retitling):
             thread_obj.name = extracted_title
             await thread_obj.asave(update_fields=["name", "updated_at"])
             thread_name = extracted_title
+
+            if not needs_title:
+                updated_details = dict(final_state.get("details") or {})
+                updated_details["retitled"] = True
+                try:
+                    await app.aupdate_state(config, {"details": updated_details})
+                except Exception as e:
+                    logger.debug("Failed to persist retitled state: %s", e)
+
             yield {
                 "type": "thread_name",
                 "thread_id": thread_id,

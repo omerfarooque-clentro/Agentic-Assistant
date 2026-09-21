@@ -13,7 +13,7 @@ class WeatherToolTests(TestCase):
         self.assertEqual(map_wmo_code(71), "snow")
         self.assertEqual(map_wmo_code(95), "thunderstorm")
 
-    @patch("agent.cards.weather_tool.requests.get")
+    @patch("agent.tools.weather_tool.requests.get")
     def test_weather_success(self, mock_get):
         geo_mock = MagicMock()
         geo_mock.json.return_value = {
@@ -57,7 +57,7 @@ class WeatherToolTests(TestCase):
         self.assertEqual(len(result["days"]), 2)
         self.assertEqual(result["days"][0]["label"], "Today")
 
-    @patch("agent.cards.weather_tool.requests.get")
+    @patch("agent.tools.weather_tool.requests.get")
     def test_weather_disambiguation(self, mock_get):
         geo_mock = MagicMock()
         geo_mock.json.return_value = {
@@ -74,7 +74,7 @@ class WeatherToolTests(TestCase):
         self.assertIn("candidates", result)
         self.assertEqual(len(result["candidates"]), 2)
 
-    @patch("agent.cards.weather_tool.requests.get")
+    @patch("agent.tools.weather_tool.requests.get")
     def test_weather_location_not_found(self, mock_get):
         geo_mock = MagicMock()
         geo_mock.json.return_value = {"results": []}

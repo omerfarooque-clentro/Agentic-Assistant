@@ -18,6 +18,7 @@
   function escapeHtml(str) {
     if (str === null || str === undefined) return '';
     return String(str)
+      .replace(/[\u202F\u2009\u00A0]/g, ' ')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -127,7 +128,8 @@
 
     let daysHtml = '';
     days.forEach((d, idx) => {
-      const daySvg = getWeatherConditionSvg(d.condition);
+      const dayCondition = (idx === 0 && current.condition) ? current.condition : d.condition;
+      const daySvg = getWeatherConditionSvg(dayCondition);
       const dayName = escapeHtml(d.label || getWeekdayName(d.date));
       const lowVal = typeof d.low === 'number' ? Math.round(d.low) + '°' : '--';
       const highVal = typeof d.high === 'number' ? Math.round(d.high) + '°' : '--';
@@ -241,11 +243,6 @@
           </div>
           <a class="rc-email-subject" href="${item.thread_url ? escapeHtml(item.thread_url) : '#'}" target="_blank" rel="noopener noreferrer">${subject}</a>
           ${snippet ? `<div class="rc-email-snippet">${snippet}</div>` : ''}
-          <div class="rc-email-actions">
-            <button class="rc-action-chip" type="button" data-prompt="Draft a reply to ${sender} regarding ${subject}">Draft reply</button>
-            <button class="rc-action-chip" type="button" data-prompt="Summarize the email thread for ${subject}">Summarize</button>
-            <button class="rc-action-chip" type="button" data-prompt="Mark email from ${sender} as read">Mark read</button>
-          </div>
         </div>
       `;
     });
@@ -268,6 +265,11 @@
         </div>
         <div class="rc-email-items">${itemsHtml}</div>
         ${toggleBtn}
+        <div class="rc-email-bottom-chips">
+          <button class="rc-action-chip" type="button" data-prompt="Draft a reply to the latest email">Draft reply</button>
+          <button class="rc-action-chip" type="button" data-prompt="Summarize recent email threads">Summarize</button>
+          <button class="rc-action-chip" type="button" data-prompt="Mark these emails as read">Mark read</button>
+        </div>
       </div>
     `;
   }
@@ -379,10 +381,37 @@
     if (events.length === 0) return '';
     const ev = events[0];
 
-    const startDate = ev.start ? new Date(ev.start) : new Date();
-    const weekday = !isNaN(startDate.getTime()) ? startDate.toLocaleDateString(undefined, { weekday: 'short' }) : 'DAY';
-    const dayNumber = !isNaN(startDate.getTime()) ? startDate.getDate() : '--';
-    const timeStr = `${escapeHtml(ev.start || '')}${ev.end ? ` – ${escapeHtml(ev.end)}` : ''}`;
+    const startDate = ev.start ? new Date(ev.start) : null;
+    const endDate = ev.end ? new Date(ev.end) : null;
+    const validDate = (startDate && !isNaN(startDate.getTime()))
+      ? startDate
+      : ((endDate && !isNaN(endDate.getTime())) ? endDate : new Date());
+
+    const weekday = validDate.toLocaleDateString(undefined, { weekday: 'short' });
+    const dayNumber = validDate.getDate();
+
+    const startTimeStr = (startDate && !isNaN(startDate.getTime()))
+      ? startDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+      : (ev.start || '');
+    const endTimeStr = (endDate && !isNaN(endDate.getTime()))
+      ? endDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+      : (ev.end || '');
+
+    const timeStr = [startTimeStr, endTimeStr].filter(Boolean).join(' – ') || 'Time TBA';
+
+    const isEnded = (endDate && !isNaN(endDate.getTime()))
+      ? endDate.getTime() < Date.now()
+      : ((startDate && !isNaN(startDate.getTime())) ? startDate.getTime() < Date.now() : false);
+
+    const isConfirmed = ev.status === 'confirmed' || data.status === 'confirmed';
+
+    const rawAttendees = ev.attendees;
+    const hasAttendees = Array.isArray(rawAttendees)
+      ? rawAttendees.length > 0
+      : Boolean(rawAttendees && String(rawAttendees).trim() && String(rawAttendees).trim() !== 'None');
+    const attendeesText = hasAttendees
+      ? (Array.isArray(rawAttendees) ? rawAttendees.join(', ') : String(rawAttendees))
+      : '';
 
     return `
       <div class="rc-card rc-calendar-card" role="group" aria-label="Event details">
@@ -391,7 +420,7 @@
             <span class="rc-header-icon">${SVG_ICONS.calendar}</span>
             <span>Calendar Event</span>
           </div>
-          <span class="rc-badge rc-badge-emerald">Confirmed</span>
+          ${isConfirmed ? '<span class="rc-badge rc-badge-emerald">Confirmed</span>' : ''}
         </div>
         <div class="rc-calendar-event-body">
           <div class="rc-cal-date-block">
@@ -400,12 +429,12 @@
           </div>
           <div class="rc-cal-event-details">
             <span class="rc-cal-event-title">${escapeHtml(ev.title || 'Scheduled Event')}</span>
-            <span class="rc-cal-event-time">${SVG_ICONS.clock} ${timeStr}</span>
-            ${ev.attendees ? `<span class="rc-cal-event-attendees">Attendees: ${escapeHtml(Array.isArray(ev.attendees) ? ev.attendees.join(', ') : ev.attendees)}</span>` : ''}
+            <span class="rc-cal-event-time">${SVG_ICONS.clock} ${escapeHtml(timeStr)}</span>
+            ${hasAttendees ? `<span class="rc-cal-event-attendees">Attendees: ${escapeHtml(attendeesText)}</span>` : ''}
           </div>
         </div>
         <div class="rc-cal-event-actions">
-          ${ev.meet_url ? `<a class="rc-link-btn rc-chip-primary" href="${escapeHtml(ev.meet_url)}" target="_blank" rel="noopener noreferrer">${SVG_ICONS.video} Join with Meet</a>` : ''}
+          ${ev.meet_url && !isEnded ? `<a class="rc-link-btn rc-chip-primary" href="${escapeHtml(ev.meet_url)}" target="_blank" rel="noopener noreferrer">${SVG_ICONS.video} Join with Meet</a>` : ''}
           ${ev.html_link ? `<a class="rc-link-btn" href="${escapeHtml(ev.html_link)}" target="_blank" rel="noopener noreferrer">Open in Calendar ↗</a>` : ''}
         </div>
       </div>
@@ -424,10 +453,17 @@
     events.forEach((ev, idx) => {
       const extraClass = idx >= DEFAULT_MAX_ROWS ? ' rc-row-hidden' : '';
       const sDate = ev.start ? new Date(ev.start) : null;
-      const timeLabel = sDate && !isNaN(sDate.getTime()) ? sDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : (ev.start || 'Time TBA');
+      const eDate = ev.end ? new Date(ev.end) : null;
+      const timeLabel = sDate && !isNaN(sDate.getTime())
+        ? sDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+        : (ev.start || 'Time TBA');
       const duration = ev.duration || (ev.end && ev.start ? 'Scheduled' : 'Event');
       const attendees = ev.attendees ? (Array.isArray(ev.attendees) ? `${ev.attendees.length} people` : String(ev.attendees)) : '';
       const metaSub = [duration, attendees].filter(Boolean).join(' · ');
+
+      const isEnded = eDate && !isNaN(eDate.getTime())
+        ? eDate.getTime() < Date.now()
+        : (sDate && !isNaN(sDate.getTime()) ? sDate.getTime() < Date.now() : false);
 
       itemsHtml += `
         <div class="rc-cal-list-item${extraClass}">
@@ -436,7 +472,7 @@
             <span class="rc-cal-list-title">${escapeHtml(ev.title || 'Event')}</span>
             ${metaSub ? `<span class="rc-cal-list-sub">${escapeHtml(metaSub)}</span>` : ''}
           </div>
-          ${ev.meet_url ? `<a class="rc-cal-list-video" href="${escapeHtml(ev.meet_url)}" target="_blank" rel="noopener noreferrer" title="Join Meeting">${SVG_ICONS.video}</a>` : ''}
+          ${ev.meet_url && !isEnded ? `<a class="rc-cal-list-video" href="${escapeHtml(ev.meet_url)}" target="_blank" rel="noopener noreferrer" title="Join Meeting">${SVG_ICONS.video}</a>` : ''}
         </div>
       `;
     });
