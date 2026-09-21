@@ -167,3 +167,68 @@ class WeatherToolTests(TestCase):
         self.assertIn("error", result)
         self.assertIn("temporarily busy", result["error"])
 
+    @patch("agent.tools.weather_tool.requests.get")
+    def test_weather_day_details_and_hourly(self, mock_get):
+        geo_mock = MagicMock()
+        geo_mock.json.return_value = {
+            "results": [
+                {
+                    "name": "Karachi",
+                    "country": "Pakistan",
+                    "latitude": 24.86,
+                    "longitude": 67.01,
+                }
+            ]
+        }
+        geo_mock.raise_for_status = MagicMock()
+
+        fc_mock = MagicMock()
+        fc_mock.json.return_value = {
+            "current": {
+                "temperature_2m": 27.0,
+                "apparent_temperature": 32.0,
+                "relative_humidity_2m": 80,
+                "weather_code": 0,
+                "wind_speed_10m": 6.8,
+                "surface_pressure": 1008.0,
+                "is_day": 0,
+            },
+            "daily": {
+                "time": ["2026-09-22"],
+                "weather_code": [0],
+                "temperature_2m_max": [34.0],
+                "temperature_2m_min": [27.0],
+                "precipitation_probability_max": [2],
+                "sunrise": ["2026-09-22T06:12"],
+                "sunset": ["2026-09-22T18:34"],
+                "uv_index_max": [6.0],
+            },
+            "hourly": {
+                "time": ["2026-09-22T00:00", "2026-09-22T01:00"],
+                "temperature_2m": [27.0, 26.5],
+                "weather_code": [0, 1],
+                "precipitation_probability": [0, 5],
+                "apparent_temperature": [32.0, 31.0],
+                "uv_index": [0.0, 0.0],
+                "is_day": [0, 0],
+            },
+        }
+        fc_mock.raise_for_status = MagicMock()
+        mock_get.side_effect = [geo_mock, fc_mock]
+
+        result = get_weather.invoke({"city": "Karachi", "country": "Pakistan"})
+        self.assertEqual(result["current"]["pressure"], 1008.0)
+        self.assertEqual(result["current"]["uv_index"], 6.0)
+        self.assertEqual(result["current"]["is_day"], 0)
+        self.assertEqual(len(result["days"]), 1)
+        day0 = result["days"][0]
+        self.assertEqual(day0["sunrise"], "2026-09-22T06:12")
+        self.assertEqual(day0["sunset"], "2026-09-22T18:34")
+        self.assertEqual(day0["uv_index_max"], 6.0)
+        self.assertEqual(len(day0["hourly"]), 2)
+        self.assertEqual(day0["hourly"][0]["rain_chance"], 0)
+        self.assertEqual(day0["hourly"][0]["is_day"], 0)
+        self.assertEqual(day0["hourly"][1]["rain_chance"], 5)
+        self.assertEqual(day0["hourly"][1]["is_day"], 0)
+
+

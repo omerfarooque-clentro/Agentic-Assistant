@@ -19,6 +19,7 @@ EXPLICIT_DOMAIN_KEYWORDS = {
     "schedule", "interview", "appointment", "availability", "availbility", "freebusy",
     "doc", "docs", "document", "documents", "sheet", "sheets", "spreadsheet", "spreadsheets",
     "web", "search web", "web search", "wb saerch", "google", "tavily", "internet", "browse",
+    "weather", "forecast", "forcast", "temperature", "temp", "rain", "climate",
 }
 
 AMBIGUOUS_ACTION_TERMS = {
@@ -152,6 +153,13 @@ DOMAIN_KEYWORD_MAP = {
     "google": "research",
     "tavily": "research",
     "internet": "research",
+    "weather": "research",
+    "forecast": "research",
+    "forcast": "research",
+    "temperature": "research",
+    "temp": "research",
+    "rain": "research",
+    "climate": "research",
 }
 
 POLITE_PREFIX_PATTERN = re.compile(

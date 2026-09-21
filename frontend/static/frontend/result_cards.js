@@ -43,26 +43,50 @@
     video: `<svg class="rc-inline-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
     chevronDown: `<svg class="rc-inline-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`,
     chevronUp: `<svg class="rc-inline-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>`,
+    chevronLeft: `<svg class="rc-inline-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>`,
+    sunrise: `<svg class="rc-inline-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6"/><path d="m4.93 10.93 1.41 1.41"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m8 6 4-4 4 4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg>`,
+    sunset: `<svg class="rc-inline-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 10V4"/><path d="m4.93 10.93 1.41 1.41"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m16 6-4 4-4-4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg>`,
     check: `<svg class="rc-inline-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`,
     // Weather condition SVGs
     weatherClear: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
+    weatherClearNight: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
     weatherCloudy: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>`,
     weatherPartlyCloudy: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.95 9.6A5 5 0 0 0 9 12a5.5 5.5 0 0 0-.25 10H18a4 4 0 0 0 .8-7.92 5 5 0 0 0-2.85-4.48Z"/></svg>`,
+    weatherPartlyCloudyNight: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.188 8.5A6 6 0 0 1 16 4a7 7 0 0 0-6 8 6 6 0 0 0 5.259 3.039A8.005 8.005 0 0 1 3 19a8 8 0 0 1 6-7.812Z"/><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`,
     weatherRain: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="16" y1="13" x2="16" y2="21"/><line x1="8" y1="13" x2="8" y2="21"/><line x1="12" y1="15" x2="12" y2="23"/><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/></svg>`,
     weatherThunder: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><polygon points="13 11 9 17 15 17 11 23"/></svg>`,
     weatherSnow: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><line x1="8" y1="16" x2="8.01" y2="16"/><line x1="8" y1="20" x2="8.01" y2="20"/><line x1="12" y1="18" x2="12.01" y2="18"/><line x1="12" y1="22" x2="12.01" y2="22"/><line x1="16" y1="16" x2="16.01" y2="16"/><line x1="16" y1="20" x2="16.01" y2="20"/></svg>`,
     weatherFog: `<svg class="rc-inline-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="10" x2="19" y2="10"/><line x1="5" y1="14" x2="19" y2="14"/><line x1="5" y1="18" x2="19" y2="18"/><line x1="8" y1="6" x2="16" y2="6"/></svg>`,
   };
 
-  function getWeatherConditionSvg(condition) {
+  function getWeatherConditionSvg(condition, isDay, timeStr) {
     const c = (condition || '').toLowerCase();
+    let isNight = false;
+    if (isDay === false || isDay === 0 || c.includes('night')) {
+      isNight = true;
+    } else if (isDay === true || isDay === 1 || c.includes('day')) {
+      isNight = false;
+    } else if (timeStr) {
+      try {
+        const timePart = timeStr.includes('T') ? timeStr.split('T')[1] : timeStr;
+        const hr = parseInt(timePart.split(':')[0], 10);
+        if (!isNaN(hr) && (hr < 6 || hr >= 19)) {
+          isNight = true;
+        }
+      } catch (e) {
+        isNight = false;
+      }
+    }
+
     if (c.includes('rain') || c.includes('drizzle')) return SVG_ICONS.weatherRain;
     if (c.includes('thunder')) return SVG_ICONS.weatherThunder;
     if (c.includes('snow') || c.includes('ice') || c.includes('flurry')) return SVG_ICONS.weatherSnow;
     if (c.includes('fog') || c.includes('mist') || c.includes('haze')) return SVG_ICONS.weatherFog;
-    if (c.includes('cloud') && (c.includes('part') || c.includes('scatter') || c.includes('broken'))) return SVG_ICONS.weatherPartlyCloudy;
+    if (c.includes('cloud') && (c.includes('part') || c.includes('scatter') || c.includes('broken'))) {
+      return isNight ? SVG_ICONS.weatherPartlyCloudyNight : SVG_ICONS.weatherPartlyCloudy;
+    }
     if (c.includes('cloud') || c.includes('overcast')) return SVG_ICONS.weatherCloudy;
-    return SVG_ICONS.weatherClear;
+    return isNight ? SVG_ICONS.weatherClearNight : SVG_ICONS.weatherClear;
   }
 
   // --- Relative Time Formatter ---
@@ -106,6 +130,91 @@
     }
   }
 
+  function formatHourTime(isoString, isNow = false) {
+    if (isNow) return 'Now';
+    if (!isoString) return '';
+    try {
+      const parts = isoString.split('T')[1]?.split(':');
+      if (parts && parts.length >= 1) {
+        let h = parseInt(parts[0], 10);
+        const ampm = h >= 12 ? 'pm' : 'am';
+        h = h % 12 || 12;
+        return `${h}${ampm}`;
+      }
+      const d = new Date(isoString);
+      if (!isNaN(d.getTime())) {
+        let h = d.getHours();
+        const ampm = h >= 12 ? 'pm' : 'am';
+        h = h % 12 || 12;
+        return `${h}${ampm}`;
+      }
+      return isoString;
+    } catch {
+      return isoString;
+    }
+  }
+
+  function formatSunTime(isoString) {
+    if (!isoString) return '--';
+    try {
+      const parts = isoString.split('T')[1]?.split(':');
+      if (parts && parts.length >= 2) {
+        let h = parseInt(parts[0], 10);
+        const m = parts[1];
+        const ampm = h >= 12 ? 'pm' : 'am';
+        h = h % 12 || 12;
+        return `${h}:${m} ${ampm}`;
+      }
+      const d = new Date(isoString);
+      if (!isNaN(d.getTime())) {
+        let h = d.getHours();
+        const m = String(d.getMinutes()).padStart(2, '0');
+        const ampm = h >= 12 ? 'pm' : 'am';
+        h = h % 12 || 12;
+        return `${h}:${m} ${ampm}`;
+      }
+      return isoString;
+    } catch {
+      return isoString;
+    }
+  }
+
+  function getUvCategory(val) {
+    if (val == null) return '--';
+    const num = Number(val);
+    if (isNaN(num)) return String(val);
+    const rounded = Math.round(num);
+    let cat = 'Low';
+    if (num >= 11) cat = 'Extreme';
+    else if (num >= 8) cat = 'Very High';
+    else if (num >= 6) cat = 'High';
+    else if (num >= 3) cat = 'Moderate';
+    return `${rounded} · ${cat}`;
+  }
+
+  function renderWeatherHourlyScrubHtml(hours, isToday) {
+    if (!Array.isArray(hours) || hours.length === 0) {
+      return `<div class="rc-weather-hourly-empty" style="padding: 12px; font-size: 12px; color: var(--muted);">No hourly forecast available</div>`;
+    }
+    return hours.map((h, i) => {
+      const isNow = isToday && i === 0;
+      const timeLabel = formatHourTime(h.time, isNow);
+      const iconSvg = getWeatherConditionSvg(h.condition, h.is_day, h.time);
+      const tempVal = Math.round(h.temp ?? 0);
+      const rainChance = h.rain_chance || 0;
+      const rainRow = rainChance > 0 ? `<div class="rc-weather-rainrow">${SVG_ICONS.droplet}${rainChance}%</div>` : '';
+      const nowClass = isNow ? ' now' : '';
+      return `
+        <div class="rc-weather-hcol${nowClass}">
+          <div class="rc-weather-t">${timeLabel}</div>
+          <div class="rc-weather-hicon">${iconSvg}</div>
+          <div class="rc-weather-deg">${tempVal}°</div>
+          <div class="rc-weather-rainrow-wrap">${rainRow}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
   // --- Card Renderers ---
 
   // 1. Weather Card
@@ -114,7 +223,7 @@
     const current = data.current;
     const days = Array.isArray(data.days) ? data.days : [];
     const conditionText = escapeHtml((current.condition || 'Clear').replace(/_/g, ' '));
-    const condSvg = getWeatherConditionSvg(current.condition);
+    const condSvg = getWeatherConditionSvg(current.condition, current.is_day);
 
     // Calculate global temp range for range bar
     let minT = current.temp;
@@ -129,7 +238,7 @@
     let daysHtml = '';
     days.forEach((d, idx) => {
       const dayCondition = (idx === 0 && current.condition) ? current.condition : d.condition;
-      const daySvg = getWeatherConditionSvg(dayCondition);
+      const daySvg = getWeatherConditionSvg(dayCondition, true);
       const dayName = escapeHtml(d.label || getWeekdayName(d.date));
       const lowVal = typeof d.low === 'number' ? Math.round(d.low) + '°' : '--';
       const highVal = typeof d.high === 'number' ? Math.round(d.high) + '°' : '--';
@@ -142,7 +251,7 @@
       const extraClass = idx >= DEFAULT_MAX_ROWS ? ' rc-row-hidden' : '';
 
       daysHtml += `
-        <div class="rc-weather-day-row${extraClass}">
+        <div class="rc-weather-day-row${extraClass}" role="button" tabindex="0" data-day-index="${idx}" aria-label="View hourly forecast for ${dayName}">
           <span class="rc-weather-day-name">${dayName}</span>
           <span class="rc-weather-day-icon-wrap">${daySvg}</span>
           <div class="rc-weather-range-bar-wrap">
@@ -161,55 +270,121 @@
       </button>
     ` : '';
 
+    const initialDay = days[0] || {};
+    const initialHours = (initialDay.hourly && initialDay.hourly.length) ? initialDay.hourly : (data.hourly || []);
+    const initialScrubHtml = renderWeatherHourlyScrubHtml(initialHours, true);
+    const initialSunRise = formatSunTime(initialDay.sunrise);
+    const initialSunSet = formatSunTime(initialDay.sunset);
+    const initialUv = getUvCategory(initialDay.uv_index_max ?? current.uv_index);
+    const initialPressure = Math.round(initialDay.pressure ?? current.pressure ?? 1013);
+    const initialFeels = Math.round(initialDay.feels_like ?? current.feels_like ?? current.temp);
+    const initialHum = initialDay.humidity ?? current.humidity ?? '--';
+    const initialWind = escapeHtml(initialDay.wind || current.wind || '--');
+    const initialRain = initialDay.rain_chance ?? current.rain_chance ?? 0;
+    const initialDayName = escapeHtml(initialDay.label || 'Today');
+
+    // Escape and embed full serialized weather payload for interactive day switching
+    const weatherJson = escapeHtml(JSON.stringify(data));
+
     return `
       <div class="rc-card rc-weather" role="group" aria-label="Weather for ${escapeHtml(data.city)}">
-        <div class="rc-header">
-          <div class="rc-header-title">
-            <span class="rc-header-icon">${SVG_ICONS.location}</span>
-            <span>${escapeHtml(data.city)}${data.country ? `, ${escapeHtml(data.country)}` : ''}</span>
+        <script type="application/json" class="rc-weather-raw-data">${weatherJson}</script>
+
+        <!-- View 1: 7-Day Overview -->
+        <div class="rc-weather-view rc-weather-view-overview">
+          <div class="rc-header">
+            <div class="rc-header-title">
+              <span class="rc-header-icon">${SVG_ICONS.location}</span>
+              <span>${escapeHtml(data.city)}${data.country ? `, ${escapeHtml(data.country)}` : ''}</span>
+            </div>
+            <span class="rc-badge">${escapeHtml(data.updated_at ? formatRelativeTime(data.updated_at) : 'Live')}</span>
           </div>
-          <span class="rc-badge">${escapeHtml(data.updated_at ? formatRelativeTime(data.updated_at) : 'Live')}</span>
+
+          <div class="rc-weather-hero">
+            <div class="rc-weather-hero-main">
+              <div class="rc-weather-temp-row">
+                <span class="rc-weather-temp">${Math.round(current.temp)}</span>
+                <span class="rc-weather-unit">${escapeHtml(current.unit || '°C')}</span>
+              </div>
+              <div class="rc-weather-condition-text">
+                <span class="rc-weather-condition-icon">${condSvg}</span>
+                <span>${conditionText} · Feels like ${Math.round(current.feels_like ?? current.temp)}°</span>
+              </div>
+            </div>
+            <div class="rc-weather-art-icon" aria-hidden="true">${condSvg}</div>
+          </div>
+
+          <div class="rc-weather-metrics">
+            <div class="rc-weather-metric-item">
+              <span class="rc-weather-metric-icon">${SVG_ICONS.droplet}</span>
+              <div class="rc-weather-metric-info">
+                <span class="rc-weather-metric-label">Humidity</span>
+                <span class="rc-weather-metric-val">${current.humidity ?? '--'}%</span>
+              </div>
+            </div>
+            <div class="rc-weather-metric-item">
+              <span class="rc-weather-metric-icon">${SVG_ICONS.wind}</span>
+              <div class="rc-weather-metric-info">
+                <span class="rc-weather-metric-label">Wind</span>
+                <span class="rc-weather-metric-val">${escapeHtml(current.wind || '--')}</span>
+              </div>
+            </div>
+            <div class="rc-weather-metric-item">
+              <span class="rc-weather-metric-icon">${SVG_ICONS.weatherRain}</span>
+              <div class="rc-weather-metric-info">
+                <span class="rc-weather-metric-label">Rain</span>
+                <span class="rc-weather-metric-val">${current.rain_chance ?? 0}%</span>
+              </div>
+            </div>
+          </div>
+
+          ${daysHtml ? `<div class="rc-weather-forecast-list">${daysHtml}</div>${toggleBtn}` : ''}
         </div>
 
-        <div class="rc-weather-hero">
-          <div class="rc-weather-hero-main">
-            <div class="rc-weather-temp-row">
-              <span class="rc-weather-temp">${Math.round(current.temp)}</span>
-              <span class="rc-weather-unit">${escapeHtml(current.unit || '°C')}</span>
-            </div>
-            <div class="rc-weather-condition-text">
-              <span class="rc-weather-condition-icon">${condSvg}</span>
-              <span>${conditionText} · Feels like ${Math.round(current.feels_like ?? current.temp)}°</span>
-            </div>
+        <!-- View 2: Day Detail & Hourly Forecast -->
+        <div class="rc-weather-view rc-weather-view-detail" style="display: none;">
+          <div class="rc-weather-detail-hd">
+            <button class="rc-weather-back-btn" type="button" aria-label="Back to 7-day forecast">
+              ${SVG_ICONS.chevronLeft}
+              <span class="rc-weather-back-day-name">${initialDayName}</span>
+            </button>
+            <span class="rc-weather-detail-sub">${escapeHtml(data.city)}${data.country ? `, ${escapeHtml(data.country)}` : ''}</span>
           </div>
-          <div class="rc-weather-art-icon" aria-hidden="true">${condSvg}</div>
-        </div>
 
-        <div class="rc-weather-metrics">
-          <div class="rc-weather-metric-item">
-            <span class="rc-weather-metric-icon">${SVG_ICONS.droplet}</span>
-            <div class="rc-weather-metric-info">
-              <span class="rc-weather-metric-label">Humidity</span>
-              <span class="rc-weather-metric-val">${current.humidity ?? '--'}%</span>
-            </div>
+          <div class="rc-weather-scrub">
+            ${initialScrubHtml}
           </div>
-          <div class="rc-weather-metric-item">
-            <span class="rc-weather-metric-icon">${SVG_ICONS.wind}</span>
-            <div class="rc-weather-metric-info">
-              <span class="rc-weather-metric-label">Wind</span>
-              <span class="rc-weather-metric-val">${escapeHtml(current.wind || '--')}</span>
-            </div>
+
+          <div class="rc-weather-detail-meta">
+            <span>${SVG_ICONS.droplet} <span class="rc-w-hum">${initialHum}%</span></span>
+            <span>${SVG_ICONS.wind} <span class="rc-w-wind">${initialWind}</span></span>
+            <span>${SVG_ICONS.weatherRain} <span class="rc-w-rain">${initialRain}%</span></span>
           </div>
-          <div class="rc-weather-metric-item">
-            <span class="rc-weather-metric-icon">${SVG_ICONS.weatherRain}</span>
-            <div class="rc-weather-metric-info">
-              <span class="rc-weather-metric-label">Rain</span>
-              <span class="rc-weather-metric-val">${current.rain_chance ?? 0}%</span>
+
+          <div class="rc-weather-detail-row">
+            <span class="rc-weather-k">Feels like</span>
+            <span class="rc-weather-v rc-w-feels">${initialFeels}°</span>
+          </div>
+          <div class="rc-weather-detail-row">
+            <span class="rc-weather-k">UV index</span>
+            <span class="rc-weather-v rc-w-uv">${initialUv}</span>
+          </div>
+          <div class="rc-weather-detail-row">
+            <span class="rc-weather-k">Pressure</span>
+            <span class="rc-weather-v rc-w-press">${initialPressure} hPa</span>
+          </div>
+
+          <div class="rc-weather-sunrow">
+            <div class="rc-weather-suncol">
+              <span class="rc-weather-sunlabel">${SVG_ICONS.sunrise} Sunrise</span>
+              <b class="rc-w-sunrise">${initialSunRise}</b>
+            </div>
+            <div class="rc-weather-suncol rc-weather-suncol-right">
+              <span class="rc-weather-sunlabel">${SVG_ICONS.sunset} Sunset</span>
+              <b class="rc-w-sunset">${initialSunSet}</b>
             </div>
           </div>
         </div>
-
-        ${daysHtml ? `<div class="rc-weather-forecast-list">${daysHtml}</div>${toggleBtn}` : ''}
       </div>
     `;
   }
@@ -809,8 +984,139 @@
       });
     });
 
+    // Weather card day row clicks -> transition to Day Detail view
+    wrapper.querySelectorAll('.rc-weather-day-row[data-day-index]').forEach(row => {
+      row.addEventListener('click', () => {
+        const cardParent = row.closest('.rc-card.rc-weather');
+        const dayIdx = parseInt(row.getAttribute('data-day-index'), 10);
+        openWeatherDayDetail(cardParent, dayIdx);
+      });
+    });
+
+    // Weather back button -> return to 7-day list
+    wrapper.querySelectorAll('.rc-weather-back-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        const cardParent = btn.closest('.rc-card.rc-weather');
+        closeWeatherDayDetail(cardParent);
+      });
+    });
+
     return wrapper;
   }
+
+  function openWeatherDayDetail(cardParent, dayIdx) {
+    if (!cardParent) return;
+    const rawDataScript = cardParent.querySelector('.rc-weather-raw-data');
+    if (!rawDataScript) return;
+    let data;
+    try {
+      // Decode HTML entities if textContent was escaped
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = rawDataScript.textContent;
+      data = JSON.parse(tempDiv.textContent);
+    } catch {
+      try {
+        data = JSON.parse(rawDataScript.textContent);
+      } catch (err) {
+        console.warn('Failed parsing raw weather data:', err);
+        return;
+      }
+    }
+
+    const days = data.days || [];
+    const day = days[dayIdx] || days[0];
+    if (!day) return;
+
+    const isToday = dayIdx === 0;
+    const dayName = day.label || getWeekdayName(day.date);
+    const hours = (day.hourly && day.hourly.length) ? day.hourly : (data.hourly || []);
+
+    const backDaySpan = cardParent.querySelector('.rc-weather-back-day-name');
+    if (backDaySpan) backDaySpan.textContent = dayName;
+
+    const scrub = cardParent.querySelector('.rc-weather-scrub');
+    if (scrub) scrub.innerHTML = renderWeatherHourlyScrubHtml(hours, isToday);
+
+    const humEl = cardParent.querySelector('.rc-w-hum');
+    if (humEl) humEl.textContent = `${day.humidity ?? data.current?.humidity ?? '--'}%`;
+
+    const windEl = cardParent.querySelector('.rc-w-wind');
+    if (windEl) windEl.textContent = `${day.wind || data.current?.wind || '--'}`;
+
+    const rainEl = cardParent.querySelector('.rc-w-rain');
+    if (rainEl) rainEl.textContent = `${day.rain_chance ?? data.current?.rain_chance ?? 0}%`;
+
+    const feelsEl = cardParent.querySelector('.rc-w-feels');
+    if (feelsEl) {
+      const feelVal = Math.round(day.feels_like ?? day.high ?? data.current?.feels_like ?? data.current?.temp ?? 0);
+      feelsEl.textContent = `${feelVal}°`;
+    }
+
+    const uvEl = cardParent.querySelector('.rc-w-uv');
+    if (uvEl) uvEl.textContent = getUvCategory(day.uv_index_max ?? data.current?.uv_index);
+
+    const pressEl = cardParent.querySelector('.rc-w-press');
+    if (pressEl) {
+      const pressVal = Math.round(day.pressure ?? data.current?.pressure ?? 1013);
+      pressEl.textContent = `${pressVal} hPa`;
+    }
+
+    const sunriseEl = cardParent.querySelector('.rc-w-sunrise');
+    if (sunriseEl) sunriseEl.textContent = formatSunTime(day.sunrise);
+
+    const sunsetEl = cardParent.querySelector('.rc-w-sunset');
+    if (sunsetEl) sunsetEl.textContent = formatSunTime(day.sunset);
+
+    const overview = cardParent.querySelector('.rc-weather-view-overview');
+    const detail = cardParent.querySelector('.rc-weather-view-detail');
+    if (overview && detail) {
+      overview.style.display = 'none';
+      detail.style.display = 'block';
+    }
+  }
+
+  function closeWeatherDayDetail(cardParent) {
+    if (!cardParent) return;
+    const overview = cardParent.querySelector('.rc-weather-view-overview');
+    const detail = cardParent.querySelector('.rc-weather-view-detail');
+    if (overview && detail) {
+      detail.style.display = 'none';
+      overview.style.display = 'block';
+    }
+  }
+
+  // Global event delegation for weather card interactions (handles static/injected HTML)
+  document.addEventListener('click', e => {
+    const dayRow = e.target.closest('.rc-weather-day-row[data-day-index]');
+    if (dayRow) {
+      const cardParent = dayRow.closest('.rc-card.rc-weather');
+      const idx = parseInt(dayRow.getAttribute('data-day-index'), 10);
+      if (cardParent && !isNaN(idx)) {
+        openWeatherDayDetail(cardParent, idx);
+        return;
+      }
+    }
+
+    const backBtn = e.target.closest('.rc-weather-back-btn');
+    if (backBtn) {
+      e.preventDefault();
+      const cardParent = backBtn.closest('.rc-card.rc-weather');
+      if (cardParent) {
+        closeWeatherDayDetail(cardParent);
+      }
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const dayRow = e.target.closest('.rc-weather-day-row[data-day-index]');
+      if (dayRow && document.activeElement === dayRow) {
+        e.preventDefault();
+        dayRow.click();
+      }
+    }
+  });
 
   // Export globally
   window.renderResultCard = renderResultCard;

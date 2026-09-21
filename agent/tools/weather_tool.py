@@ -118,15 +118,39 @@ def get_weather(city: str, country: str | None = None) -> dict:
         return {"error": "City name is required"}
 
     try:
-        geo_cache_key = f"weather:geo:{city.strip().lower()}"
+        search_city = city.strip()
+        parsed_country = country.strip() if country else None
+
+        if not parsed_country and "," in search_city:
+            parts = [p.strip() for p in search_city.split(",") if p.strip()]
+            search_city = parts[0]
+            parsed_country = parts[-1]
+
+        clean_city_key = "_".join(search_city.lower().split())
+        geo_cache_key = f"weather:geo:{clean_city_key}"
         results = _cache_get(geo_cache_key)
 
         if results is None:
             geo_url = "https://geocoding-api.open-meteo.com/v1/search"
-            geo_resp = _http_get(geo_url, params={"name": city.strip(), "count": 5, "format": "json"}, timeout=10)
+            geo_resp = _http_get(geo_url, params={"name": search_city, "count": 5, "format": "json"}, timeout=10)
             geo_resp.raise_for_status()
             geo_data = geo_resp.json()
             results = geo_data.get("results") or []
+
+            # If no location found and search_city contains space-separated tokens (e.g. "hyderabad pakisatn")
+            if not results and " " in search_city:
+                parts = search_city.split()
+                fallback_city = parts[0]
+                fallback_country = " ".join(parts[1:])
+                geo_resp = _http_get(geo_url, params={"name": fallback_city, "count": 5, "format": "json"}, timeout=10)
+                geo_resp.raise_for_status()
+                fallback_results = geo_resp.json().get("results") or []
+                if fallback_results:
+                    results = fallback_results
+                    search_city = fallback_city
+                    if not parsed_country:
+                        parsed_country = fallback_country
+
             if results:
                 _cache_set(geo_cache_key, results, timeout=GEO_CACHE_TTL)
 
@@ -135,8 +159,8 @@ def get_weather(city: str, country: str | None = None) -> dict:
 
         # Filter by country if provided
         selected = None
-        if country:
-            country_norm = country.strip().lower()
+        if parsed_country:
+            country_norm = parsed_country.lower()
             matching = [
                 r for r in results
                 if country_norm in r.get("country", "").lower() or country_norm in r.get("country_code", "").lower()
@@ -151,7 +175,7 @@ def get_weather(city: str, country: str | None = None) -> dict:
 
         if not selected:
             # Check for ambiguity if multiple distinct countries/admin regions exist
-            if len(results) > 1 and not country:
+            if len(results) > 1 and not parsed_country:
                 countries = {r.get("country") for r in results if r.get("country")}
                 if len(countries) > 1:
                     candidates = [
@@ -184,9 +208,9 @@ def get_weather(city: str, country: str | None = None) -> dict:
             params = {
                 "latitude": lat,
                 "longitude": lon,
-                "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
-                "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
-                "hourly": "temperature_2m,precipitation_probability,weather_code",
+                "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,surface_pressure,is_day",
+                "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max",
+                "hourly": "temperature_2m,precipitation_probability,weather_code,apparent_temperature,surface_pressure,uv_index,is_day",
                 "timezone": "auto",
             }
             fc_resp = _http_get(forecast_url, params=params, timeout=10)
@@ -201,19 +225,59 @@ def get_weather(city: str, country: str | None = None) -> dict:
 
         current_condition = map_wmo_code(current_raw.get("weather_code"))
         current_temp = round(float(current_raw.get("temperature_2m", 0.0)), 1)
+        current_is_day = int(current_raw.get("is_day", 1))
         feels_like = round(float(current_raw.get("apparent_temperature", current_temp)), 1)
         humidity = int(current_raw.get("relative_humidity_2m", 0))
         wind_speed = round(float(current_raw.get("wind_speed_10m", 0.0)), 1)
         wind_str = f"{wind_speed} km/h"
+        current_pressure = round(float(current_raw.get("surface_pressure", 1013.0)), 1) if "surface_pressure" in current_raw else None
+
+        # Parse all hourly entries and group by date
+        hourly_times = hourly_raw.get("time", [])
+        hourly_temps = hourly_raw.get("temperature_2m", [])
+        hourly_codes = hourly_raw.get("weather_code", [])
+        hourly_probs = hourly_raw.get("precipitation_probability", [])
+        hourly_feels = hourly_raw.get("apparent_temperature", [])
+        hourly_uvs = hourly_raw.get("uv_index", [])
+        hourly_is_days = hourly_raw.get("is_day", [])
+
+        hourly_by_date: dict[str, list[dict]] = {}
+        all_hourly = []
+        for j in range(len(hourly_times)):
+            t_str = hourly_times[j]
+            t_code = hourly_codes[j] if j < len(hourly_codes) else 0
+            t_temp = round(float(hourly_temps[j]), 1) if j < len(hourly_temps) else 0.0
+            t_prob = int(hourly_probs[j]) if j < len(hourly_probs) and hourly_probs[j] is not None else 0
+            t_feel = round(float(hourly_feels[j]), 1) if j < len(hourly_feels) and hourly_feels[j] is not None else t_temp
+            t_uv = round(float(hourly_uvs[j]), 1) if j < len(hourly_uvs) and hourly_uvs[j] is not None else 0.0
+            t_is_day = int(hourly_is_days[j]) if j < len(hourly_is_days) and hourly_is_days[j] is not None else 1
+
+            item = {
+                "time": t_str,
+                "temp": t_temp,
+                "condition": map_wmo_code(t_code),
+                "is_day": t_is_day,
+                "rain_chance": t_prob,
+                "feels_like": t_feel,
+                "uv_index": t_uv,
+            }
+            d_key = t_str[:10]
+            hourly_by_date.setdefault(d_key, []).append(item)
+            if len(all_hourly) < 24:
+                all_hourly.append(item)
 
         daily_dates = daily_raw.get("time", [])
         daily_codes = daily_raw.get("weather_code", [])
         daily_maxs = daily_raw.get("temperature_2m_max", [])
         daily_mins = daily_raw.get("temperature_2m_min", [])
         daily_probs = daily_raw.get("precipitation_probability_max", [])
+        daily_sunrises = daily_raw.get("sunrise", [])
+        daily_sunsets = daily_raw.get("sunset", [])
+        daily_uvs = daily_raw.get("uv_index_max", [])
 
         # Current rain chance from today's forecast
         current_rain_chance = int(daily_probs[0]) if daily_probs else int(current_raw.get("precipitation", 0) > 0) * 100
+        current_uv = round(float(daily_uvs[0]), 1) if daily_uvs and daily_uvs[0] is not None else None
 
         days = []
         for i in range(min(len(daily_dates), 7)):
@@ -228,6 +292,22 @@ def get_weather(city: str, country: str | None = None) -> dict:
             low = round(float(daily_mins[i]), 1) if i < len(daily_mins) else 0.0
             high = round(float(daily_maxs[i]), 1) if i < len(daily_maxs) else 0.0
             rain_prob = int(daily_probs[i]) if i < len(daily_probs) and daily_probs[i] is not None else 0
+            sunrise_val = daily_sunrises[i] if i < len(daily_sunrises) else None
+            sunset_val = daily_sunsets[i] if i < len(daily_sunsets) else None
+            uv_val = round(float(daily_uvs[i]), 1) if i < len(daily_uvs) and daily_uvs[i] is not None else None
+
+            day_hourly = hourly_by_date.get(d_str, [])
+
+            if i == 0:
+                day_feel = feels_like
+                day_pressure = current_pressure
+                day_humidity = humidity
+                day_wind = wind_str
+            else:
+                day_feel = high
+                day_pressure = current_pressure
+                day_humidity = humidity
+                day_wind = wind_str
 
             days.append({
                 "date": d_str,
@@ -236,25 +316,14 @@ def get_weather(city: str, country: str | None = None) -> dict:
                 "low": low,
                 "high": high,
                 "rain_chance": rain_prob,
-            })
-
-        # Parse up to 24 upcoming hours
-        hourly_times = hourly_raw.get("time", [])
-        hourly_temps = hourly_raw.get("temperature_2m", [])
-        hourly_codes = hourly_raw.get("weather_code", [])
-        hourly_probs = hourly_raw.get("precipitation_probability", [])
-
-        hourly = []
-        for j in range(min(len(hourly_times), 24)):
-            t_str = hourly_times[j]
-            t_code = hourly_codes[j] if j < len(hourly_codes) else 0
-            t_temp = round(float(hourly_temps[j]), 1) if j < len(hourly_temps) else 0.0
-            t_prob = int(hourly_probs[j]) if j < len(hourly_probs) and hourly_probs[j] is not None else 0
-            hourly.append({
-                "time": t_str,
-                "temp": t_temp,
-                "condition": map_wmo_code(t_code),
-                "rain_chance": t_prob,
+                "sunrise": sunrise_val,
+                "sunset": sunset_val,
+                "uv_index_max": uv_val,
+                "feels_like": day_feel,
+                "pressure": day_pressure,
+                "humidity": day_humidity,
+                "wind": day_wind,
+                "hourly": day_hourly,
             })
 
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -267,13 +336,16 @@ def get_weather(city: str, country: str | None = None) -> dict:
                 "temp": current_temp,
                 "unit": "°C",
                 "condition": current_condition,
+                "is_day": current_is_day,
                 "feels_like": feels_like,
                 "humidity": humidity,
                 "wind": wind_str,
                 "rain_chance": current_rain_chance,
+                "pressure": current_pressure,
+                "uv_index": current_uv,
             },
             "days": days,
-            "hourly": hourly,
+            "hourly": all_hourly,
         }
     except requests.exceptions.HTTPError as e:
         status_code = getattr(getattr(e, "response", None), "status_code", None)

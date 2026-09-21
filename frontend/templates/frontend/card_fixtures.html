@@ -261,16 +261,42 @@
           feels_like: 21,
           humidity: 58,
           wind: '14 km/h NW',
-          rain_chance: 5
+          rain_chance: 5,
+          pressure: 1014,
+          uv_index: 6
         },
         days: [
-          { date: '2026-09-21', label: 'Mon', condition: 'clear', low: 14, high: 22, rain_chance: 0 },
-          { date: '2026-09-22', label: 'Tue', condition: 'partly_cloudy', low: 13, high: 20, rain_chance: 10 },
-          { date: '2026-09-23', label: 'Wed', condition: 'cloudy', low: 12, high: 19, rain_chance: 25 },
-          { date: '2026-09-24', label: 'Thu', condition: 'rain', low: 11, high: 17, rain_chance: 80 },
-          { date: '2026-09-25', label: 'Fri', condition: 'drizzle', low: 12, high: 18, rain_chance: 40 },
-          { date: '2026-09-26', label: 'Sat', condition: 'partly_cloudy', low: 13, high: 21, rain_chance: 15 },
-          { date: '2026-09-27', label: 'Sun', condition: 'clear', low: 14, high: 23, rain_chance: 5 },
+          {
+            date: '2026-09-21',
+            label: 'Today',
+            condition: 'clear',
+            low: 14,
+            high: 22,
+            rain_chance: 0,
+            sunrise: '2026-09-21T06:58',
+            sunset: '2026-09-21T19:05',
+            uv_index_max: 6,
+            pressure: 1014,
+            feels_like: 21,
+            humidity: 58,
+            wind: '14 km/h NW',
+            hourly: [
+              { time: '2026-09-21T14:00', temp: 21, condition: 'clear', is_day: 1, rain_chance: 0 },
+              { time: '2026-09-21T15:00', temp: 22, condition: 'clear', is_day: 1, rain_chance: 0 },
+              { time: '2026-09-21T16:00', temp: 22, condition: 'clear', is_day: 1, rain_chance: 0 },
+              { time: '2026-09-21T17:00', temp: 20, condition: 'partly_cloudy', is_day: 1, rain_chance: 5 },
+              { time: '2026-09-21T18:00', temp: 19, condition: 'partly_cloudy', is_day: 1, rain_chance: 10 },
+              { time: '2026-09-21T19:00', temp: 17, condition: 'cloudy', is_day: 0, rain_chance: 15 },
+              { time: '2026-09-21T20:00', temp: 16, condition: 'clear', is_day: 0, rain_chance: 0 },
+              { time: '2026-09-21T21:00', temp: 15, condition: 'clear', is_day: 0, rain_chance: 0 }
+            ]
+          },
+          { date: '2026-09-22', label: 'Tue', condition: 'partly_cloudy', low: 13, high: 20, rain_chance: 10, sunrise: '2026-09-22T06:59', sunset: '2026-09-22T19:03', uv_index_max: 5, pressure: 1012, feels_like: 20, humidity: 62, wind: '12 km/h W' },
+          { date: '2026-09-23', label: 'Wed', condition: 'cloudy', low: 12, high: 19, rain_chance: 25, sunrise: '2026-09-23T07:00', sunset: '2026-09-23T19:01', uv_index_max: 4, pressure: 1010, feels_like: 19, humidity: 68, wind: '16 km/h SW' },
+          { date: '2026-09-24', label: 'Thu', condition: 'rain', low: 11, high: 17, rain_chance: 80, sunrise: '2026-09-24T07:01', sunset: '2026-09-24T19:00', uv_index_max: 3, pressure: 1008, feels_like: 16, humidity: 82, wind: '22 km/h S' },
+          { date: '2026-09-25', label: 'Fri', condition: 'drizzle', low: 12, high: 18, rain_chance: 40, sunrise: '2026-09-25T07:02', sunset: '2026-09-25T18:58', uv_index_max: 4, pressure: 1011, feels_like: 18, humidity: 74, wind: '15 km/h NW' },
+          { date: '2026-09-26', label: 'Sat', condition: 'partly_cloudy', low: 13, high: 21, rain_chance: 15, sunrise: '2026-09-26T07:03', sunset: '2026-09-26T18:56', uv_index_max: 5, pressure: 1013, feels_like: 21, humidity: 65, wind: '10 km/h W' },
+          { date: '2026-09-27', label: 'Sun', condition: 'clear', low: 14, high: 23, rain_chance: 5, sunrise: '2026-09-27T07:04', sunset: '2026-09-27T18:55', uv_index_max: 6, pressure: 1015, feels_like: 23, humidity: 59, wind: '11 km/h N' },
         ]
       }
     });

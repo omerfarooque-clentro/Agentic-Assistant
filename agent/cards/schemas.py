@@ -22,6 +22,19 @@ class WeatherCurrent(BaseModel):
     humidity: int
     wind: str
     rain_chance: int
+    pressure: float | None = None
+    uv_index: float | None = None
+    is_day: int | bool | None = 1
+
+
+class WeatherHourly(BaseModel):
+    time: str
+    temp: float
+    condition: ConditionEnum
+    rain_chance: int = 0
+    feels_like: float | None = None
+    uv_index: float | None = None
+    is_day: int | bool | None = 1
 
 
 class WeatherDay(BaseModel):
@@ -31,13 +44,14 @@ class WeatherDay(BaseModel):
     low: float
     high: float
     rain_chance: int
-
-
-class WeatherHourly(BaseModel):
-    time: str
-    temp: float
-    condition: ConditionEnum
-    rain_chance: int = 0
+    sunrise: str | None = None
+    sunset: str | None = None
+    uv_index_max: float | None = None
+    feels_like: float | None = None
+    pressure: float | None = None
+    humidity: int | None = None
+    wind: str | None = None
+    hourly: list[WeatherHourly] = Field(default_factory=list)
 
 
 class WeatherData(BaseModel):
