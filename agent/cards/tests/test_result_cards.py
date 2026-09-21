@@ -304,6 +304,11 @@ class ResultCardsOrchestratorTests(TestCase):
         # Ensure result_card is NOT duplicated
         self.assertEqual(sse_types.count("result_card"), 1)
 
+        loading_event = next(e for e in sse_events if e["type"] == "card_loading")
+        self.assertEqual(loading_event["card_type"], "weather")
+        self.assertIn("presentation", loading_event)
+        self.assertEqual(loading_event["presentation"]["order"], "card_first")
+
         card_event = next(e for e in sse_events if e["type"] == "result_card")
         self.assertEqual(card_event["card"]["type"], "weather")
         self.assertEqual(card_event["card"]["data"]["city"], "Berlin")

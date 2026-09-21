@@ -10,7 +10,7 @@ from django.http import StreamingHttpResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from agent.cards import build_result_card, render_cards
+from agent.cards import build_result_card, get_presentation, render_cards
 from agent.cards.registry import TOOL_REGISTRY
 from agent.constants import AGENT_NODES
 from agent.graph.builder import create_graph, ensure_checkpointer
@@ -84,7 +84,8 @@ async def event_stream(formatted_message, thread, user):
                 tool_name = chunk.get("tool")
                 if tool_name in TOOL_REGISTRY:
                     card_type, _ = TOOL_REGISTRY[tool_name]
-                    yield f"data: {json.dumps({'type': 'card_loading', 'card_type': card_type, 'tool': tool_name})}\n\n"
+                    presentation = get_presentation(formatted_message)
+                    yield f"data: {json.dumps({'type': 'card_loading', 'card_type': card_type, 'tool': tool_name, 'presentation': presentation})}\n\n"
                 continue
             if chunk_type == "tool_end":
                 tool_name = chunk.get("tool")
@@ -95,7 +96,8 @@ async def event_stream(formatted_message, thread, user):
                     yield f"data: {json.dumps({'type': 'result_card', 'card': early_card})}\n\n"
                 continue
             if chunk_type == "card_loading":
-                yield f"data: {json.dumps({'type': 'card_loading', 'card_type': chunk.get('card_type'), 'tool': chunk.get('tool')})}\n\n"
+                presentation = chunk.get("presentation") or get_presentation(formatted_message)
+                yield f"data: {json.dumps({'type': 'card_loading', 'card_type': chunk.get('card_type'), 'tool': chunk.get('tool'), 'presentation': presentation})}\n\n"
                 continue
             if chunk_type == "result_card":
                 early_card = chunk.get("card")
@@ -209,7 +211,8 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
                 tool_name = event.get("name")
                 if tool_name in TOOL_REGISTRY:
                     card_type, _ = TOOL_REGISTRY[tool_name]
-                    yield f"data: {json.dumps({'type': 'card_loading', 'card_type': card_type, 'tool': tool_name})}\n\n"
+                    presentation = get_presentation(instruction or "")
+                    yield f"data: {json.dumps({'type': 'card_loading', 'card_type': card_type, 'tool': tool_name, 'presentation': presentation})}\n\n"
 
             if event_type == "on_tool_end":
                 tool_name = event.get("name")

@@ -3010,6 +3010,47 @@
 
         const pending = addMessage('agent', '', true);
         const body = pending.querySelector('.message-content');
+        const currentThreadId = state.threadId;
+        let assistantText = '';
+        let completedHandled = false;
+        let hasReceivedTokens = false;
+        let rafId = null;
+        let renderScheduled = false;
+        let streamingCardType = null;
+        let streamingCardEl = null;
+        let streamingTextEl = null;
+        let streamingCardSlot = null;
+
+        const ensureStreamSlots = (order = 'text_first') => {
+          if (!streamingTextEl) {
+            streamingTextEl = document.createElement('div');
+            streamingTextEl.className = 'markdown-body streaming-text';
+            streamingTextEl.setAttribute('dir', 'auto');
+          }
+          if (!streamingCardSlot) {
+            streamingCardSlot = document.createElement('div');
+            streamingCardSlot.className = 'streaming-card-slot';
+          }
+
+          if (!body.contains(streamingTextEl) || !body.contains(streamingCardSlot)) {
+            body.innerHTML = '';
+            if (order === 'card_first') {
+              body.appendChild(streamingCardSlot);
+              body.appendChild(streamingTextEl);
+            } else {
+              body.appendChild(streamingTextEl);
+              body.appendChild(streamingCardSlot);
+            }
+          } else {
+            // Already attached; ensure the visual order matches presentation preference
+            if (order === 'card_first' && body.firstChild !== streamingCardSlot) {
+              body.insertBefore(streamingCardSlot, streamingTextEl);
+            } else if (order === 'text_first' && body.firstChild !== streamingTextEl) {
+              body.insertBefore(streamingTextEl, streamingCardSlot);
+            }
+          }
+        };
+
         const setPendingStatus = (label, domainOrNode) => {
           if (!body) return;
           let d = domainOrNode;
@@ -3025,38 +3066,30 @@
             else if (l.includes('planning') || l.includes('coordinating') || l.includes('ops') || l.includes('connecting')) d = 'general';
           }
           const cleanLabel = (label || '').replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]\s*/u, '');
+
+          // If a card is mounted (skeleton or real card), preserve it and never destroy body!
+          if (streamingCardSlot && body.contains(streamingCardSlot)) {
+            if (streamingCardEl) {
+              const badgeText = streamingCardEl.querySelector('.rc-skeleton-badge span:last-child');
+              if (badgeText) {
+                let badgeStatus = cleanLabel || label || '';
+                badgeStatus = badgeStatus.replace(/^[^:]+:\s*/, '').trim();
+                badgeText.textContent = badgeStatus || cleanLabel || label;
+              }
+            }
+            if (!hasReceivedTokens && streamingTextEl && !streamingCardEl?.classList.contains('rc-skeleton-container')) {
+              streamingTextEl.innerHTML = `<div class="pending-agent" style="margin: 4px 0;"><span class="dot-flash"><i></i><i></i><i></i></span><span>${escapeHtml(cleanLabel || label)}</span></div>`;
+            }
+            return;
+          }
+
+          // If text tokens are actively streaming into streamingTextEl, do not overwrite body
+          if (hasReceivedTokens && streamingTextEl && body.contains(streamingTextEl)) {
+            return;
+          }
+
           const iconHtml = `<span class="pending-domain-icon">${getDomainIconSvg(d || 'general', 16)}</span>`;
           body.innerHTML = `<div class="pending-agent"><span class="dot-flash"><i></i><i></i><i></i></span>${iconHtml}<span>${escapeHtml(cleanLabel || label)}</span></div>`;
-        };
-        const currentThreadId = state.threadId;
-        let assistantText = '';
-        let completedHandled = false;
-        let hasReceivedTokens = false;
-        let rafId = null;
-        let renderScheduled = false;
-        let streamingCardType = null;
-        let streamingCardEl = null;
-        let streamingTextEl = null;
-        let streamingCardSlot = null;
-
-        const ensureStreamSlots = (order = 'text_first') => {
-          if (!streamingTextEl) {
-            body.innerHTML = '';
-            streamingTextEl = document.createElement('div');
-            streamingTextEl.className = 'markdown-body streaming-text';
-            streamingTextEl.setAttribute('dir', 'auto');
-
-            streamingCardSlot = document.createElement('div');
-            streamingCardSlot.className = 'streaming-card-slot';
-
-            if (order === 'card_first') {
-              body.appendChild(streamingCardSlot);
-              body.appendChild(streamingTextEl);
-            } else {
-              body.appendChild(streamingTextEl);
-              body.appendChild(streamingCardSlot);
-            }
-          }
         };
 
         const scheduleRender = () => {
@@ -3068,10 +3101,10 @@
             const isNearBottom = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) <= 40;
             const cleanText = assistantText.replace(/<suggested_title>[\s\S]*?(?:<\/suggested_title>|$)/gi, '').trim();
             const safeMd = getStreamSafeMarkdown(cleanText);
-            if (streamingCardSlot) {
+            const cardOrder = (state.pendingResultCard && state.pendingResultCard.presentation && state.pendingResultCard.presentation.order) || (streamingCardType ? 'card_first' : 'text_first');
+            ensureStreamSlots(cardOrder);
+            if (streamingTextEl) {
               streamingTextEl.innerHTML = renderMarkdown(safeMd);
-            } else {
-              body.innerHTML = `<div class="markdown-body" dir="auto">${renderMarkdown(safeMd)}</div>`;
             }
             if (isNearBottom) {
               transcript.scrollTop = transcript.scrollHeight;
@@ -3142,8 +3175,9 @@
           if (data.type === 'card_loading') {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
             streamingCardType = data.card_type || data.tool;
+            const order = (data.presentation && data.presentation.order) || (state.pendingResultCard && state.pendingResultCard.presentation && state.pendingResultCard.presentation.order) || 'text_first';
             pending.classList.remove('pending');
-            ensureStreamSlots();
+            ensureStreamSlots(order);
             if (streamingCardSlot && !streamingCardEl && typeof renderCardSkeleton === 'function') {
               streamingCardEl = renderCardSkeleton(streamingCardType);
               streamingCardSlot.innerHTML = '';
