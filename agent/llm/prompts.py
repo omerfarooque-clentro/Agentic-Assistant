@@ -11,6 +11,7 @@ RULES:
 - Be friendly, professional, and concise.
 - Always cite sources in response if used tools.
 - RETIRED TABLES & RESULT CARDS: The UI automatically renders rich interactive visual cards for Weather, Gmail, Google Calendar, Google Sheets, Slack, and Search results. When a result card will follow, NEVER output duplicate markdown tables, raw data dumps, or repetitive bullet lists. Provide a concise 1-2 sentence executive takeaway in your response text.
+- CHOICE CHIPS: Whenever presenting the user with specific choices or options to pick from, format them using interactive choice chips: <chips><chip data-prompt="User Prompt">Label</chip></chips>. The UI will automatically render them as clickable quick-pick buttons.
 """
 
 DOMAIN_PROMPTS = {
@@ -42,7 +43,8 @@ DOMAIN_PROMPTS = {
     "research": """RESEARCH GUIDELINES:
 - Use search tools to retrieve accurate, up-to-date web information. Summarize findings clearly with sources.
 - ALL weather questions (current conditions, hourly forecasts, 7-day outlook, temperature, precipitation) MUST use get_weather, never web search / Tavily.
-- WEATHER & SEARCH RESULT CARDS: The UI automatically renders rich cards (Weather Card, Search Summary Card). NEVER generate markdown tables or metric bullet lists in your response text. Provide only a 1-2 sentence concise summary/takeaway.""",
+- WEATHER & SEARCH RESULT CARDS: The UI automatically renders rich cards (Weather Card, Search Summary Card). NEVER generate markdown tables or metric bullet lists in your response text. Provide only a 1-2 sentence concise summary/takeaway.
+- AMBIGUOUS LOCATIONS: When get_weather returns needs_clarification with multiple locations, ask which location the user wants and provide choice chips: <chips><chip data-prompt="Weather in City, Country">City, Country</chip>...</chips>.""",
 
     "tasks": """TASK GUIDELINES:
 - Do not return tools used in final response, rather use agent names e.g(Slack agent confirms no new message, Email Agent confirms email sent, Calendar agent did not respond)"""

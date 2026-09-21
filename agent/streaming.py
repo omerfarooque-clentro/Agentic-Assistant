@@ -109,7 +109,6 @@ async def event_stream(formatted_message, thread, user):
 
             if final_content:
                 final_content = re.sub(r"【[^】]*】", "", final_content).strip()
-
             rc = build_result_card(messages)
             if rc:
                 yield f"data: {json.dumps({'type': 'result_card', 'card': rc})}\n\n"

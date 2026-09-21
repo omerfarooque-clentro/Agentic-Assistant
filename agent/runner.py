@@ -21,7 +21,7 @@ from agent.utils import (
     is_intermediate_plan_step,
     synthesize_response_from_actions,
 )
-from conversations.models import Thread
+from conversations.models import Message, Thread
 
 logger = logging.getLogger(__name__)
 
