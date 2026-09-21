@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 from django.test import TestCase
 
-from agent.cards.weather_tool import get_weather, map_wmo_code
+from agent.tools.weather_tool import get_weather, map_wmo_code
 
 
 class WeatherToolTests(TestCase):
