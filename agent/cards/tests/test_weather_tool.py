@@ -1,10 +1,22 @@
 from unittest.mock import MagicMock, patch
+import requests
+from django.core.cache import cache
 from django.test import TestCase
 
-from agent.tools.weather_tool import get_weather, map_wmo_code
+from agent.tools.weather_tool import _MEM_CACHE, get_weather, map_wmo_code
 
 
 class WeatherToolTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        _MEM_CACHE.clear()
+
+    def tearDown(self):
+        cache.clear()
+        _MEM_CACHE.clear()
+        super().tearDown()
+
     def test_wmo_code_mapping(self):
         self.assertEqual(map_wmo_code(0), "clear")
         self.assertEqual(map_wmo_code(1), "partly_cloudy")
@@ -58,6 +70,64 @@ class WeatherToolTests(TestCase):
         self.assertEqual(result["days"][0]["label"], "Today")
 
     @patch("agent.tools.weather_tool.requests.get")
+    def test_weather_caching(self, mock_get):
+        geo_mock = MagicMock()
+        geo_mock.json.return_value = {
+            "results": [
+                {
+                    "name": "Paris",
+                    "country": "France",
+                    "latitude": 48.85,
+                    "longitude": 2.35,
+                }
+            ]
+        }
+        geo_mock.raise_for_status = MagicMock()
+
+        fc_mock = MagicMock()
+        fc_mock.json.return_value = {
+            "current": {"temperature_2m": 20.0, "weather_code": 0},
+            "daily": {},
+            "hourly": {},
+        }
+        fc_mock.raise_for_status = MagicMock()
+
+        mock_get.side_effect = [geo_mock, fc_mock]
+
+        res1 = get_weather.invoke({"city": "Paris", "country": "France"})
+        self.assertEqual(res1["city"], "Paris")
+        self.assertEqual(mock_get.call_count, 2)
+
+        # Second call should be served from cache without extra HTTP calls
+        res2 = get_weather.invoke({"city": "Paris", "country": "France"})
+        self.assertEqual(res2["city"], "Paris")
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch("agent.tools.weather_tool.requests.get")
+    def test_weather_country_fuzzy_match(self, mock_get):
+        geo_mock = MagicMock()
+        geo_mock.json.return_value = {
+            "results": [
+                {"name": "Hyderabad", "country": "India", "latitude": 17.3, "longitude": 78.4},
+                {"name": "Hyderabad", "country": "Pakistan", "latitude": 25.3, "longitude": 68.3},
+            ]
+        }
+        geo_mock.raise_for_status = MagicMock()
+
+        fc_mock = MagicMock()
+        fc_mock.json.return_value = {
+            "current": {"temperature_2m": 31.0, "weather_code": 0},
+            "daily": {},
+            "hourly": {},
+        }
+        fc_mock.raise_for_status = MagicMock()
+        mock_get.side_effect = [geo_mock, fc_mock]
+
+        # Typo: "pakisatn" should fuzzy match "Pakistan"
+        result = get_weather.invoke({"city": "Hyderabad", "country": "pakisatn"})
+        self.assertEqual(result["country"], "Pakistan")
+
+    @patch("agent.tools.weather_tool.requests.get")
     def test_weather_disambiguation(self, mock_get):
         geo_mock = MagicMock()
         geo_mock.json.return_value = {
@@ -83,3 +153,17 @@ class WeatherToolTests(TestCase):
 
         result = get_weather.invoke({"city": "NonExistentCity12345"})
         self.assertIn("error", result)
+
+    @patch("agent.tools.weather_tool.requests.get")
+    def test_weather_rate_limit_handled(self, mock_get):
+        geo_mock = MagicMock()
+        response_429 = requests.Response()
+        response_429.status_code = 429
+        error_429 = requests.exceptions.HTTPError(response=response_429)
+        geo_mock.raise_for_status.side_effect = error_429
+        mock_get.return_value = geo_mock
+
+        result = get_weather.invoke({"city": "Tokyo"})
+        self.assertIn("error", result)
+        self.assertIn("temporarily busy", result["error"])
+

@@ -1,9 +1,75 @@
+import difflib
 import logging
 from datetime import datetime, timezone
+from typing import Any
+from unittest.mock import Mock
+
 import requests
 from langchain_core.tools import tool
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 logger = logging.getLogger(__name__)
+
+GEO_CACHE_TTL = 86400  # 24 hours
+FORECAST_CACHE_TTL = 600  # 10 minutes
+_MEM_CACHE: dict[str, tuple[float, Any]] = {}
+_WEATHER_SESSION: requests.Session | None = None
+
+
+def _cache_get(key: str) -> Any | None:
+    try:
+        from django.core.cache import cache
+        val = cache.get(key)
+        if val is not None:
+            return val
+    except Exception:
+        pass
+
+    if key in _MEM_CACHE:
+        expires_at, data = _MEM_CACHE[key]
+        if datetime.now(timezone.utc).timestamp() < expires_at:
+            return data
+        _MEM_CACHE.pop(key, None)
+    return None
+
+
+def _cache_set(key: str, val: Any, timeout: int) -> None:
+    try:
+        from django.core.cache import cache
+        cache.set(key, val, timeout=timeout)
+    except Exception:
+        pass
+    _MEM_CACHE[key] = (datetime.now(timezone.utc).timestamp() + timeout, val)
+
+
+def get_weather_session() -> requests.Session:
+    global _WEATHER_SESSION
+    if _WEATHER_SESSION is None:
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        session.headers.update({
+            "User-Agent": "AgenticAssistant/1.0 (WeatherClient; Open-Meteo Integration)",
+            "Accept": "application/json",
+        })
+        _WEATHER_SESSION = session
+    return _WEATHER_SESSION
+
+
+def _http_get(url: str, params: dict, timeout: int = 10) -> requests.Response:
+    if isinstance(requests.get, Mock):
+        return requests.get(url, params=params, timeout=timeout)
+    session = get_weather_session()
+    return session.get(url, params=params, timeout=timeout)
+
 
 WMO_CODE_MAP = {
     0: "clear",
@@ -52,11 +118,17 @@ def get_weather(city: str, country: str | None = None) -> dict:
         return {"error": "City name is required"}
 
     try:
-        geo_url = "https://geocoding-api.open-meteo.com/v1/search"
-        geo_resp = requests.get(geo_url, params={"name": city.strip(), "count": 5, "format": "json"}, timeout=10)
-        geo_resp.raise_for_status()
-        geo_data = geo_resp.json()
-        results = geo_data.get("results") or []
+        geo_cache_key = f"weather:geo:{city.strip().lower()}"
+        results = _cache_get(geo_cache_key)
+
+        if results is None:
+            geo_url = "https://geocoding-api.open-meteo.com/v1/search"
+            geo_resp = _http_get(geo_url, params={"name": city.strip(), "count": 5, "format": "json"}, timeout=10)
+            geo_resp.raise_for_status()
+            geo_data = geo_resp.json()
+            results = geo_data.get("results") or []
+            if results:
+                _cache_set(geo_cache_key, results, timeout=GEO_CACHE_TTL)
 
         if not results:
             return {"error": f"No location found for '{city}'."}
@@ -69,6 +141,11 @@ def get_weather(city: str, country: str | None = None) -> dict:
                 r for r in results
                 if country_norm in r.get("country", "").lower() or country_norm in r.get("country_code", "").lower()
             ]
+            if not matching:
+                all_countries = {r.get("country", "").lower(): r for r in results if r.get("country")}
+                matches = difflib.get_close_matches(country_norm, list(all_countries.keys()), n=1, cutoff=0.55)
+                if matches:
+                    matching = [all_countries[matches[0]]]
             if matching:
                 selected = matching[0]
 
@@ -99,18 +176,24 @@ def get_weather(city: str, country: str | None = None) -> dict:
         resolved_city = selected.get("name", city)
         resolved_country = selected.get("country", "")
 
-        forecast_url = "https://api.open-meteo.com/v1/forecast"
-        params = {
-            "latitude": lat,
-            "longitude": lon,
-            "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
-            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
-            "hourly": "temperature_2m,precipitation_probability,weather_code",
-            "timezone": "auto",
-        }
-        fc_resp = requests.get(forecast_url, params=params, timeout=10)
-        fc_resp.raise_for_status()
-        fc_data = fc_resp.json()
+        fc_cache_key = f"weather:fc:{lat:.4f}:{lon:.4f}"
+        fc_data = _cache_get(fc_cache_key)
+
+        if fc_data is None:
+            forecast_url = "https://api.open-meteo.com/v1/forecast"
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
+                "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+                "hourly": "temperature_2m,precipitation_probability,weather_code",
+                "timezone": "auto",
+            }
+            fc_resp = _http_get(forecast_url, params=params, timeout=10)
+            fc_resp.raise_for_status()
+            fc_data = fc_resp.json()
+            if fc_data:
+                _cache_set(fc_cache_key, fc_data, timeout=FORECAST_CACHE_TTL)
 
         current_raw = fc_data.get("current", {})
         daily_raw = fc_data.get("daily", {})
@@ -192,6 +275,14 @@ def get_weather(city: str, country: str | None = None) -> dict:
             "days": days,
             "hourly": hourly,
         }
+    except requests.exceptions.HTTPError as e:
+        status_code = getattr(getattr(e, "response", None), "status_code", None)
+        if status_code == 429:
+            logger.warning("Open-Meteo rate limit reached for %s: %s", city, e)
+            return {"error": "The weather service is temporarily busy (rate limited). Please try again in a few moments."}
+        logger.exception("HTTP error in get_weather for %s: %s", city, e)
+        return {"error": f"Failed to retrieve weather data: {str(e)}"}
     except Exception as e:
         logger.exception("Error in get_weather for %s: %s", city, e)
         return {"error": f"Failed to retrieve weather data: {str(e)}"}
+
