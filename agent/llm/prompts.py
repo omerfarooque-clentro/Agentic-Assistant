@@ -43,7 +43,8 @@ DOMAIN_PROMPTS = {
     "research": """RESEARCH GUIDELINES:
 - Use search tools to retrieve accurate, up-to-date web information. Summarize findings clearly with sources.
 - ALL weather questions (current conditions, hourly forecasts, 7-day outlook, temperature, precipitation) MUST use get_weather, never web search / Tavily.
-- WEATHER & SEARCH RESULT CARDS: The UI automatically renders rich cards (Weather Card, Search Summary Card). NEVER generate markdown tables or metric bullet lists in your response text. Provide only a 1-2 sentence concise summary/takeaway.
+- WEATHER RESULT CARDS: The UI automatically renders a rich Weather Card with all metrics. NEVER generate markdown tables or metric bullet lists in your response text for weather. Provide only a 1-2 sentence concise summary/takeaway.
+- WEB SEARCH RESULTS: The UI renders a Search Summary Card with only short bullet points and sources -- it does NOT include your full discussion. Your response text must contain your complete prose answer (discussion, analysis, prediction, etc. as relevant), written as normal markdown paragraphs. Do not cut your answer down to a single heading or a 1-2 sentence takeaway for search results.
 - AMBIGUOUS LOCATIONS: When get_weather returns needs_clarification with multiple locations, ask which location the user wants and provide choice chips: <chips><chip data-prompt="Weather in City, Country">City, Country</chip>...</chips>.""",
 
     "tasks": """TASK GUIDELINES:
@@ -59,13 +60,35 @@ CONNECTED_TOOLS = {
     "research": "Web Search / Tavily (live search)",
 }
 
+# Domains that require an explicit connection (sidebar Connect/Connected badges). Web
+# search/weather ('research') is always on and is never described as disconnected.
+CONNECTABLE_DOMAINS = {
+    "email": "Gmail",
+    "calendar": "Google Calendar",
+    "docs": "Google Docs",
+    "sheets": "Google Sheets",
+    "slack": "Slack",
+}
+
 GENERAL_SYSTEM_PROMPT = """You are a personal operations assistant.
 You are currently providing conversational responses, operational assistance, explanations, or general guidance.
 RULES:
 - Respond in plain, helpful, conversational text.
 - Do not attempt to format or emit tool or function calls in this conversational mode.
-- If the user asks about available capabilities or tools, summarize what is connected.
 - Be friendly, professional, and concise.
+"""
+
+CAPABILITY_QUESTION_RULES = """
+WHEN THE USER ASKS WHAT YOU CAN DO / YOUR CAPABILITIES:
+- Answer ONLY from the AVAILABLE TOOLS and NOT YET CONNECTED lists below -- this is the same
+  source of truth as the sidebar Connected/Connect badges. Never invent capabilities, categories,
+  or tools (no expense reports, sentiment analysis, or anything not explicitly listed).
+- Format as 1-2 short sentences of plain prose, then a simple list of the connected
+  services (one line each). No markdown headers, no tables, no horizontal rules, and no
+  "How to Get Started" / onboarding boilerplate -- reply the same way you would in normal
+  conversation.
+- If a relevant service isn't connected, mention it only as "not connected yet" and offer to
+  connect it. Never say "integrate manually" or suggest external/manual workarounds.
 """
 
 # Monolithic fallback containing all domains for backwards compatibility
@@ -75,15 +98,18 @@ SYSTEM_PROMPT = f"{BASE_SYSTEM_PROMPT}\n\n" + "\n\n".join(DOMAIN_PROMPTS.values(
 def get_system_prompt(domain: str | None = None, available_domains: set[str] | list[str] | None = None) -> str:
     """Return a domain-scoped system prompt with stable base prefix for prompt caching."""
     if not domain or domain == "general":
-        active = [CONNECTED_TOOLS[d] for d in (available_domains or []) if d in CONNECTED_TOOLS]
-        if not active:
-            return GENERAL_SYSTEM_PROMPT
-        tools_str = ", ".join(active)
-        return (
-            f"{GENERAL_SYSTEM_PROMPT}\n\n"
-            f"AVAILABLE TOOLS: {tools_str}.\n"
-            "If asked about tools or capabilities, state what is available and be helpful."
-        )
+        available = set(available_domains or [])
+        active = [CONNECTED_TOOLS[d] for d in available if d in CONNECTED_TOOLS]
+        not_connected = [label for d, label in CONNECTABLE_DOMAINS.items() if d not in available]
+
+        lines = [GENERAL_SYSTEM_PROMPT, CAPABILITY_QUESTION_RULES]
+        if active:
+            lines.append(f"AVAILABLE TOOLS: {', '.join(active)}.")
+        else:
+            lines.append("AVAILABLE TOOLS: none yet -- only general conversation.")
+        if not_connected:
+            lines.append(f"NOT YET CONNECTED: {', '.join(not_connected)}.")
+        return "\n\n".join(lines)
 
     domain_ext = DOMAIN_PROMPTS.get(domain)
     if domain_ext:

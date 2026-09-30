@@ -148,7 +148,7 @@ class RoutingResult(TypedDict, total=False):
     plan: list | None
 
 
-def resolve_active_plan(plan: list | None) -> RoutingResult | None:
+def resolve_active_plan(plan: list | None, available_domains: set[str] | None = None) -> RoutingResult | None:
     """Check if an active multi-step plan has pending or in-progress steps."""
     if not plan:
         return None
@@ -162,12 +162,13 @@ def resolve_active_plan(plan: list | None) -> RoutingResult | None:
     pending_step["status"] = "in_progress"
     intent = pending_step.get("intent", "general")
     domain = pending_step.get("domain", _domain_for_intent(intent))
+    is_available = available_domains is None or domain == "general" or domain in available_domains
     return {
         "intent": intent,
         "domain": domain,
         "confidence": 1.0,
         "margin": 1.0,
-        "status": "confident",
+        "status": "confident" if is_available else "unavailable",
         "call_metrics": None,
         "plan": plan,
     }
@@ -294,7 +295,7 @@ def validate_prediction(
 def route_intent(message: Any, available_domains: set[str], plan: list | None = None) -> RoutingResult:
     """Classify intent adaptively using rule-based reference detection and modular routing stages."""
     # 1. Resolve active plan queue if pending steps exist
-    plan_result = resolve_active_plan(plan)
+    plan_result = resolve_active_plan(plan, available_domains)
     if plan_result:
         return plan_result
 
@@ -308,12 +309,14 @@ def route_intent(message: Any, available_domains: set[str], plan: list | None = 
         routed_query, call_metrics, generated_plan = rewrite_or_plan(message, available_domains, routed_query)
         if generated_plan:
             first_step = generated_plan[0]
+            first_domain = first_step["domain"]
+            is_available = first_domain == "general" or first_domain in available_domains
             return {
                 "intent": first_step["intent"],
-                "domain": first_step["domain"],
+                "domain": first_domain,
                 "confidence": 1.0,
                 "margin": 1.0,
-                "status": "confident",
+                "status": "confident" if is_available else "unavailable",
                 "call_metrics": call_metrics,
                 "plan": generated_plan,
             }

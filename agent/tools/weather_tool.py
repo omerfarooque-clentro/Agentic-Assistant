@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import Mock
+from urllib.parse import quote
 
 import requests
 from langchain_core.tools import tool
@@ -107,6 +108,115 @@ def map_wmo_code(code: int | None) -> str:
     if code is None:
         return "partly_cloudy"
     return WMO_CODE_MAP.get(int(code), "cloudy")
+
+
+def _map_wttr_condition(description: str | None) -> str:
+    """Map wttr.in's free-text weather description to our condition categories."""
+    desc = (description or "").lower()
+    if "thunder" in desc:
+        return "thunderstorm"
+    if "snow" in desc or "sleet" in desc or "ice" in desc:
+        return "snow"
+    if "drizzle" in desc:
+        return "drizzle"
+    if "rain" in desc or "shower" in desc:
+        return "rain"
+    if "fog" in desc or "mist" in desc or "haze" in desc:
+        return "fog"
+    if "overcast" in desc:
+        return "cloudy"
+    if "cloud" in desc or "partly" in desc:
+        return "partly_cloudy"
+    if "clear" in desc or "sunny" in desc:
+        return "clear"
+    return "cloudy"
+
+
+def _fetch_weather_fallback(city: str, country: str | None = None) -> dict | None:
+    """Free, keyless fallback (wttr.in) used seamlessly when Open-Meteo is rate limited or unreachable."""
+    try:
+        query = f"{city}, {country}" if country else city
+        encoded_query = quote(query, safe="")
+        resp = _http_get(f"https://wttr.in/{encoded_query}", params={"format": "j1"}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        current_raw = (data.get("current_condition") or [{}])[0]
+        area = (data.get("nearest_area") or [{}])[0]
+        resolved_city = ((area.get("areaName") or [{}])[0]).get("value") or city
+        resolved_country = ((area.get("country") or [{}])[0]).get("value") or (country or "")
+
+        current_desc = ((current_raw.get("weatherDesc") or [{}])[0]).get("value", "")
+        current_temp = float(current_raw.get("temp_C", 0))
+
+        days = []
+        all_hourly = []
+        for i, day in enumerate((data.get("weather") or [])[:7]):
+            day_hourly = []
+            for h in day.get("hourly", []):
+                h_desc = ((h.get("weatherDesc") or [{}])[0]).get("value", "")
+                slot_hour = int(h.get("time", "0")) // 100
+                item = {
+                    "time": f"{day.get('date', '')}T{slot_hour:02d}:00",
+                    "temp": float(h.get("tempC", 0)),
+                    "condition": _map_wttr_condition(h_desc),
+                    "is_day": 1 if 6 <= slot_hour < 19 else 0,
+                    "rain_chance": int(h.get("chanceofrain", 0) or 0),
+                    "feels_like": float(h.get("FeelsLikeC", h.get("tempC", 0))),
+                    "uv_index": float(h.get("uvIndex", 0) or 0),
+                }
+                day_hourly.append(item)
+                if len(all_hourly) < 24:
+                    all_hourly.append(item)
+
+            try:
+                label = "Today" if i == 0 else datetime.strptime(day.get("date"), "%Y-%m-%d").strftime("%a")
+            except Exception:
+                label = f"Day {i + 1}"
+
+            astronomy = (day.get("astronomy") or [{}])[0]
+            noon_condition = day_hourly[len(day_hourly) // 2]["condition"] if day_hourly else current_desc
+
+            days.append({
+                "date": day.get("date"),
+                "label": label,
+                "condition": _map_wttr_condition(noon_condition) if i > 0 else _map_wttr_condition(current_desc),
+                "low": float(day.get("mintempC", 0)),
+                "high": float(day.get("maxtempC", 0)),
+                "rain_chance": max((h["rain_chance"] for h in day_hourly), default=0),
+                "sunrise": astronomy.get("sunrise"),
+                "sunset": astronomy.get("sunset"),
+                "uv_index_max": max((h["uv_index"] for h in day_hourly), default=None),
+                "feels_like": float(current_raw.get("FeelsLikeC", current_temp)) if i == 0 else float(day.get("maxtempC", 0)),
+                "pressure": float(current_raw.get("pressure", 1013)) if i == 0 else None,
+                "humidity": int(current_raw.get("humidity", 0)) if i == 0 else None,
+                "wind": f"{current_raw.get('windspeedKmph', 0)} km/h" if i == 0 else None,
+                "hourly": day_hourly,
+            })
+
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        return {
+            "city": resolved_city,
+            "country": resolved_country,
+            "updated_at": now_utc,
+            "current": {
+                "temp": current_temp,
+                "unit": "°C",
+                "condition": _map_wttr_condition(current_desc),
+                "is_day": 1,
+                "feels_like": float(current_raw.get("FeelsLikeC", current_temp)),
+                "humidity": int(current_raw.get("humidity", 0)),
+                "wind": f"{current_raw.get('windspeedKmph', 0)} km/h",
+                "rain_chance": days[0]["rain_chance"] if days else 0,
+                "pressure": float(current_raw.get("pressure", 1013)),
+                "uv_index": float(current_raw.get("uvIndex", 0) or 0),
+            },
+            "days": days,
+            "hourly": all_hourly,
+        }
+    except Exception as e:
+        logger.warning("Weather fallback (wttr.in) failed for %s: %s", city, e)
+        return None
 
 
 @tool("get_weather")
@@ -350,10 +460,19 @@ def get_weather(city: str, country: str | None = None) -> dict:
     except requests.exceptions.HTTPError as e:
         status_code = getattr(getattr(e, "response", None), "status_code", None)
         if status_code == 429:
-            logger.warning("Open-Meteo rate limit reached for %s: %s", city, e)
+            logger.warning("Open-Meteo rate limit reached for %s, trying fallback provider: %s", city, e)
+            fallback = _fetch_weather_fallback(city, country)
+            if fallback:
+                return fallback
             return {"error": "The weather service is temporarily busy (rate limited). Please try again in a few moments."}
         logger.exception("HTTP error in get_weather for %s: %s", city, e)
         return {"error": f"Failed to retrieve weather data: {str(e)}"}
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        logger.warning("Open-Meteo unreachable for %s, trying fallback provider: %s", city, e)
+        fallback = _fetch_weather_fallback(city, country)
+        if fallback:
+            return fallback
+        return {"error": "The weather service is temporarily unavailable. Please try again in a few moments."}
     except Exception as e:
         logger.exception("Error in get_weather for %s: %s", city, e)
         return {"error": f"Failed to retrieve weather data: {str(e)}"}

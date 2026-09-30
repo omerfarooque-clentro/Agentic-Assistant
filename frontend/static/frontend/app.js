@@ -1382,6 +1382,7 @@
       const state = {
         threadId: null,
         pendingResultCard: null,
+        pendingConnectPrompts: [],
         threads: [],
         initialThreadPicked: false,
         connectedServices: new Set(),
@@ -2152,7 +2153,35 @@
         `;
       };
 
-      const addMessage = (role, content, pending = false, metrics = null, resultCard = null) => {
+      const renderConnectPromptBox = prompt => {
+        const box = document.createElement('div');
+        box.className = 'connect-prompt-card';
+        box.innerHTML = `
+          <p class="connect-prompt-text">${escapeHtml(prompt.message || `${prompt.label || prompt.service} isn't connected yet.`)}</p>
+          <div class="connect-prompt-actions">
+            <button type="button" class="connect-prompt-btn connect-prompt-connect">Connect ${escapeHtml(prompt.label || titleCase(prompt.service || ''))}</button>
+            <button type="button" class="connect-prompt-btn connect-prompt-dismiss">Not now</button>
+          </div>
+        `;
+        const connectBtn = box.querySelector('.connect-prompt-connect');
+        const dismissBtn = box.querySelector('.connect-prompt-dismiss');
+        if (connectBtn) {
+          connectBtn.onclick = async () => {
+            try {
+              const data = await api(`/api/integrations/${prompt.service}/connect/`);
+              window.location.href = data.authorization_url;
+            } catch (error) {
+              console.warn('Could not start connect flow', error);
+            }
+          };
+        }
+        if (dismissBtn) {
+          dismissBtn.onclick = () => box.remove();
+        }
+        return box;
+      };
+
+      const addMessage = (role, content, pending = false, metrics = null, resultCard = null, connectPrompts = null) => {
         const item = document.createElement('article');
         item.className = `message ${role} ${pending ? 'pending' : ''}`;
         const labelHtml = role === 'user'
@@ -2178,6 +2207,10 @@
           if (cardToRender && cardToRender === state.pendingResultCard) {
             state.pendingResultCard = null;
           }
+          const prompts = connectPrompts || (role === 'agent' ? state.pendingConnectPrompts : null);
+          if (role === 'agent' && prompts === state.pendingConnectPrompts) {
+            state.pendingConnectPrompts = [];
+          }
 
           if (role === 'agent' && cardToRender && typeof renderResultCard === 'function') {
             const cardEl = renderResultCard(cardToRender);
@@ -2189,7 +2222,12 @@
             }
             const order = (cardToRender.presentation && cardToRender.presentation.order) || 'text_first';
 
-            const paragraphs = cleanedText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+            // Never let a leading markdown heading swallow the rest of the reply: drop
+            // any leading heading-only paragraphs before picking the visible takeaway.
+            let paragraphs = cleanedText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+            while (paragraphs.length > 1 && /^#{1,6}\s+\S/.test(paragraphs[0])) {
+              paragraphs = paragraphs.slice(1);
+            }
             let takeaway = '';
             let rest = '';
 
@@ -2240,6 +2278,14 @@
             textWrap.setAttribute('dir', 'auto');
             textWrap.innerHTML = renderMarkdown(text);
             body.appendChild(textWrap);
+          }
+
+          if (role === 'agent' && Array.isArray(prompts)) {
+            prompts.forEach(prompt => {
+              if (prompt && typeof prompt === 'object') {
+                body.appendChild(renderConnectPromptBox(prompt));
+              }
+            });
           }
 
           // Action row (Copy + Retry + Token HUD)
@@ -2776,11 +2822,14 @@
                   state.lastUserQuery = message.content;
                 }
                 let msgResultCard = null;
+                let msgConnectPrompts = [];
                 if (message.cards && Array.isArray(message.cards)) {
                   message.cards.forEach(cardData => {
                     if (cardData && typeof cardData === 'object') {
                       if (cardData.kind === 'result') {
                         msgResultCard = cardData;
+                      } else if (cardData.kind === 'connect_prompt') {
+                        msgConnectPrompts.push(cardData);
                       } else {
                         const cardEl = renderHistoricalCard(cardData);
                         transcript.appendChild(cardEl);
@@ -2794,7 +2843,8 @@
                   message.content,
                   false,
                   metrics,
-                  msgResultCard
+                  msgResultCard,
+                  msgConnectPrompts
                 );
               } catch (err) {
                 console.error('Failed to render message:', err);
@@ -3199,6 +3249,14 @@
                 streamingCardSlot.appendChild(cardEl);
                 streamingCardEl = cardEl;
               }
+            }
+            return;
+          }
+
+          if (data.type === 'connect_prompt') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            if (data.card) {
+              state.pendingConnectPrompts = [...(state.pendingConnectPrompts || []), data.card];
             }
             return;
           }

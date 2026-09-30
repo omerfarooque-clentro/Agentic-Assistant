@@ -48,7 +48,7 @@ class MessagesForLlmTests(TestCase):
         self.assertNotIn("SPREADSHEET GUIDELINES", email_messages[0].content)
 
         general_messages = messages_for_llm(state, domain="general")
-        self.assertEqual(general_messages[0].content, GENERAL_SYSTEM_PROMPT)
+        self.assertIn(GENERAL_SYSTEM_PROMPT, str(general_messages[0].content))
 
     def test_general_prompt_with_available_domains(self):
         state = {
@@ -63,6 +63,9 @@ class MessagesForLlmTests(TestCase):
         self.assertIn("Google Calendar", prompt_text)
         self.assertIn("Slack", prompt_text)
         self.assertNotIn("Web Search", prompt_text)
+        self.assertIn("NOT YET CONNECTED:", prompt_text)
+        self.assertIn("Google Docs", prompt_text)
+        self.assertIn("Google Sheets", prompt_text)
 
     def test_cross_domain_context_preservation(self):
         # Sequence: Turn 1 queries Sheets -> Turn 2 asks to send that to Slack

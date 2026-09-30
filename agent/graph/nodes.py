@@ -10,6 +10,7 @@ from typing import Any
 from agent.llm import llm
 from agent.llm.messages import messages_for_llm
 from agent.graph.approval import APPROVAL_TOOL_NAMES
+from agent.graph.connect import is_domain_disconnected
 from agent.graph.state import AgentState
 from agent.metrics import extract_call_metrics, DEFAULT_MODEL
 from agent.routing.intent_router import route_intent
@@ -152,10 +153,13 @@ def agent_node(state: AgentState, llm_with_tools: Any, domain: str = "general") 
 
 
 def supervisor_router(state: AgentState) -> str:
-    """Route to appropriate domain agent or fallback to general."""
+    """Route to appropriate domain agent, a connect prompt, or fallback to general."""
+    domain = state.get("domain", "general")
     if state.get("routing_status") == "unavailable":
+        if is_domain_disconnected(domain, state.get("available_domains")):
+            return "connect_prompt"
         return "general"
-    return state.get("domain", "general")
+    return domain
 
 
 def scoped_should_continue(state: AgentState, domain: str) -> str:

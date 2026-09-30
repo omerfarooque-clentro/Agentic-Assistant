@@ -97,8 +97,9 @@ def generate_routing_query(messages: Any, available_domains: set[str] | None = N
                 if line_match:
                     domain = line_match.group(1).lower().strip()
                     step_query = line_match.group(2).strip()
-                    if available_domains is None or domain in available_domains:
-                        parsed_steps.append({"domain": domain, "query": step_query})
+                    # Keep steps for domains the user hasn't connected yet too, so the
+                    # workflow can surface a connect prompt instead of silently dropping them.
+                    parsed_steps.append({"domain": domain, "query": step_query})
             if len(parsed_steps) >= 2:
                 call_metrics = extract_call_metrics(
                     response=response,

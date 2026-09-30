@@ -153,12 +153,21 @@ async def event_stream(formatted_message, thread, user):
             if rc and not early_card:
                 yield f"data: {json.dumps({'type': 'result_card', 'card': rc})}\n\n"
 
+            connect_prompts = [
+                p for p in (chunk["result"].get("connect_prompts") or [])
+                if isinstance(p, dict) and not p.get("__reset__")
+            ]
+            for prompt_card in connect_prompts:
+                yield f"data: {json.dumps({'type': 'connect_prompt', 'card': prompt_card})}\n\n"
+
+            all_cards = ([rc] if rc else []) + connect_prompts
+
             await Message.objects.acreate(
                 thread=thread,
                 role="agent",
                 content=final_content,
                 metrics=chunk.get("metrics") or {},
-                cards=[rc] if rc else None,
+                cards=all_cards or None,
             )
             yield f"data: {json.dumps({'type': 'completed', 'response': final_content, 'thread_id': thread.id, 'thread_name': thread.name, 'metrics': chunk.get('metrics', {})})}\n\n"
             return

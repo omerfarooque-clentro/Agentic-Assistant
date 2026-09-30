@@ -53,6 +53,7 @@ class AgentState(TypedDict):
     plan: list[PlanStep]
     current_step_index: int
     completed_actions: Annotated[list, _merge_actions]
+    connect_prompts: Annotated[list, _merge_actions]
 
     details: dict
     is_re_send: bool

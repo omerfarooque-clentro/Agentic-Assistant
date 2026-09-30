@@ -44,4 +44,9 @@ NODE_STATUS_MAP = {
         "agent": "Slack Agent",
         "message": "Slack Agent: Interacting with Slack…",
     },
+    "connect_prompt_agent": {
+        "status": "thinking",
+        "agent": "Personal Ops",
+        "message": "Personal Ops: Checking connection status…",
+    },
 }

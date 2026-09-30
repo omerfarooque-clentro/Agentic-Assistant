@@ -10,6 +10,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from agent.llm import bind_tools_with_fallback, llm
 from agent.graph.approval import approval_result, approval_node, TOOL_NAMES_BY_DOMAIN
+from agent.graph.connect import connect_prompt_node
 from agent.graph.state import AgentState
 from agent.graph.nodes import (
     agent_node,
@@ -88,6 +89,7 @@ def create_graph(tools_groups):
         supervisor_router,
                 {
                         "general": "general_agent",
+                        "connect_prompt": "connect_prompt_agent",
                         **{
                                 domain: f"{domain}_agent"
                                 for domain in DOMAINS
@@ -102,6 +104,13 @@ def create_graph(tools_groups):
     graph.add_node("general_agent", general_agent)
     graph.add_conditional_edges(
         "general_agent",
+        lambda state: scoped_should_continue(state, "general"),
+        {"end": END, "advance_plan": "advance_plan"},
+    )
+
+    graph.add_node("connect_prompt_agent", connect_prompt_node)
+    graph.add_conditional_edges(
+        "connect_prompt_agent",
         lambda state: scoped_should_continue(state, "general"),
         {"end": END, "advance_plan": "advance_plan"},
     )

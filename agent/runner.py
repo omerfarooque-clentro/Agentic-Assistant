@@ -52,6 +52,7 @@ async def run_agent(message: str, thread_id: int, user):
             "messages": [HumanMessage(content=message)],
             "call_metrics": [{"__reset__": True}],
             "completed_actions": [{"__reset__": True}],
+            "connect_prompts": [{"__reset__": True}],
             "available_domains": set(available_domains),
             "thread_id": str(thread_id),
             "user_id": str(user.id),
