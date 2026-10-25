@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, TypedDict
 
 import pandas as pd
@@ -72,7 +73,7 @@ ACTION_MCP_TOOL_NAMES = {
         "slack_get_reactions",
         "slack_search_public_and_private",
     },
-    "research.search": {"tavily_search", "get_weather"},
+    "research.search": {"tavily_search", "get_weather", "tavily_lead_search"},
 }
 
 training_data = pd.read_csv(DATA_FILE).dropna(subset=["text", "intent"])
@@ -91,14 +92,18 @@ class CandidateIntent(TypedDict):
     probability: float
 
 
+ALL_ROUTABLE_DOMAINS = {"email", "calendar", "docs", "sheets", "slack", "research"}
+
+
 def get_candidate_intents(message: str, available_domains: set[str], top_k: int = 3) -> list[CandidateIntent]:
-    """Return the highest-probability intents allowed by the available domains."""
+    """Return the highest-probability intents across routable domains so disconnected services trigger connect_prompt."""
     if top_k <= 0 or not message:
         return []
 
     cleaned = clean_conversational_prefix(message)
-    explicit_domains = detect_explicit_domains(cleaned) & available_domains
-    target_domains = explicit_domains if explicit_domains else available_domains
+    routable_domains = ALL_ROUTABLE_DOMAINS | set(available_domains or set())
+    explicit_domains = detect_explicit_domains(cleaned) & routable_domains
+    target_domains = explicit_domains if explicit_domains else routable_domains
 
     probabilities = model.predict_proba([cleaned])[0]
     candidates = [
@@ -292,6 +297,67 @@ def validate_prediction(
     }
 
 
+_SERVICE_NAME_TO_DOMAIN = {
+    "gmail": "email",
+    "email": "email",
+    "mail": "email",
+    "google calendar": "calendar",
+    "calendar": "calendar",
+    "google docs": "docs",
+    "docs": "docs",
+    "google sheets": "sheets",
+    "sheets": "sheets",
+    "spreadsheet": "sheets",
+    "slack": "slack",
+}
+
+_AFFIRMATIVE_REPLY_RE = re.compile(
+    r"^\s*(?:yes|yeah|yep|sure|ok|okay|please|yes\s+please|connect(?:\s+it)?|do\s+it|go\s+ahead)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+_EXPLICIT_CONNECT_RE = re.compile(
+    r"^\s*(?:please\s+)?connect\s+(?:my\s+)?(gmail|email|mail|google\s+calendar|calendar|google\s+docs|docs|google\s+sheets|sheets|spreadsheet|slack)\b",
+    re.IGNORECASE,
+)
+
+
+def _resolve_disconnected_connect_followup(
+    latest_text: str,
+    message_list: list[Any],
+    available_domains: set[str],
+) -> RoutingResult | None:
+    """Route explicit 'connect <service>' or affirmative 'yes' after a disconnect prompt to connect_prompt_node."""
+    avail = set(available_domains or set())
+    explicit_match = _EXPLICIT_CONNECT_RE.search(latest_text or "")
+    if explicit_match:
+        svc_key = re.sub(r"\s+", " ", explicit_match.group(1).strip().lower())
+        domain = _SERVICE_NAME_TO_DOMAIN.get(svc_key)
+        if domain and domain not in avail:
+            return {
+                "intent": f"{domain}.search",
+                "domain": domain,
+                "confidence": 1.0,
+                "margin": 1.0,
+                "status": "unavailable",
+                "call_metrics": None,
+            }
+
+    if len(message_list) >= 2 and _AFFIRMATIVE_REPLY_RE.match(latest_text or ""):
+        prev_text = extract_message_text(message_list[-2], strip_envelope=True).lower()
+        if "not connected" in prev_text or "isn't connected" in prev_text or "connect " in prev_text:
+            for svc_label, domain in _SERVICE_NAME_TO_DOMAIN.items():
+                if svc_label in prev_text and domain not in avail:
+                    return {
+                        "intent": f"{domain}.search",
+                        "domain": domain,
+                        "confidence": 1.0,
+                        "margin": 1.0,
+                        "status": "unavailable",
+                        "call_metrics": None,
+                    }
+    return None
+
+
 def route_intent(message: Any, available_domains: set[str], plan: list | None = None) -> RoutingResult:
     """Classify intent adaptively using rule-based reference detection and modular routing stages."""
     # 1. Resolve active plan queue if pending steps exist
@@ -302,6 +368,11 @@ def route_intent(message: Any, available_domains: set[str], plan: list | None = 
     # 2. Preprocess message and extract query text
     message_list, latest_text, routed_query = preprocess_query(message)
     call_metrics: CallMetrics | None = None
+
+    # 2b. Check explicit connect request or affirmative follow-up to a disconnected service prompt
+    connect_followup = _resolve_disconnected_connect_followup(latest_text, message_list, available_domains)
+    if connect_followup:
+        return connect_followup
 
     # 3. Determine whether rewriting / multi-step planning is required
     should_rewrite = determine_routing_strategy(latest_text, routed_query, message_list, available_domains)

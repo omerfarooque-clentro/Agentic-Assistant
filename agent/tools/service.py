@@ -6,6 +6,7 @@ import logging
 from asgiref.sync import sync_to_async
 
 from agent.tools.weather_tool import get_weather
+from agent.tools.lead_generation_tool import create_lead_generation_tool
 from agent.integrations.access import refresh_expired_google_token, validate_slack_integration
 from agent.models import MCPIntegration
 from .grouping import build_user_tool_groups
@@ -34,5 +35,7 @@ async def get_user_tools(user):
             if "slack" in tool_groups:
                 tool_groups["slack"].append(create_slack_resolver_tool(user))
 
-    tool_groups.setdefault("research", []).append(get_weather)
+    research_tools = tool_groups.setdefault("research", [])
+    research_tools.append(get_weather)
+    research_tools.append(create_lead_generation_tool(user))
     return tool_groups

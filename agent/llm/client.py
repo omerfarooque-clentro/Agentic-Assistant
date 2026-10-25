@@ -8,7 +8,7 @@ load_dotenv()
 llm_groq = ChatGroq(
     model="openai/gpt-oss-120b",
     temperature=0,
-)
+) 
 
 llm_google = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
