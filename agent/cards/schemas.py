@@ -98,6 +98,10 @@ class SheetViewData(BaseModel):
     columns: list[str] = Field(default_factory=list)
     rows: list[list[Any]] = Field(default_factory=list)
     url: str | None = None
+    download_csv_url: str | None = None
+    download_jsonl_url: str | None = None
+    total_rows: int | None = None
+    synced_to_google_sheets: bool | None = None
 
 
 class SheetUpdateData(BaseModel):
@@ -107,6 +111,10 @@ class SheetUpdateData(BaseModel):
     highlight_row_index: int = 0
     row_number: int | None = None
     url: str | None = None
+    download_csv_url: str | None = None
+    download_jsonl_url: str | None = None
+    total_rows: int | None = None
+    synced_to_google_sheets: bool | None = None
 
 
 class CalendarEventItem(BaseModel):

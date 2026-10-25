@@ -413,12 +413,28 @@ def build_sheet_view(tool_result: Any) -> dict | None:
         columns: list[str] = []
         rows: list[list[Any]] = []
         url: str | None = None
+        download_csv_url: str | None = None
+        download_jsonl_url: str | None = None
+        total_rows: int | None = None
+        synced_to_google_sheets: bool | None = None
 
         if isinstance(payload, dict):
             title = payload.get("title") or payload.get("range") or title
             raw_values = payload.get("values") or payload.get("rows") or []
             url = payload.get("url")
-            if raw_values and isinstance(raw_values, list):
+            export_info = payload.get("pure_python_export") or {}
+            download_csv_url = payload.get("download_csv_url") or export_info.get("download_csv_url")
+            download_jsonl_url = payload.get("download_jsonl_url") or export_info.get("download_jsonl_url")
+            funnel = payload.get("raw_funnel_counts") or {}
+            total_rows = payload.get("total_rows") or funnel.get("unique_verified_leads_exported")
+            if "synced_to_google_sheets" in payload:
+                synced_to_google_sheets = bool(payload.get("synced_to_google_sheets"))
+            elif "synced_to_google_sheets" in export_info:
+                synced_to_google_sheets = bool(export_info.get("synced_to_google_sheets"))
+            if payload.get("columns") and isinstance(payload.get("columns"), list):
+                columns = [str(c) for c in payload["columns"]]
+                rows = raw_values if isinstance(raw_values, list) else []
+            elif raw_values and isinstance(raw_values, list):
                 columns = [str(c) for c in raw_values[0]]
                 rows = raw_values[1:] if len(raw_values) > 1 else []
         elif isinstance(payload, str):
@@ -454,6 +470,10 @@ def build_sheet_view(tool_result: Any) -> dict | None:
             columns=columns,
             rows=rows,
             url=url,
+            download_csv_url=download_csv_url,
+            download_jsonl_url=download_jsonl_url,
+            total_rows=total_rows,
+            synced_to_google_sheets=synced_to_google_sheets,
         )
         return data.model_dump()
     except Exception as e:
@@ -469,6 +489,10 @@ def build_sheet_update(tool_result: Any) -> dict | None:
         rows: list[list[Any]] = []
         row_number: int | None = None
         url: str | None = None
+        download_csv_url: str | None = None
+        download_jsonl_url: str | None = None
+        total_rows: int | None = None
+        synced_to_google_sheets: bool | None = None
 
         if isinstance(payload, dict):
             title = payload.get("title") or title
@@ -476,6 +500,14 @@ def build_sheet_update(tool_result: Any) -> dict | None:
             rows = payload.get("rows") or []
             row_number = payload.get("row_number") or payload.get("highlight_row_index")
             url = payload.get("url")
+            export_info = payload.get("pure_python_export") or {}
+            download_csv_url = payload.get("download_csv_url") or export_info.get("download_csv_url")
+            download_jsonl_url = payload.get("download_jsonl_url") or export_info.get("download_jsonl_url")
+            total_rows = payload.get("total_rows")
+            if "synced_to_google_sheets" in payload:
+                synced_to_google_sheets = bool(payload.get("synced_to_google_sheets"))
+            elif "synced_to_google_sheets" in export_info:
+                synced_to_google_sheets = bool(export_info.get("synced_to_google_sheets"))
         elif isinstance(payload, str):
             # Parse `Successfully updated range 'Sheet1!A4:C4' in spreadsheet abc123`
             # or `Successfully appended 1 row(s) to table 'Table1' in spreadsheet abc123`
@@ -506,6 +538,10 @@ def build_sheet_update(tool_result: Any) -> dict | None:
             highlight_row_index=0,
             row_number=row_number,
             url=url,
+            download_csv_url=download_csv_url,
+            download_jsonl_url=download_jsonl_url,
+            total_rows=total_rows,
+            synced_to_google_sheets=synced_to_google_sheets,
         )
         return data.model_dump()
     except Exception as e:

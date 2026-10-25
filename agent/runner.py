@@ -80,6 +80,15 @@ async def run_agent(message: str, thread_id: int, user):
                     **status_info,
                 }
 
+            if event_type == "on_custom_event" and event.get("name") == "lead_progress":
+                step_data = event.get("data") or {}
+                if isinstance(step_data, dict):
+                    yield {
+                        "type": "task_progress",
+                        **step_data,
+                    }
+                continue
+
             if event_type == "on_tool_start":
                 yield {
                     "type": "tool_start",

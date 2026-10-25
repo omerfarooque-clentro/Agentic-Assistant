@@ -44,6 +44,13 @@ DOMAIN_PROMPTS = {
 - Use search tools to retrieve accurate, up-to-date web information. Summarize findings clearly with sources.
 - ALL weather questions (current conditions, hourly forecasts, 7-day outlook, temperature, precipitation) MUST use get_weather, never web search / Tavily.
 - WEATHER RESULT CARDS: The UI automatically renders a rich Weather Card with all metrics. NEVER generate markdown tables or metric bullet lists in your response text for weather. Provide only a 1-2 sentence concise summary/takeaway.
+- LEAD GENERATION & PURE-PYTHON SHEETS INSERTION: For any request to generate B2B leads, find startups/companies (any desired size: e.g. '10-50', 'under 25', '50-200', 'seed', 'Series A') hiring developers across global regions (US, UK, Australia, Dubai/UAE, Canada, Europe, Singapore, Remote), or add generated leads to a spreadsheet, ALWAYS call `tavily_lead_search` (passing the user's desired `company_size`, `role`, `locations`, and `quota`). Pure Python automatically writes the verified leads to Google Sheets (when connected) and always generates a downloadable CSV/JSONL file (`/api/leads/download/csv/`). NEVER try to write lead rows manually using spreadsheet tools.
+- LEAD GENERATION CONFIDENCE SUMMARY & MATHEMATICAL REASONING: When `tavily_lead_search` returns its raw telemetry, your response MUST include a dedicated **Confidence & Verification Summary** alongside **Mathematical Funnel & Conversion Analysis**:
+  1. **3-Axis Epistemic Confidence Summary**: Summarize executive identity confidence (`CURRENT_CONFIRMED` vs `AMBIGUOUS_NEEDS_REVIEW`), email attribution confidence (`PUBLISHED_DIRECT_MATCH` / `INFERRED_FORMAT_MATCH` / `INFERRED_CANDIDATE`), and mail server verification (`MX_RESOLVED`, `SMTP_RCPT_ACCEPTED`, Microsoft 365 HTTPS check, or SEG). Explain the deliverable grade breakdown (`GRADE_A`, `GRADE_B`, `GRADE_C`, `REVIEW_QUEUE`) with exact percentages.
+  2. **Funnel Yield & Verification Math**: Compute the exact percentage of evaluated companies that passed strict LinkedIn employer-headline + DNS MX verification versus those dropped.
+  3. **Contact Coverage & Data Honesty**: Compute exact percentages for verified LinkedIn URLs, corporate emails, and published phone numbers (explicitly noting that unpublished phone numbers are left empty rather than fabricated).
+  4. **Outreach Conversion Projection**: Calculate expected opens (`35%` open rate) and positive founder replies (`8%` reply rate) from the verified lead batch.
+- WHEN ASKED ABOUT LEAD SOURCES OR METHODOLOGY (DO NOT RE-RUN `tavily_lead_search` FOR EXPLANATION QUESTIONS): Explain the 7-Gate Deterministic Lead Generation Pipeline clearly using the METHODOLOGY REFERENCE below.
 - WEB SEARCH RESULTS: The UI renders a Search Summary Card with only short bullet points and sources -- it does NOT include your full discussion. Your response text must contain your complete prose answer (discussion, analysis, prediction, etc. as relevant), written as normal markdown paragraphs. Do not cut your answer down to a single heading or a 1-2 sentence takeaway for search results.
 - AMBIGUOUS LOCATIONS: When get_weather returns needs_clarification with multiple locations, ask which location the user wants and provide choice chips: <chips><chip data-prompt="Weather in City, Country">City, Country</chip>...</chips>.""",
 
@@ -51,13 +58,28 @@ DOMAIN_PROMPTS = {
 - Do not return tools used in final response, rather use agent names e.g(Slack agent confirms no new message, Email Agent confirms email sent, Calendar agent did not respond)"""
 }
 
+LEAD_GENERATION_METHODOLOGY_GUIDE = """LEAD GENERATION METHODOLOGY & DATA SOURCES (FOR USER QUESTIONS ABOUT HOW LEADS ARE SOURCED/VERIFIED/GRADED):
+- **Where Leads Come From (Live Hiring Intent)**: Leads are sourced from live startup Applicant Tracking System (ATS) job boards (`boards.greenhouse.io`, `jobs.lever.co`, `jobs.ashbyhq.com`) via targeted search dorks + live board JSON APIs (`Greenhouse`, `Lever`, `Ashby`), backed by curated high-intent regional startup pools when offline or rate-limited. Every company in the sheet is actively hiring for the requested developer role.
+- **7-Gate Deterministic Pipeline (`1 Lead = 1 Unique Company`)**:
+  1. **Gate 1–2 (ATS Discovery & Custom Startup Size Filtering)**: Filters active engineering vacancies by role keywords, global region (`US`, `UK`, `Australia`, `Dubai/UAE`, `Canada`, `Europe`, `Singapore`, `Remote`), and any user-specified company size (`10-50`, `under 25`, `50-200`, `Seed`, `Series A`), using both explicit headcount bounds and a dynamic open-posting guard (`max_open_postings <= 50%` of max headcount) to exclude large enterprises.
+  2. **Gate 3 (Canonical Corporate Domain Resolution)**: Resolves the startup's official root domain from ATS metadata/website links while rejecting job aggregators (`indeed.com`, `linkedin.com`, `glassdoor.com`).
+  3. **Gate 4 (Executive Decision-Maker Resolution)**: Identifies a single C-level/VP engineering decision-maker (`CEO`, `CTO`, `Co-Founder`, `VP Engineering`) with a verified `linkedin.com/in/` profile whose current employer headline matches the company (`CURRENT_CONFIRMED`). Never fabricates LinkedIn URLs.
+  4. **Gate 5 (3-Axis Email Verification)**: Fingerprints DNS `MX` records (`GOOGLE_WORKSPACE`, `MICROSOFT_365`, `PROTONMAIL`, `PROOFPOINT_SEG`, `MIMECAST_SEG`), probes Microsoft 365 `GetCredentialType` (`IfExistsResult`), performs non-intrusive SMTP `RCPT TO` + catch-all probes (`VERIFY_CATCH_ALL`), and checks published corporate mail formats.
+  5. **Gate 6 (Strict E.164 Phone Honesty)**: Extracts and validates official corporate phone numbers using Google's `phonenumbers` library (`is_valid_number` + E.164 formatting) from corporate contact pages and `schema.org` JSON-LD. If no valid number is published, it is left empty (`NONE`)—never guessed or fabricated.
+  6. **Gate 7 (Epistemic Deliverable Grading & Export)**:
+     - `GRADE_A`: Confirmed current executive + directly published email (`PUBLISHED_DIRECT_MATCH`) or accepted non-catch-all mailbox (`SMTP_RCPT_ACCEPTED` / M365 confirmed).
+     - `GRADE_B`: Confirmed current executive + verified corporate format match on a resolved MX domain (`INFERRED_FORMAT_MATCH`).
+     - `GRADE_C`: Confirmed current executive + standard corporate pattern (`first@domain.com`) on a live `MX_RESOLVED` / catch-all / SEG-protected domain where SMTP blocks unauthenticated user enumeration. Safe for low-volume personalized founder outreach.
+     - `REVIEW_QUEUE`: Ambiguous employer match or unverified routing held back for manual review.
+     - **Export**: Pure Python writes all rows directly to Google Sheets (if connected) and always saves downloadable `.csv` (`/api/leads/download/csv/`) and `.jsonl` (`/api/leads/download/jsonl/`) files."""
+
 CONNECTED_TOOLS = {
     "email": "Gmail (search, read, draft, send)",
     "calendar": "Google Calendar (view, schedule, manage events)",
     "docs": "Google Docs (read, create, edit docs)",
     "sheets": "Google Sheets (read, update spreadsheets)",
     "slack": "Slack (search, read, send messages)",
-    "research": "Web Search / Tavily (live search)",
+    "research": "Web Search / Tavily & B2B Lead Generation (live search, startup ATS lead generation)",
 }
 
 # Domains that require an explicit connection (sidebar Connect/Connected badges). Web
@@ -87,8 +109,7 @@ WHEN THE USER ASKS WHAT YOU CAN DO / YOUR CAPABILITIES:
   services (one line each). No markdown headers, no tables, no horizontal rules, and no
   "How to Get Started" / onboarding boilerplate -- reply the same way you would in normal
   conversation.
-- If a relevant service isn't connected, mention it only as "not connected yet" and offer to
-  connect it. Never say "integrate manually" or suggest external/manual workarounds.
+- If a relevant service isn't connected, mention it only as "not connected yet" and direct the user to click the Connect button in the card below or in the left sidebar. NEVER claim that you have connected an account yourself, and never ask "Would you like me to connect it for you?" as if a text reply can complete OAuth. Never say "integrate manually" or suggest external/manual workarounds.
 """
 
 # Monolithic fallback containing all domains for backwards compatibility
@@ -102,7 +123,7 @@ def get_system_prompt(domain: str | None = None, available_domains: set[str] | l
         active = [CONNECTED_TOOLS[d] for d in available if d in CONNECTED_TOOLS]
         not_connected = [label for d, label in CONNECTABLE_DOMAINS.items() if d not in available]
 
-        lines = [GENERAL_SYSTEM_PROMPT, CAPABILITY_QUESTION_RULES]
+        lines = [GENERAL_SYSTEM_PROMPT, CAPABILITY_QUESTION_RULES, LEAD_GENERATION_METHODOLOGY_GUIDE]
         if active:
             lines.append(f"AVAILABLE TOOLS: {', '.join(active)}.")
         else:
@@ -113,6 +134,8 @@ def get_system_prompt(domain: str | None = None, available_domains: set[str] | l
 
     domain_ext = DOMAIN_PROMPTS.get(domain)
     if domain_ext:
+        if domain == "research":
+            return f"{BASE_SYSTEM_PROMPT}\n\n{domain_ext}\n\n{LEAD_GENERATION_METHODOLOGY_GUIDE}"
         return f"{BASE_SYSTEM_PROMPT}\n\n{domain_ext}"
     return BASE_SYSTEM_PROMPT
 

@@ -160,7 +160,18 @@ DOMAIN_KEYWORD_MAP = {
     "temp": "research",
     "rain": "research",
     "climate": "research",
+    "lead": "research",
+    "leads": "research",
+    "lead generation": "research",
+    "lead gen": "research",
+    "prospects": "research",
+    "b2b leads": "research",
 }
+
+LEAD_GENERATION_PATTERN = re.compile(
+    r"\b(?:lead\s*gen(?:eration)?|generate\s+\d*\s*leads?|\d+\s+leads?\b|leads?\s+for\b|hiring\s+leads?)\b",
+    re.IGNORECASE,
+)
 
 POLITE_PREFIX_PATTERN = re.compile(
     r"^(?:hey\s+(?:assistant|bot|there)?[\s,]*|hi\s+(?:assistant|there)?[\s,]*|hello\s+(?:assistant|there)?[\s,]*|good\s+(?:morning|afternoon|evening)[\s,]*|please[\s,]*|can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|would\s+you\s+(?:please\s+)?|i\s+need\s+you\s+to\s+|help\s+me\s+(?:to\s+)?)+",
@@ -223,6 +234,11 @@ def detect_explicit_domains(text: str) -> set[str]:
         return set()
     cleaned = strip_message_envelope(text).strip().lower()
 
+    # Lead generation requests are handled end-to-end by `tavily_lead_search` in the
+    # research domain (including pure-Python Google Sheets insertion & email/phone extraction).
+    if LEAD_GENERATION_PATTERN.search(cleaned):
+        return {"research"}
+
     matched = set()
 
     # Check for direct email addresses (e.g. user@domain.com)
@@ -259,6 +275,7 @@ def is_compound_multi_domain(text: str, available_domains: set[str] | None = Non
         if re.search(r"\b(and|then|after|also|aslo|plus)\b|[,;\n]", text, re.IGNORECASE):
             return True
     return False
+
 
 
 

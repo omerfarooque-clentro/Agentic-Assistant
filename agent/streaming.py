@@ -14,11 +14,13 @@ from agent.cards import build_result_card, get_presentation, render_cards
 from agent.cards.registry import TOOL_REGISTRY
 from agent.constants import AGENT_NODES
 from agent.graph.builder import create_graph, ensure_checkpointer
+from agent.graph.connect import CONNECTABLE_DOMAINS, DOMAIN_SERVICE_LABEL, build_connect_prompt
 from agent.llm import StreamTitleFilter
 from agent.llm.titles import extract_title_from_text
 from agent.metrics import aggregate_turn_metrics
 from agent.runner import run_agent
 from agent.status import NODE_STATUS_MAP
+from agent.tasks import clear_thread_cancel, is_thread_cancelled, update_job_progress
 from agent.tools.service import get_user_tools
 from agent.utils import (
     extract_stream_chunk_token,
@@ -72,13 +74,22 @@ async def event_stream(formatted_message, thread, user):
     """Async generator that streams agent tokens, status updates, and results as SSE events."""
     local_save = []
     early_card = None
+    clear_thread_cancel(thread.id)
 
     try:
         async for chunk in run_agent(message=formatted_message, thread_id=thread.id, user=user):
+            if is_thread_cancelled(thread.id):
+                yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Stopped by user.'})}\n\n"
+                return
+
             chunk_type = chunk["type"]
 
             if chunk_type == "status":
                 yield f"data: {json.dumps({'type': 'status', 'status': chunk.get('status'), 'message': chunk.get('message')})}\n\n"
+                continue
+            if chunk_type == "task_progress":
+                prog = update_job_progress(chunk, thread_id=thread.id)
+                yield f"data: {json.dumps({'type': 'task_progress', **prog})}\n\n"
                 continue
             if chunk_type == "tool_start":
                 tool_name = chunk.get("tool")
@@ -157,6 +168,18 @@ async def event_stream(formatted_message, thread, user):
                 p for p in (chunk["result"].get("connect_prompts") or [])
                 if isinstance(p, dict) and not p.get("__reset__")
             ]
+            # Fallback guarantee: if the response mentions a disconnected service isn't connected yet
+            # but connect_prompts was empty, attach the real connect_prompt card so the button renders.
+            if not connect_prompts and final_content:
+                lower_final = final_content.lower()
+                if "isn't connected" in lower_final or "not connected" in lower_final:
+                    avail_domains = set(chunk["result"].get("available_domains") or [])
+                    for dom in CONNECTABLE_DOMAINS:
+                        lbl = DOMAIN_SERVICE_LABEL.get(dom, dom).lower()
+                        if dom not in avail_domains and (lbl in lower_final or dom in lower_final):
+                            connect_prompts.append(build_connect_prompt(dom))
+                            break
+
             for prompt_card in connect_prompts:
                 yield f"data: {json.dumps({'type': 'connect_prompt', 'card': prompt_card})}\n\n"
 
@@ -179,6 +202,7 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
     """Async generator that resumes a paused graph after user approval/rejection and streams results."""
     start_time = time.perf_counter()
     title_filter = StreamTitleFilter()
+    clear_thread_cancel(thread.id)
 
     await ensure_checkpointer()
     tools = await get_user_tools(user)
@@ -196,11 +220,25 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
         current_plan = approval.get("plan") if isinstance(approval, dict) else None
 
         early_card = None
+        last_tool_name = None
+        last_tool_output = None
+        streamed_tokens: list[str] = []
 
         async for event in app.astream_events(resume_input, config=config, version="v2"):
+            if is_thread_cancelled(thread.id):
+                yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Stopped by user.'})}\n\n"
+                return
+
             event_type = event["event"]
             metadata = event.get("metadata", {})
             node_name = metadata.get("langgraph_node")
+
+            if event_type == "on_custom_event" and event.get("name") == "lead_progress":
+                step_data = event.get("data") or {}
+                if isinstance(step_data, dict):
+                    prog = update_job_progress(step_data, thread_id=thread.id)
+                    yield f"data: {json.dumps({'type': 'task_progress', **prog})}\n\n"
+                continue
 
             if event_type == "on_chain_end":
                 out_data = event.get("data", {}).get("output")
@@ -218,6 +256,21 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
 
             if event_type == "on_tool_start":
                 tool_name = event.get("name")
+                if tool_name == "tavily_lead_search":
+                    details = (approval.get("details") if isinstance(approval, dict) else {}) or {}
+                    merged_args = {**details, **(modified_args or {})}
+                    q_quota = int(merged_args.get("quota") or 100)
+                    q_role = str(merged_args.get("role") or "Python Developer")
+                    init_prog = update_job_progress(
+                        {
+                            "step": "discover_boards",
+                            "message": f"Searching (0/{q_quota}) → Discovering ATS startup boards for {q_role}...",
+                            "completed": 0,
+                            "quota": q_quota,
+                        },
+                        thread_id=thread.id,
+                    )
+                    yield f"data: {json.dumps({'type': 'task_progress', **init_prog})}\n\n"
                 if tool_name in TOOL_REGISTRY:
                     card_type, _ = TOOL_REGISTRY[tool_name]
                     presentation = get_presentation(instruction or "")
@@ -226,6 +279,8 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
             if event_type == "on_tool_end":
                 tool_name = event.get("name")
                 tool_output = event.get("data", {}).get("output")
+                last_tool_name = tool_name
+                last_tool_output = tool_output
                 early = _build_early_card_from_tool(tool_name, tool_output, instruction or "")
                 if early:
                     early_card = early
@@ -240,11 +295,13 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
 
             user_token = extract_stream_chunk_token(event["data"]["chunk"], title_filter)
             if user_token:
+                streamed_tokens.append(user_token)
                 yield f"data: {json.dumps({'type': 'token', 'token': user_token})}\n\n"
 
         # Flush remaining title filter buffer
         rem_token, extracted_title = title_filter.finalize()
         if rem_token and not is_intermediate_plan_step(current_plan):
+            streamed_tokens.append(rem_token)
             yield f"data: {json.dumps({'type': 'token', 'token': rem_token})}\n\n"
 
         # Get final state after graph execution
@@ -332,4 +389,42 @@ async def approval_event_stream(approval, thread, user, config, approved, modifi
 
     except Exception as e:
         logger.exception("approval_event_stream error for thread %s", thread.id)
+        if last_tool_output is not None or early_card is not None or streamed_tokens:
+            try:
+                from django.db import close_old_connections
+                from asgiref.sync import sync_to_async
+                from agent.tasks import format_deterministic_lead_summary
+
+                await sync_to_async(close_old_connections)()
+                raw_tool_val = getattr(last_tool_output, "content", last_tool_output)
+                if isinstance(raw_tool_val, str):
+                    try:
+                        raw_tool_val = json.loads(raw_tool_val)
+                    except Exception:
+                        pass
+
+                recovered_text = "".join(streamed_tokens).strip()
+                if not recovered_text and last_tool_name == "tavily_lead_search" and isinstance(raw_tool_val, dict):
+                    recovered_text = format_deterministic_lead_summary(raw_tool_val)
+                if not recovered_text:
+                    recovered_text = "Action executed successfully."
+
+                fallback_card_record = render_cards(
+                    approval=approval,
+                    messages=[],
+                    modified_args=modified_args,
+                    approved=approved,
+                    instruction=instruction,
+                )
+                await Message.objects.acreate(
+                    thread=thread,
+                    role="agent",
+                    content=recovered_text,
+                    metrics={},
+                    cards=[fallback_card_record, *([early_card] if early_card else [])],
+                )
+                yield f"data: {json.dumps({'type': 'completed', 'result': recovered_text, 'thread_id': int(thread.id), 'thread_name': thread.name, 'metrics': {}, 'card_record': fallback_card_record})}\n\n"
+                return
+            except Exception as recovery_exc:
+                logger.warning("Post-tool recovery also failed: %s", recovery_exc)
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

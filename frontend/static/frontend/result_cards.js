@@ -508,6 +508,7 @@
     if (!data) return '';
     const columns = (Array.isArray(data.columns) ? data.columns : []).slice(0, 4);
     const rows = Array.isArray(data.rows) ? data.rows : [];
+    const totalCount = typeof data.total_rows === 'number' && data.total_rows > 0 ? data.total_rows : (rows.length || 0);
     const highlightIdx = isUpdate && typeof data.highlight_row_index === 'number' ? data.highlight_row_index : (isUpdate ? rows.length - 1 : -1);
 
     const thHtml = columns.map(c => `<th>${escapeHtml(c)}</th>`).join('');
@@ -521,6 +522,13 @@
       trHtml += `<tr class="${isHighlighted ? 'rc-sheet-row-highlight' : ''}">${tdHtml}</tr>`;
     });
 
+    const isLocalCsvOnly = data.synced_to_google_sheets === false && Boolean(data.download_csv_url);
+    const footerMeta = isUpdate && data.row_number
+      ? `Added to row ${data.row_number}`
+      : isLocalCsvOnly
+        ? `${totalCount || previewRows.length} verified leads · Saved to downloadable CSV (connect Google Sheets for auto-sync)`
+        : `${totalCount || previewRows.length} total rows`;
+
     return `
       <div class="rc-card rc-sheet-card" role="group" aria-label="${escapeHtml(data.title || 'Google Sheet')}">
         <div class="rc-header">
@@ -528,7 +536,7 @@
             <span class="rc-header-icon">${SVG_ICONS.sheets}</span>
             <span>${escapeHtml(data.title || (isUpdate ? 'Sheet Updated' : 'Google Sheet'))}</span>
           </div>
-          ${isUpdate ? '<span class="rc-badge rc-badge-emerald">Row added</span>' : `<span class="rc-badge">Latest ${previewRows.length} of ${rows.length || previewRows.length}</span>`}
+          ${isUpdate ? '<span class="rc-badge rc-badge-emerald">Row added</span>' : `<span class="rc-badge">${isLocalCsvOnly ? `CSV Ready · ${totalCount || previewRows.length} rows` : `Latest ${previewRows.length} of ${totalCount || previewRows.length}`}</span>`}
         </div>
         ${columns.length || previewRows.length ? `
           <div class="rc-sheet-wrap">
@@ -539,9 +547,11 @@
           </div>
         ` : '<div class="rc-empty-state">No rows found in sheet.</div>'}
         <div class="rc-sheet-footer">
-          <span class="rc-sheet-meta">${isUpdate && data.row_number ? `Added to row ${data.row_number}` : `${rows.length || previewRows.length} total rows`}</span>
-          <div style="display: flex; gap: 8px;">
+          <span class="rc-sheet-meta">${escapeHtml(footerMeta)}</span>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             ${rows.length > 5 ? `<button class="rc-action-chip" type="button" data-prompt="Show all rows from ${escapeHtml(data.title || 'the sheet')}">Show more rows</button>` : ''}
+            ${data.download_csv_url ? `<button class="rc-link-btn rc-download-csv-btn" type="button" data-download-url="${escapeHtml(data.download_csv_url)}" data-filename="leads_deliverable.csv">Download CSV</button>` : ''}
+            ${data.download_jsonl_url && isLocalCsvOnly ? `<button class="rc-link-btn rc-download-csv-btn" type="button" data-download-url="${escapeHtml(data.download_jsonl_url)}" data-filename="leads_deliverable.jsonl">Download JSONL</button>` : ''}
             ${data.url ? `<a class="rc-link-btn" href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer">Open sheet ↗</a>` : ''}
           </div>
         </div>
@@ -1086,8 +1096,51 @@
     }
   }
 
-  // Global event delegation for weather card interactions (handles static/injected HTML)
+  async function triggerAuthenticatedLeadDownload(url, fallbackFilename) {
+    if (!url) return;
+    const token = localStorage.getItem('access_token') || '';
+    try {
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fallbackFilename || (url.includes('jsonl') ? 'leads_deliverable.jsonl' : 'leads_deliverable.csv');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    } catch (err) {
+      const sep = url.includes('?') ? '&' : '?';
+      window.open(token ? `${url}${sep}token=${encodeURIComponent(token)}` : url, '_blank');
+    }
+  }
+
+  // Global event delegation for weather card & lead download interactions (handles static/injected HTML)
   document.addEventListener('click', e => {
+    const dlBtn = e.target.closest('.rc-download-csv-btn');
+    if (dlBtn) {
+      e.preventDefault();
+      const url = dlBtn.getAttribute('data-download-url');
+      const fname = dlBtn.getAttribute('data-filename') || 'leads_deliverable.csv';
+      triggerAuthenticatedLeadDownload(url, fname);
+      return;
+    }
+
+    const dlLink = e.target.closest('a[href*="/api/leads/download/"]');
+    if (dlLink) {
+      e.preventDefault();
+      const href = dlLink.getAttribute('href');
+      triggerAuthenticatedLeadDownload(href, href && href.includes('jsonl') ? 'leads_deliverable.jsonl' : 'leads_deliverable.csv');
+      return;
+    }
+
     const dayRow = e.target.closest('.rc-weather-day-row[data-day-index]');
     if (dayRow) {
       const cardParent = dayRow.closest('.rc-card.rc-weather');
@@ -1122,3 +1175,4 @@
   window.renderResultCard = renderResultCard;
   window.renderCardSkeleton = renderCardSkeleton;
 })();
+

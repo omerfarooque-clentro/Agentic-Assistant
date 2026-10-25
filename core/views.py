@@ -356,3 +356,136 @@ async def delete_thread_view(request, thread_id):
 
     await thread.adelete()
     return JsonResponse({"detail": "Thread deleted successfully."}, status=200)
+
+
+@csrf_exempt
+async def cancel_thread_execution_view(request, thread_id):
+    """Cancel an active SSE stream or background lead generation job for a thread."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    user, error = await authenticated_user(request)
+    if error:
+        return error
+
+    try:
+        thread = await Thread.objects.aget(id=thread_id, user=user)
+    except Thread.DoesNotExist:
+        return JsonResponse({"detail": "Thread not found."}, status=404)
+
+    from agent.tasks import request_thread_cancel
+
+    result = request_thread_cancel(thread.id)
+    return JsonResponse(result, status=200)
+
+
+@csrf_exempt
+async def start_background_lead_job_view(request, thread_id):
+    """Launch an approved B2B lead generation campaign in the background so the chat composer unlocks immediately."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    user, error = await authenticated_user(request)
+    if error:
+        return error
+
+    try:
+        thread = await Thread.objects.aget(id=thread_id, user=user)
+    except Thread.DoesNotExist:
+        return JsonResponse({"detail": "Thread not found."}, status=404)
+
+    payload = request_json(request) or {}
+    approval_payload = payload.get("approval") or {}
+    modified_args = payload.get("modified_args") or {}
+    instruction = payload.get("instruction") or ""
+
+    message = await Message.objects.filter(thread=thread, role="user").order_by("-created_at").afirst()
+    if message:
+        approval, created = await Approval.objects.aget_or_create(
+            message=message,
+            thread=thread,
+            defaults={"approved": True},
+        )
+        if not created:
+            approval.approved = True
+            await approval.asave(update_fields=["approved"])
+
+    from agent.tasks import start_background_lead_job
+
+    job_state = start_background_lead_job(
+        thread_id=thread.id,
+        user_id=user.id,
+        approval_payload=approval_payload,
+        modified_args=modified_args,
+        instruction=instruction,
+    )
+    return JsonResponse(job_state, status=200)
+
+
+@csrf_exempt
+async def background_lead_job_status_view(request, thread_id, job_id):
+    """Poll live step progression or completion payload for a background lead generation job."""
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    user, error = await authenticated_user(request)
+    if error:
+        return error
+
+    try:
+        await Thread.objects.aget(id=thread_id, user=user)
+    except Thread.DoesNotExist:
+        return JsonResponse({"detail": "Thread not found."}, status=404)
+
+    from agent.tasks import get_job_status
+
+    job = get_job_status(job_id)
+    if not job:
+        return JsonResponse({"detail": "Background job not found."}, status=404)
+    return JsonResponse(job, status=200)
+
+
+@csrf_exempt
+async def download_leads_file_view(request, fmt="csv"):
+    """Download the latest pure-Python generated leads deliverable as CSV or JSONL (works even when Google Sheets is not connected)."""
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    user = await authenticate_api_request(request)
+    if user is None:
+        token_param = (request.GET.get("token") or "").strip()
+        if token_param:
+            try:
+                from rest_framework_simplejwt.tokens import AccessToken
+
+                validated = AccessToken(token_param)
+                uid = validated.get("user_id")
+                if uid is not None:
+                    user = await User.objects.filter(id=uid).afirst()
+            except Exception:
+                user = None
+
+    if user is None:
+        return JsonResponse({"detail": "Authentication credentials were not provided."}, status=401)
+
+    import os
+    from django.http import HttpResponse
+
+    clean_fmt = (fmt or "csv").lower().strip()
+    if clean_fmt not in ("csv", "jsonl"):
+        clean_fmt = "csv"
+
+    output_dir = os.path.join(os.getcwd(), "outputs")
+    filename = "leads_deliverable.jsonl" if clean_fmt == "jsonl" else "leads_deliverable.csv"
+    file_path = os.path.join(output_dir, filename)
+
+    if not os.path.exists(file_path):
+        return JsonResponse({"detail": f"No generated {clean_fmt.upper()} lead file found yet."}, status=404)
+
+    with open(file_path, "rb") as f:
+        content = f.read()
+
+    content_type = "application/x-ndjson; charset=utf-8" if clean_fmt == "jsonl" else "text/csv; charset=utf-8"
+    response = HttpResponse(content, content_type=content_type)
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

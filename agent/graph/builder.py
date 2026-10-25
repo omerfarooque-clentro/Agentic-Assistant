@@ -4,6 +4,7 @@ import os
 import asyncio
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
+import psycopg
 from psycopg_pool import AsyncConnectionPool
 # pyrefly: ignore [missing-import]
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -36,6 +37,51 @@ pool = None
 memory = None
 _init_lock = asyncio.Lock()
 
+
+class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
+    """AsyncPostgresSaver wrapper that automatically recovers from stale/dropped SSL connections."""
+
+    async def _refresh_pool(self) -> None:
+        try:
+            if hasattr(self.conn, "check"):
+                await self.conn.check()
+        except Exception as exc:
+            logger.debug("Pool check warning during reconnect: %s", exc)
+
+    async def aget_tuple(self, config):
+        for attempt in range(3):
+            try:
+                return await super().aget_tuple(config)
+            except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                if attempt == 2:
+                    raise
+                logger.warning("Postgres checkpointer aget_tuple transient SSL/conn drop (attempt %d/3): %s", attempt + 1, exc)
+                await self._refresh_pool()
+                await asyncio.sleep(0.15 * (attempt + 1))
+
+    async def aput(self, config, checkpoint, metadata, new_versions):
+        for attempt in range(3):
+            try:
+                return await super().aput(config, checkpoint, metadata, new_versions)
+            except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                if attempt == 2:
+                    raise
+                logger.warning("Postgres checkpointer aput transient SSL/conn drop (attempt %d/3): %s", attempt + 1, exc)
+                await self._refresh_pool()
+                await asyncio.sleep(0.15 * (attempt + 1))
+
+    async def aput_writes(self, config, writes, task_id, task_path=""):
+        for attempt in range(3):
+            try:
+                return await super().aput_writes(config, writes, task_id, task_path)
+            except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                if attempt == 2:
+                    raise
+                logger.warning("Postgres checkpointer aput_writes transient SSL/conn drop (attempt %d/3): %s", attempt + 1, exc)
+                await self._refresh_pool()
+                await asyncio.sleep(0.15 * (attempt + 1))
+
+
 async def setup_checkpointer():
     global pool, memory
     async with _init_lock:
@@ -43,11 +89,27 @@ async def setup_checkpointer():
             return
 
         if pool is None:
-            pool = AsyncConnectionPool(DB_URI, max_size=10, kwargs={"autocommit": True}, open=False)
+            pool = AsyncConnectionPool(
+                DB_URI,
+                min_size=1,
+                max_size=10,
+                max_idle=120.0,
+                max_lifetime=600.0,
+                reconnect_timeout=30.0,
+                check=AsyncConnectionPool.check_connection,
+                kwargs={
+                    "autocommit": True,
+                    "keepalives": 1,
+                    "keepalives_idle": 20,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
+                },
+                open=False,
+            )
 
         try:
             await pool.open()
-            checkpointer = AsyncPostgresSaver(pool)
+            checkpointer = ResilientAsyncPostgresSaver(pool)
             await checkpointer.setup()
             memory = checkpointer
         except Exception:
@@ -61,6 +123,11 @@ async def ensure_checkpointer():
     """Initialize the checkpointer for non-ASGI entry points and tests."""
     if memory is None:
         await setup_checkpointer()
+    elif pool is not None:
+        try:
+            await pool.check()
+        except Exception:
+            pass
 
 async def close_checkpointer():
     global pool, memory

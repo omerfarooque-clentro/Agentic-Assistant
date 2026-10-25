@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 # Domains whose write actions are gated behind human-in-the-loop approval.
-APPROVAL_DOMAINS = {"email", "calendar", "docs", "sheets", "slack"}
+APPROVAL_DOMAINS = {"email", "calendar", "docs", "sheets", "slack", "research"}
 
 
 def nlp_node(state: AgentState, available_domains=()) -> dict[str, Any]:

@@ -34,7 +34,7 @@ FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "YOUR_GENERATED_BA
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "False").strip().lower() in ("true", "1", "t", "yes","y")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
+ALLOWED_HOSTS =  [] #  os.getenv("ALLOWED_HOSTS", "").split(",")
 
 
 # Application definition
@@ -164,6 +164,15 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
+# Celery & Background Task Configuration
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_DEFAULT_RATE_LIMIT = os.getenv("CELERY_TASK_DEFAULT_RATE_LIMIT", "30/m")
+
 # settings.py (at the very bottom of the file)
 import sys
 
@@ -174,3 +183,4 @@ if len(sys.argv) > 1 and "test" in sys.argv:
             "NAME": ":memory:",
         }
     }
+    CELERY_TASK_ALWAYS_EAGER = True

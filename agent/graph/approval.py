@@ -12,6 +12,7 @@ DOCS_APPROVAL_TOOL_NAMES = {
 }
 SHEETS_APPROVAL_TOOL_NAMES = {"create_spreadsheet", "create_sheet", "modify_sheet_values", "append_table_rows"}
 SLACK_APPROVAL_TOOL_NAMES = {"slack_send_message", "send_slack_dm", "create_slack_draft", "slack_add_reaction", "slack_schedule_message"}
+RESEARCH_APPROVAL_TOOL_NAMES = {"tavily_lead_search"}
 
 TOOL_NAMES_BY_DOMAIN = {
     "email": EMAIL_APPROVAL_TOOL_NAMES,
@@ -19,6 +20,7 @@ TOOL_NAMES_BY_DOMAIN = {
     "docs": DOCS_APPROVAL_TOOL_NAMES,
     "sheets": SHEETS_APPROVAL_TOOL_NAMES,
     "slack": SLACK_APPROVAL_TOOL_NAMES,
+    "research": RESEARCH_APPROVAL_TOOL_NAMES,
 }
 
 # tool_name -> owning domain, used to route back to the right *_tools node after approval.

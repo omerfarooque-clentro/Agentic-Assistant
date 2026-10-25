@@ -34,12 +34,13 @@ TOOL_REGISTRY: dict[str, tuple[str, Callable[[Any], dict | None]]] = {
     "slack_read_thread": ("slack_mentions", build_slack_mentions),
     "slack_search_public_and_private": ("slack_mentions", build_slack_mentions),
     "slack_search_channels": ("slack_mentions", build_slack_mentions),
-    # Tavily / Web
+    # Tavily / Web / Lead Generation
     "tavily_search": ("search_summary", build_search_summary),
     "tavily_search_advanced": ("search_summary", build_search_summary),
     "tavily_search_context": ("search_summary", build_search_summary),
     "tavily_qna_search": ("search_summary", build_search_summary),
     "search": ("search_summary", build_search_summary),
+    "tavily_lead_search": ("sheet_view", build_sheet_view),
 }
 
 

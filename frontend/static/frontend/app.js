@@ -229,7 +229,19 @@
     }).format(date);
   };
 
-  const APPROVAL_FIELD_LABELS = { to: 'To', subject: 'Subject', body: 'Body', channel: 'Channel', message: 'Message' };
+  const APPROVAL_FIELD_LABELS = {
+    to: 'To',
+    subject: 'Subject',
+    body: 'Body',
+    channel: 'Channel',
+    message: 'Message',
+    role: 'Target Role',
+    locations: 'Target Countries / Regions',
+    company_size: 'Company Size (Employees)',
+    quota: 'Max Verified Leads Quota',
+    spreadsheet_id: 'Target Google Sheet ID',
+    sheet_name: 'Target Sheet Tab',
+  };
   const SKIPPED_APPROVAL_KEYS = new Set(['type', 'tool_name', 'is_duplicate', 'domain', 'message', 'args']);
   const titleCase = key => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -655,14 +667,16 @@
 
   const renderDocsApproval = args => {
     const title = args.title || args.document_id || 'Google Document';
-    const content = args.content || args.text || args.body || args.insert_text || '';
+    const rawContent = String(args.content || args.text || args.body || args.insert_text || '');
+    const charCount = rawContent.length;
     return `
       <div class="docs-approval">
         <div class="docs-approval-meta">
-          <span class="docs-chip">📄 ${escapeHtml(title)}</span>
+          <span class="docs-chip">📄 ${escapeHtml(truncateText(String(title), 120))}</span>
           ${args.document_id && args.title ? `<span class="sheets-range-badge">ID: ${escapeHtml(truncateText(args.document_id, 20))}</span>` : ''}
+          ${charCount > 600 ? `<span class="sheets-range-badge">${charCount.toLocaleString()} chars</span>` : ''}
         </div>
-        ${content ? `<div class="docs-approval-body">${escapeHtml(truncateText(content, 800))}</div>` : ''}
+        ${rawContent ? `<div class="docs-approval-body" style="max-height:180px; overflow-y:auto; white-space:pre-wrap;">${escapeHtml(truncateText(rawContent, 600))}</div>` : ''}
       </div>`;
   };
 
@@ -673,7 +687,7 @@
     const values = args.values || args.rows || args.data || '';
     let valDisplay = '';
     if (Array.isArray(values)) {
-      valDisplay = values.map(row => (Array.isArray(row) ? row.join(' | ') : stringifyApprovalValue(row))).join('\n');
+      valDisplay = values.slice(0, 15).map(row => (Array.isArray(row) ? row.join(' | ') : stringifyApprovalValue(row))).join('\n');
     } else if (values) {
       valDisplay = stringifyApprovalValue(values);
     }
@@ -684,7 +698,28 @@
           ${sheet ? `<span class="sheets-range-badge">Tab: ${escapeHtml(sheet)}</span>` : ''}
           ${range ? `<span class="sheets-range-badge">Range: ${escapeHtml(range)}</span>` : ''}
         </div>
-        ${valDisplay ? `<div class="sheets-approval-body">${escapeHtml(truncateText(valDisplay, 800))}</div>` : ''}
+        ${valDisplay ? `<div class="sheets-approval-body" style="max-height:180px; overflow-y:auto;">${escapeHtml(truncateText(valDisplay, 600))}</div>` : ''}
+      </div>`;
+  };
+
+  const renderLeadSearchApproval = args => {
+    const role = args.role || 'Software Developer';
+    const locations = args.locations || 'US, UK, Australia, Dubai, Remote';
+    const companySize = args.company_size || '10-50';
+    const quota = args.quota != null ? args.quota : 100;
+    const sheetTarget = args.spreadsheet_id ? `Sheet ID: ${args.spreadsheet_id}` : 'Auto-create Google Sheet (Pure-Python Direct Sync + CSV Download)';
+    return `
+      <div class="sheets-approval lead-search-approval">
+        <div class="sheets-approval-meta">
+          <span class="sheets-chip">🎯 ${escapeHtml(role)}</span>
+          <span class="sheets-range-badge">🏢 ${escapeHtml(companySize)} Employees</span>
+          <span class="sheets-range-badge">📊 Quota: ${escapeHtml(String(quota))} Leads</span>
+        </div>
+        <div class="sheets-approval-body" style="margin-top:6px;">
+          <div><strong>🌍 Target Regions:</strong> ${escapeHtml(String(locations))}</div>
+          <div><strong>📄 Export Target:</strong> ${escapeHtml(sheetTarget)}</div>
+          <div style="font-size:11.5px; opacity:0.85; margin-top:4px;">✓ 1 Lead = 1 Unique Startup • Verified LinkedIn &amp; E.164 Phone • 3-Axis Epistemic Confidence Grading</div>
+        </div>
       </div>`;
   };
 
@@ -695,106 +730,173 @@
   const stringifyApprovalValue = value => {
     if (Array.isArray(value)) return value.map(v => (v && typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
     if (value && typeof value === 'object') return JSON.stringify(value);
-    return String(value);
+    return String(value ?? '');
+  };
+
+  const getNormalizedApprovalArgs = approval => {
+    if (!approval || typeof approval !== 'object') return {};
+    return approval.args || approval.details || {};
   };
 
   const renderApprovalBody = approval => {
-    const args = approval.args || {};
+    const args = getNormalizedApprovalArgs(approval);
+    const actionName = (approval && (approval.action || approval.tool_name)) || '';
+    if ((approval.domain === 'research' || actionName === 'tavily_lead_search') && (args.role || args.locations || args.quota)) return renderLeadSearchApproval(args);
     if (approval.domain === 'calendar' && (args.summary || args.start_time)) return renderCalendarApproval(args);
     if (approval.domain === 'email' && (args.to || args.subject || args.body)) return renderEmailApproval(args);
     if (approval.domain === 'slack' && (args.channel || args.message)) return renderSlackApproval(args);
-    if (approval.domain === 'docs' && (args.title || args.content || args.text || args.document_id)) return renderDocsApproval(args);
+    if (approval.domain === 'docs' && (args.title || args.content || args.text || args.body || args.insert_text || args.document_id)) return renderDocsApproval(args);
     if (approval.domain === 'sheets' && (args.spreadsheet_id || args.values || args.rows || args.range)) return renderSheetsApproval(args);
     const fields = Object.entries(args)
       .filter(([key, value]) => value != null && value !== '' && !SKIPPED_APPROVAL_KEYS.has(key))
-      .map(([key, value]) => `<dt>${APPROVAL_FIELD_LABELS[key] || titleCase(key)}</dt><dd>${escapeHtml(truncateText(stringifyApprovalValue(value), 600))}</dd>`)
+      .map(([key, value]) => `<dt>${APPROVAL_FIELD_LABELS[key] || titleCase(key)}</dt><dd style="max-height:140px; overflow-y:auto;">${escapeHtml(truncateText(stringifyApprovalValue(value), 600))}</dd>`)
       .join('');
     return fields ? `<dl class="approval-fields">${fields}</dl>` : '';
   };
 
   const renderApprovalEditFields = approval => {
     const domain = (approval && approval.domain) || 'general';
-    const args = (approval && approval.args) || {};
+    const actionName = (approval && (approval.action || approval.tool_name)) || '';
+    const args = getNormalizedApprovalArgs(approval);
     let fieldsHtml = '';
 
+    // NOTE: Values are bound via hydrateApprovalEditInputs() on the DOM elements directly
+    // so 20KB-100KB strings (like Google Docs research reports) are NEVER HTML-escaped twice
+    // into giant data-original-val attributes that could freeze browser layout.
     if (domain === 'email') {
-      const toVal = Array.isArray(args.to) ? args.to.join(', ') : (args.to || '');
       fieldsHtml = `
         <div class="approval-field-group">
           <label>Recipient(s)</label>
-          <input type="text" class="approval-edit-input" data-arg-key="to" data-original-val="${escapeHtml(toVal)}" value="${escapeHtml(toVal)}" placeholder="recipient@example.com">
+          <input type="text" class="approval-edit-input" data-arg-key="to" placeholder="recipient@example.com">
         </div>
         <div class="approval-field-group">
           <label>Subject</label>
-          <input type="text" class="approval-edit-input" data-arg-key="subject" data-original-val="${escapeHtml(args.subject || '')}" value="${escapeHtml(args.subject || '')}" placeholder="Email subject">
+          <input type="text" class="approval-edit-input" data-arg-key="subject" placeholder="Email subject">
         </div>
         <div class="approval-field-group">
           <label>Body</label>
-          <textarea class="approval-edit-textarea" data-arg-key="body" data-original-val="${escapeHtml(args.body || '')}" rows="4" placeholder="Email body content">${escapeHtml(args.body || '')}</textarea>
+          <textarea class="approval-edit-textarea" data-arg-key="body" rows="4" placeholder="Email body content"></textarea>
         </div>`;
     } else if (domain === 'slack') {
       fieldsHtml = `
         <div class="approval-field-group">
           <label>Channel / User</label>
-          <input type="text" class="approval-edit-input" data-arg-key="channel" data-original-val="${escapeHtml(args.channel || '')}" value="${escapeHtml(args.channel || '')}" placeholder="#general">
+          <input type="text" class="approval-edit-input" data-arg-key="channel" placeholder="#general">
         </div>
         <div class="approval-field-group">
           <label>Message</label>
-          <textarea class="approval-edit-textarea" data-arg-key="message" data-original-val="${escapeHtml(args.message || '')}" rows="3" placeholder="Message to send">${escapeHtml(args.message || '')}</textarea>
+          <textarea class="approval-edit-textarea" data-arg-key="message" rows="3" placeholder="Message to send"></textarea>
         </div>`;
     } else if (domain === 'calendar') {
-      const attendeesVal = Array.isArray(args.attendees) ? args.attendees.map(a => (typeof a === 'string' ? a : a.email || '')).join(', ') : (args.attendees || '');
       fieldsHtml = `
         <div class="approval-field-group">
           <label>Event Title</label>
-          <input type="text" class="approval-edit-input" data-arg-key="summary" data-original-val="${escapeHtml(args.summary || '')}" value="${escapeHtml(args.summary || '')}" placeholder="Meeting title">
+          <input type="text" class="approval-edit-input" data-arg-key="summary" placeholder="Meeting title">
         </div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
           <div class="approval-field-group">
             <label>Start Time</label>
-            <input type="text" class="approval-edit-input" data-arg-key="start_time" data-original-val="${escapeHtml(args.start_time || '')}" value="${escapeHtml(args.start_time || '')}" placeholder="YYYY-MM-DDTHH:MM:SS">
+            <input type="text" class="approval-edit-input" data-arg-key="start_time" placeholder="YYYY-MM-DDTHH:MM:SS">
           </div>
           <div class="approval-field-group">
             <label>End Time</label>
-            <input type="text" class="approval-edit-input" data-arg-key="end_time" data-original-val="${escapeHtml(args.end_time || '')}" value="${escapeHtml(args.end_time || '')}" placeholder="YYYY-MM-DDTHH:MM:SS">
+            <input type="text" class="approval-edit-input" data-arg-key="end_time" placeholder="YYYY-MM-DDTHH:MM:SS">
           </div>
         </div>
         <div class="approval-field-group">
           <label>Location</label>
-          <input type="text" class="approval-edit-input" data-arg-key="location" data-original-val="${escapeHtml(args.location || '')}" value="${escapeHtml(args.location || '')}" placeholder="Meeting link or location">
+          <input type="text" class="approval-edit-input" data-arg-key="location" placeholder="Meeting link or location">
         </div>
         <div class="approval-field-group">
           <label>Attendees</label>
-          <input type="text" class="approval-edit-input" data-arg-key="attendees" data-original-val="${escapeHtml(attendeesVal)}" value="${escapeHtml(attendeesVal)}" placeholder="alice@example.com, bob@example.com">
+          <input type="text" class="approval-edit-input" data-arg-key="attendees" placeholder="alice@example.com, bob@example.com">
         </div>
         <div class="approval-field-group">
           <label>Description</label>
-          <textarea class="approval-edit-textarea" data-arg-key="description" data-original-val="${escapeHtml(args.description || '')}" rows="2" placeholder="Event notes">${escapeHtml(args.description || '')}</textarea>
+          <textarea class="approval-edit-textarea" data-arg-key="description" rows="2" placeholder="Event notes"></textarea>
         </div>`;
     } else if (domain === 'docs') {
-      const content = args.content || args.text || args.body || args.insert_text || '';
+      const contentKey = ('content' in args) ? 'content' : (('text' in args) ? 'text' : (('body' in args) ? 'body' : (('insert_text' in args) ? 'insert_text' : 'content')));
       fieldsHtml = `
         <div class="approval-field-group">
           <label>Document Title</label>
-          <input type="text" class="approval-edit-input" data-arg-key="title" data-original-val="${escapeHtml(args.title || '')}" value="${escapeHtml(args.title || '')}" placeholder="Document Title">
+          <input type="text" class="approval-edit-input" data-arg-key="title" placeholder="Document Title">
         </div>
         <div class="approval-field-group">
           <label>Content</label>
-          <textarea class="approval-edit-textarea" data-arg-key="content" data-original-val="${escapeHtml(content)}" rows="4" placeholder="Document content">${escapeHtml(content)}</textarea>
+          <textarea class="approval-edit-textarea" data-arg-key="${escapeHtml(contentKey)}" rows="6" placeholder="Document content"></textarea>
+        </div>`;
+    } else if (domain === 'research' || actionName === 'tavily_lead_search') {
+      fieldsHtml = `
+        <div class="approval-field-group">
+          <label>Target Role</label>
+          <input type="text" class="approval-edit-input" data-arg-key="role" placeholder="Python Developer">
+        </div>
+        <div class="approval-field-group">
+          <label>Target Countries / Regions</label>
+          <input type="text" class="approval-edit-input" data-arg-key="locations" placeholder="US, UK, Australia, Dubai, Remote">
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div class="approval-field-group">
+            <label>Company Size (Employees)</label>
+            <input type="text" class="approval-edit-input" data-arg-key="company_size" placeholder="10-50, under 25, 50-200">
+          </div>
+          <div class="approval-field-group">
+            <label>Max Verified Leads Quota</label>
+            <input type="number" min="1" max="100" class="approval-edit-input" data-arg-key="quota" placeholder="100">
+          </div>
+        </div>
+        <div class="approval-field-group">
+          <label>Target Google Sheet ID (Optional — blank creates a new Sheet)</label>
+          <input type="text" class="approval-edit-input" data-arg-key="spreadsheet_id" placeholder="Leave blank to auto-create new Google Sheet">
         </div>`;
     } else {
       const entries = Object.entries(args).filter(([key]) => !SKIPPED_APPROVAL_KEYS.has(key));
       fieldsHtml = entries.map(([key, val]) => {
         const strVal = stringifyApprovalValue(val);
+        const isLong = strVal.length > 120 || strVal.includes('\n');
         return `
           <div class="approval-field-group">
             <label>${APPROVAL_FIELD_LABELS[key] || titleCase(key)}</label>
-            <input type="text" class="approval-edit-input" data-arg-key="${escapeHtml(key)}" data-original-val="${escapeHtml(strVal)}" value="${escapeHtml(strVal)}">
+            ${isLong
+              ? `<textarea class="approval-edit-textarea" data-arg-key="${escapeHtml(key)}" rows="4"></textarea>`
+              : `<input type="text" class="approval-edit-input" data-arg-key="${escapeHtml(key)}">`
+            }
           </div>`;
       }).join('');
     }
 
     return fieldsHtml;
+  };
+
+  const hydrateApprovalEditInputs = (card, approval) => {
+    if (!card) return;
+    const domain = (approval && approval.domain) || 'general';
+    const actionName = (approval && (approval.action || approval.tool_name)) || '';
+    const args = getNormalizedApprovalArgs(approval);
+    card.querySelectorAll('[data-arg-key]').forEach(el => {
+      const key = el.dataset.argKey;
+      let val = '';
+      if (key === 'to' && domain === 'email') {
+        val = Array.isArray(args.to) ? args.to.join(', ') : (args.to || '');
+      } else if (key === 'attendees' && domain === 'calendar') {
+        val = Array.isArray(args.attendees)
+          ? args.attendees.map(a => (typeof a === 'string' ? a : a.email || '')).join(', ')
+          : (args.attendees || '');
+      } else if ((domain === 'docs') && (key === 'content' || key === 'text' || key === 'body' || key === 'insert_text')) {
+        val = String(args[key] ?? args.content ?? args.text ?? args.body ?? args.insert_text ?? '');
+      } else if (domain === 'research' || actionName === 'tavily_lead_search') {
+        if (key === 'role') val = String(args.role || 'Python Developer');
+        else if (key === 'locations') val = String(args.locations || 'US, UK, Australia, Dubai, Remote');
+        else if (key === 'company_size') val = String(args.company_size || '10-50');
+        else if (key === 'quota') val = String(args.quota != null ? args.quota : 100);
+        else val = String(args[key] || '');
+      } else if (args[key] !== undefined && args[key] !== null) {
+        val = stringifyApprovalValue(args[key]);
+      }
+      el.value = val;
+      el._originalVal = val;
+    });
   };
 
   window.PersonalOps = {
@@ -2002,14 +2104,33 @@
       // it must stay locked while a message is sending, while an approval is
       // still pending (a new chat message would race the paused, interrupted
       // graph run), and while the browser is offline.
+      const SEND_BTN_SEND_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+      const SEND_BTN_STOP_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>';
+
       const refreshComposerState = () => {
-        const busy = state.sending || !!state.pendingApproval || !navigator.onLine;
-        input.disabled = busy;
-        sendButton.disabled = busy;
-        if (!navigator.onLine) {
+        const isStreaming = !!state.sending;
+        const lockedByApproval = !!state.pendingApproval;
+        const offline = !navigator.onLine;
+        input.disabled = isStreaming || lockedByApproval || offline;
+
+        if (isStreaming) {
+          sendButton.disabled = false;
+          sendButton.classList.add('is-stop-mode');
+          sendButton.title = 'Stop generation';
+          sendButton.innerHTML = SEND_BTN_STOP_ICON;
+          composerNote.textContent = 'Agent is working — click ■ Stop to halt immediately';
+          return;
+        }
+
+        sendButton.classList.remove('is-stop-mode');
+        sendButton.title = 'Send message (Enter)';
+        sendButton.innerHTML = SEND_BTN_SEND_ICON;
+        sendButton.disabled = lockedByApproval || offline;
+
+        if (offline) {
           composerNote.textContent = "You're offline — reconnect to send messages";
-        } else if (state.pendingApproval) {
-          composerNote.textContent = 'Review the action above before continuing';
+        } else if (lockedByApproval) {
+          composerNote.textContent = 'Review the action above (Approve, Run in Background, or Cancel) before continuing';
         } else {
           const count = state.connectedServices.size;
           composerNote.textContent = count
@@ -2044,11 +2165,19 @@
       document.querySelectorAll('[data-integration]').forEach(button => {
         button.onclick = async () => {
           const service = button.dataset.integration;
+          const stateEl = document.querySelector(`#${service}-state`);
+          const prevLabel = stateEl ? stateEl.textContent : '';
+          if (stateEl) stateEl.textContent = 'Connecting…';
           try {
-            const data = await api(`/api/integrations/${service}/connect/`);
-            window.location.href = data.authorization_url;
+            const data = await api(`/api/integrations/${encodeURIComponent(service)}/connect/`);
+            if (data && data.authorization_url) {
+              window.location.href = data.authorization_url;
+            } else {
+              throw new Error(`No authorization URL returned for ${titleCase(service)}.`);
+            }
           } catch (error) {
-            showBanner(error.message);
+            if (stateEl) stateEl.textContent = prevLabel || 'Connect';
+            showBanner(error.message || `Could not connect ${titleCase(service)}.`);
           }
         };
       });
@@ -2154,12 +2283,14 @@
       };
 
       const renderConnectPromptBox = prompt => {
+        const serviceKey = prompt.service || (prompt.domain === 'email' ? 'gmail' : prompt.domain) || 'gmail';
+        const serviceLabel = prompt.label || titleCase(serviceKey);
         const box = document.createElement('div');
         box.className = 'connect-prompt-card';
         box.innerHTML = `
-          <p class="connect-prompt-text">${escapeHtml(prompt.message || `${prompt.label || prompt.service} isn't connected yet.`)}</p>
+          <p class="connect-prompt-text">${escapeHtml(prompt.message || `${serviceLabel} isn't connected yet.`)}</p>
           <div class="connect-prompt-actions">
-            <button type="button" class="connect-prompt-btn connect-prompt-connect">Connect ${escapeHtml(prompt.label || titleCase(prompt.service || ''))}</button>
+            <button type="button" class="connect-prompt-btn connect-prompt-connect">Connect ${escapeHtml(serviceLabel)}</button>
             <button type="button" class="connect-prompt-btn connect-prompt-dismiss">Not now</button>
           </div>
         `;
@@ -2167,11 +2298,20 @@
         const dismissBtn = box.querySelector('.connect-prompt-dismiss');
         if (connectBtn) {
           connectBtn.onclick = async () => {
+            const origText = connectBtn.textContent;
+            connectBtn.disabled = true;
+            connectBtn.textContent = `Connecting ${serviceLabel}…`;
             try {
-              const data = await api(`/api/integrations/${prompt.service}/connect/`);
-              window.location.href = data.authorization_url;
+              const data = await api(`/api/integrations/${encodeURIComponent(serviceKey)}/connect/`);
+              if (data && data.authorization_url) {
+                window.location.href = data.authorization_url;
+              } else {
+                throw new Error(`No authorization URL returned for ${serviceLabel}.`);
+              }
             } catch (error) {
-              console.warn('Could not start connect flow', error);
+              connectBtn.disabled = false;
+              connectBtn.textContent = origText;
+              showBanner(error.message || `Could not start ${serviceLabel} connection.`);
             }
           };
         }
@@ -2273,11 +2413,16 @@
               body.appendChild(details);
             }
           } else {
-            const textWrap = document.createElement('div');
-            textWrap.className = 'markdown-body';
-            textWrap.setAttribute('dir', 'auto');
-            textWrap.innerHTML = renderMarkdown(text);
-            body.appendChild(textWrap);
+            const isExactDuplicateOfConnectPrompt = Array.isArray(prompts) && prompts.length > 0 && prompts.some(
+              p => p && p.message && text.trim() === String(p.message).trim()
+            );
+            if (!isExactDuplicateOfConnectPrompt && text.trim()) {
+              const textWrap = document.createElement('div');
+              textWrap.className = 'markdown-body';
+              textWrap.setAttribute('dir', 'auto');
+              textWrap.innerHTML = renderMarkdown(text);
+              body.appendChild(textWrap);
+            }
           }
 
           if (role === 'agent' && Array.isArray(prompts)) {
@@ -2512,10 +2657,14 @@
 
       const addApprovalCard = approval => {
         const domain = (approval && approval.domain) || 'email';
+        const actionName = (approval && approval.action) || '';
+        const isLeadSearch = domain === 'research' || actionName === 'tavily_lead_search';
         const meta = DOMAIN_META[domain] || { icon: '⚙️', label: titleCase(domain) };
         const card = document.createElement('div');
         card.className = 'approval-card';
         card.dataset.domain = domain;
+        card.dataset.actionName = actionName;
+        card._approvalData = approval || {};
         const threadId = (approval && (approval.thread_id || approval.threadId)) || state.threadId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('ops_active_thread') : '') || '';
         if (threadId) {
           card.dataset.threadId = String(threadId);
@@ -2524,6 +2673,11 @@
         const heading = approval && approval.is_duplicate
           ? `Re-run this ${meta.label.toLowerCase()} action?`
           : (approval && approval.message) || `Approve ${meta.label.toLowerCase()} action`;
+        const runBgBtnHtml = isLeadSearch
+          ? `<button class="btn btn-secondary btn-run-bg" type="button" data-action="run-background" title="Run in background so you can keep chatting while leads are verified">
+               <span>⚡ Run in Background</span>
+             </button>`
+          : '';
         card.innerHTML = `
           <div class="approval-progress-track"><div class="approval-progress-fill"></div></div>
           <div style="flex:1; min-width:0;">
@@ -2563,6 +2717,7 @@
             <button class="btn btn-primary btn-approve" data-action="approve">
               <span>Approve</span>
             </button>
+            ${runBgBtnHtml}
             <button class="btn btn-ghost btn-cancel" data-action="cancel">
               <span>Cancel</span>
             </button>
@@ -2579,6 +2734,7 @@
 
         const toggleBtn = card.querySelector('[data-action="toggle-edit"]');
         const editDrawer = card.querySelector('.approval-edit-drawer');
+        hydrateApprovalEditInputs(card, approval || {});
         if (toggleBtn && editDrawer) {
           toggleBtn.onclick = () => {
             const isHidden = editDrawer.classList.toggle('hidden');
@@ -2608,8 +2764,12 @@
         }
 
         const approveButton = card.querySelector('[data-action="approve"]');
+        const runBgButton = card.querySelector('[data-action="run-background"]');
         const cancelButton = card.querySelector('[data-action="cancel"]');
         approveButton.onclick = () => approve(true, card);
+        if (runBgButton) {
+          runBgButton.onclick = () => runLeadGenInBackground(card);
+        }
         cancelButton.onclick = () => approve(false, card);
         transcript.appendChild(card);
         transcript.scrollTop = transcript.scrollHeight;
@@ -2624,6 +2784,198 @@
         if (state.abortController) {
           state.abortController.abort();
           state.abortController = null;
+        }
+      };
+
+      const stopActiveExecution = async (explicitThreadId = null) => {
+        const targetTid = explicitThreadId || state.threadId;
+        cancelActiveStream();
+        state.sending = false;
+        refreshComposerState();
+        document.querySelectorAll('.claude-step-feed.is-running').forEach(feed => {
+          feed.classList.remove('is-running');
+          feed.classList.add('is-cancelled');
+          const statusEl = feed.querySelector('.claude-step-current-text');
+          if (statusEl) statusEl.textContent = '■ Stopped by user.';
+          const stopBtn = feed.querySelector('.claude-step-stop-btn');
+          if (stopBtn) stopBtn.remove();
+        });
+        if (targetTid) {
+          try {
+            await api(`/api/thread/${encodeURIComponent(targetTid)}/cancel/`, { method: 'POST' });
+          } catch (e) { /* best-effort cancel */ }
+        }
+      };
+
+      const renderOrUpdateClaudeStepFeed = (container, progressData, onStop = null) => {
+        if (!container) return null;
+        let feed = container.querySelector('.claude-step-feed');
+        if (!feed) {
+          feed = document.createElement('div');
+          feed.className = 'claude-step-feed is-running';
+          feed.innerHTML = `
+            <div class="claude-step-header">
+              <div class="claude-step-title-row">
+                <span class="status-pulse-dot"></span>
+                <span class="claude-step-current-text">Searching (0/100) → Initializing pipeline…</span>
+              </div>
+              <div class="claude-step-controls">
+                <span class="claude-step-counter">0 / 100</span>
+                <button type="button" class="claude-step-stop-btn" title="Stop execution">■ Stop</button>
+              </div>
+            </div>
+            <div class="claude-step-progress-bar"><div class="claude-step-progress-fill" style="width:2%"></div></div>
+            <div class="claude-step-history"></div>
+          `;
+          container.innerHTML = '';
+          container.appendChild(feed);
+          const stopBtn = feed.querySelector('.claude-step-stop-btn');
+          if (stopBtn) {
+            stopBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (typeof onStop === 'function') onStop();
+              else stopActiveExecution();
+            };
+          }
+        }
+        const completed = Number(progressData.completed || 0);
+        const quota = Math.max(1, Number(progressData.quota || 100));
+        const pct = Math.max(2, Math.min(100, Math.round((completed / quota) * 100)));
+        const currentText = progressData.message || `Searching (${completed}/${quota})…`;
+
+        const textEl = feed.querySelector('.claude-step-current-text');
+        if (textEl) textEl.textContent = currentText;
+        const counterEl = feed.querySelector('.claude-step-counter');
+        if (counterEl) counterEl.textContent = `${completed} / ${quota}`;
+        const fillEl = feed.querySelector('.claude-step-progress-fill');
+        if (fillEl) fillEl.style.width = `${pct}%`;
+
+        const historyEl = feed.querySelector('.claude-step-history');
+        if (historyEl && Array.isArray(progressData.steps_history) && progressData.steps_history.length > 1) {
+          const pastSteps = progressData.steps_history.slice(-4, -1);
+          historyEl.innerHTML = pastSteps.map(s => `
+            <div class="claude-step-trail-item">
+              <span class="trail-check">✓</span>
+              <span class="trail-msg">${escapeHtml(s.message || '')}</span>
+            </div>
+          `).join('');
+        }
+        return feed;
+      };
+
+      const runLeadGenInBackground = async (card) => {
+        if (!card || card.dataset.busy === 'true') return;
+        const threadId = card.dataset.threadId || state.threadId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('ops_active_thread') : null);
+        if (!threadId) {
+          showBanner('Cannot start background task without an active thread.');
+          return;
+        }
+        if (!state.threadId) state.threadId = threadId;
+
+        const modifiedArgs = {};
+        card.querySelectorAll('[data-arg-key]').forEach(inp => {
+          const key = inp.dataset.argKey;
+          const original = String(inp._originalVal ?? inp.dataset.originalVal ?? '').trim();
+          const current = (inp.value || '').trim();
+          if (current !== original) {
+            if (key === 'quota' && current && !isNaN(Number(current))) {
+              modifiedArgs[key] = Math.max(1, Math.min(100, parseInt(current, 10)));
+            } else {
+              modifiedArgs[key] = current;
+            }
+          }
+        });
+
+        card.dataset.busy = 'true';
+        // Immediately unlock the chat composer so the user can talk to the agent while leads generate!
+        if (state.pendingApproval === card) {
+          state.pendingApproval = null;
+        }
+        state.sending = false;
+        refreshComposerState();
+        input.focus();
+
+        const rawDetails = (card._approvalData && card._approvalData.details) || {};
+        const quota = Number(modifiedArgs.quota || rawDetails.quota || 100);
+        const role = modifiedArgs.role || rawDetails.role || 'Python Developer';
+
+        // Morph the approval card into a sleek Claude-style Background Task Pill
+        card.className = 'approval-card is-background-running';
+        card.innerHTML = `<div class="bg-task-slot"></div>`;
+        const slot = card.querySelector('.bg-task-slot');
+        renderOrUpdateClaudeStepFeed(
+          slot,
+          {
+            completed: 0,
+            quota,
+            message: `Running in background — Searching (0/${quota}) → Discovering ATS startup boards for ${role}…`,
+            steps_history: [],
+          },
+          () => stopActiveExecution(threadId)
+        );
+
+        try {
+          const startResp = await api(`/api/thread/${encodeURIComponent(threadId)}/background-lead-job/`, {
+            method: 'POST',
+            body: JSON.stringify({
+              approval: card._approvalData || { action: 'tavily_lead_search', domain: 'research', details: rawDetails },
+              modified_args: modifiedArgs,
+              instruction: '',
+            }),
+          });
+          const jobId = startResp && startResp.job_id;
+          if (!jobId) throw new Error('Failed to start background job.');
+
+          const pollTimer = setInterval(async () => {
+            try {
+              const job = await api(`/api/thread/${encodeURIComponent(threadId)}/background-lead-job/${encodeURIComponent(jobId)}/`);
+              if (!job) return;
+              renderOrUpdateClaudeStepFeed(
+                slot,
+                {
+                  completed: job.completed || 0,
+                  quota: job.quota || quota,
+                  message: `Running in background — ${job.message || `Searching (${job.completed || 0}/${quota})…`}`,
+                  steps_history: job.steps_history || [],
+                },
+                () => {
+                  clearInterval(pollTimer);
+                  stopActiveExecution(threadId);
+                }
+              );
+
+              if (job.status === 'completed') {
+                clearInterval(pollTimer);
+                const feed = slot.querySelector('.claude-step-feed');
+                if (feed) {
+                  feed.classList.remove('is-running');
+                  feed.classList.add('is-completed');
+                  const textEl = feed.querySelector('.claude-step-current-text');
+                  if (textEl) textEl.textContent = `✓ Background Lead Generation Completed (${job.completed}/${job.quota}) — Synced to Google Sheets`;
+                  const stopBtn = feed.querySelector('.claude-step-stop-btn');
+                  if (stopBtn) stopBtn.remove();
+                }
+                if (String(state.threadId) === String(threadId)) {
+                  addMessage('agent', job.response || 'Lead generation completed.', false, null, job.result_card || null);
+                }
+              } else if (job.status === 'cancelled' || job.status === 'failed') {
+                clearInterval(pollTimer);
+                const feed = slot.querySelector('.claude-step-feed');
+                if (feed) {
+                  feed.classList.remove('is-running');
+                  feed.classList.add('is-cancelled');
+                  const textEl = feed.querySelector('.claude-step-current-text');
+                  if (textEl) textEl.textContent = job.status === 'cancelled' ? `■ ${job.message || 'Stopped by user.'}` : `⚠ ${job.message || 'Background job failed.'}`;
+                  const stopBtn = feed.querySelector('.claude-step-stop-btn');
+                  if (stopBtn) stopBtn.remove();
+                }
+              }
+            } catch (pollErr) {
+              console.warn('Background poll warning:', pollErr);
+            }
+          }, 1500);
+        } catch (err) {
+          showBanner(err.message || 'Could not start background lead generation.');
         }
       };
 
@@ -3187,6 +3539,23 @@
             return;
           }
 
+          if (data.type === 'task_progress') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            pending.classList.remove('pending');
+            renderOrUpdateClaudeStepFeed(body, data, () => stopActiveExecution(currentThreadId));
+            return;
+          }
+
+          if (data.type === 'cancelled') {
+            if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
+            if (rafId) cancelAnimationFrame(rafId);
+            renderScheduled = false;
+            completedHandled = true;
+            pending.remove();
+            addMessage('agent', assistantText ? `${assistantText}\n\n*(Stopped by user)*` : '*(Stopped by user)*');
+            return 'completed';
+          }
+
           // Handle live thread title updates
           if (data.type === 'thread_name' && data.thread_name) {
             if (streamId !== state.streamRequestId || currentThreadId !== state.threadId) return;
@@ -3420,7 +3789,10 @@
         } catch (error) {
           if (rafId) cancelAnimationFrame(rafId);
           renderScheduled = false;
-          if (error && error.name === 'AbortError') return;
+          if (error && error.name === 'AbortError') {
+            pending.remove();
+            return;
+          }
           if (!completedHandled && assistantText) {
             pending.remove();
             const errorMsgEl = addMessage('agent', assistantText);
@@ -3496,8 +3868,12 @@
 
       document.querySelector('#chat-form').addEventListener('submit', event => {
         event.preventDefault();
+        if (state.sending) {
+          stopActiveExecution();
+          return;
+        }
         const message = input.value.trim();
-        if (!message || state.sending || state.pendingApproval) return;
+        if (!message || state.pendingApproval) return;
         state.lastUserQuery = message;
         addMessage('user', message);
         input.value = '';
@@ -3537,22 +3913,28 @@
         const statusEl = card.querySelector('.approval-status');
         const instructBtn = card.querySelector('[data-action="instruct"]');
         const approveBtn = card.querySelector('[data-action="approve"]');
+        const runBgBtn = card.querySelector('[data-action="run-background"]');
         const cancelBtn = card.querySelector('[data-action="cancel"]');
         const domain = card.dataset.domain || 'general';
         const meta = DOMAIN_META[domain] || { icon: '⚙️', label: titleCase(domain) };
 
         card.dataset.busy = 'true';
         card.classList.add('is-busy');
+        const approvalAbortController = new AbortController();
+        state.abortController = approvalAbortController;
+        state.sending = true;
+        refreshComposerState();
 
         // Disable input edits and instruction fields so parameters cannot be changed mid-flight
-        card.querySelectorAll('.approval-edit-input, .approval-instruction-input').forEach(input => input.disabled = true);
+        card.querySelectorAll('.approval-edit-input, .approval-edit-textarea, .approval-instruction-input').forEach(input => input.disabled = true);
+        if (runBgBtn) runBgBtn.disabled = true;
 
         // Gather modified args if approving
         let modifiedArgs = null;
         if (value) {
           card.querySelectorAll('[data-arg-key]').forEach(input => {
             const key = input.dataset.argKey;
-            const original = (input.dataset.originalVal ?? '').trim();
+            const original = String(input._originalVal ?? input.dataset.originalVal ?? '').trim();
             const current = (input.value || '').trim();
             if (current !== original) {
               if (!modifiedArgs) modifiedArgs = {};
@@ -3560,6 +3942,8 @@
                 modifiedArgs[key] = current.includes(',')
                   ? current.split(',').map(s => s.trim()).filter(Boolean)
                   : (current ? [current] : []);
+              } else if (key === 'quota' && current && !isNaN(Number(current))) {
+                modifiedArgs[key] = Math.max(1, Math.min(100, parseInt(current, 10)));
               } else {
                 modifiedArgs[key] = current;
               }
@@ -3576,6 +3960,8 @@
           }
           delete card.dataset.busy;
           card.classList.remove('is-busy');
+          state.sending = false;
+          refreshComposerState();
           return;
         }
         if (!state.threadId) {
@@ -3684,6 +4070,7 @@
             method: 'POST',
             headers: { 'Accept': 'text/event-stream' },
             body: JSON.stringify(payload),
+            signal: approvalAbortController.signal,
           });
 
           if (!response.ok) {
@@ -3736,6 +4123,27 @@
                 }
               }
             };
+
+            if (data.type === 'task_progress') {
+              updateCardStatus(data.message || `Searching (${data.completed || 0}/${data.quota || 100})…`);
+              ensureThinkingBubble();
+              if (thinkingBubble) thinkingBubble.classList.remove('pending');
+              renderOrUpdateClaudeStepFeed(thinkingBody, data, () => stopActiveExecution(threadId));
+              transcript.scrollTop = transcript.scrollHeight;
+              return;
+            }
+
+            if (data.type === 'cancelled') {
+              streamCompleted = true;
+              delete card.dataset.busy;
+              card.classList.remove('is-busy');
+              morphCardToCompleted(card, false, null, null, meta.label);
+              if (state.pendingApproval === card) state.pendingApproval = null;
+              if (thinkingBubble) thinkingBubble.remove();
+              addMessage('agent', '*(Stopped by user)*');
+              refreshComposerState();
+              return 'done';
+            }
 
             // Status events — live feedback
             if (data.type === 'status') {
@@ -3914,6 +4322,15 @@
             break;
           }
         } catch (error) {
+          if (error && error.name === 'AbortError') {
+            delete card.dataset.busy;
+            card.classList.remove('is-busy');
+            morphCardToCompleted(card, false, null, null, meta.label);
+            if (state.pendingApproval === card) state.pendingApproval = null;
+            if (thinkingBubble) thinkingBubble.remove();
+            addMessage('agent', '*(Stopped by user)*');
+            return;
+          }
           delete card.dataset.busy;
           card.classList.remove('is-busy');
           if (badge) {
@@ -3926,6 +4343,7 @@
             approveBtn.classList.remove('btn-loading');
             approveBtn.innerHTML = `<span>Approve</span>`;
           }
+          if (runBgBtn) runBgBtn.disabled = false;
           if (cancelBtn) {
             cancelBtn.disabled = false;
             cancelBtn.classList.remove('btn-loading');
@@ -3945,6 +4363,8 @@
           showBanner('Action failed: ' + error.message);
         } finally {
           clearInterval(fallbackTimer);
+          state.sending = false;
+          refreshComposerState();
         }
       }
 
