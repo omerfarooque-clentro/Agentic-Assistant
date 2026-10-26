@@ -61,8 +61,15 @@ def format_user_agent_message(message: str, username: str, timezone_str: str | N
 
 @sync_to_async
 def authenticate_api_request(request):
-    result = JWTAuthentication().authenticate(Request(request))
-    return result[0] if result else None
+    try:
+        result = JWTAuthentication().authenticate(Request(request))
+        return result[0] if result else None
+    except Exception as exc:
+        from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
+
+        if isinstance(exc, (AuthenticationFailed, InvalidToken)):
+            return None
+        raise
 
 
 def request_json(request):

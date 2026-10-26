@@ -1098,12 +1098,32 @@
 
   async function triggerAuthenticatedLeadDownload(url, fallbackFilename) {
     if (!url) return;
-    const token = localStorage.getItem('ops_access') || '';
+    let token = localStorage.getItem('ops_access') || '';
+
+    const downloadBlob = async (accessToken) => fetch(url, {
+      method: 'GET',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+
     try {
-      const resp = await fetch(url, {
-        method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      let resp = await downloadBlob(token);
+      if (resp.status === 401) {
+        const refreshToken = localStorage.getItem('ops_refresh') || '';
+        if (refreshToken) {
+          const refreshResp = await fetch('/api/token/refresh/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh: refreshToken }),
+          });
+          if (refreshResp.ok) {
+            const refreshed = await refreshResp.json();
+            token = refreshed.access || '';
+            if (token) localStorage.setItem('ops_access', token);
+            if (refreshed.refresh) localStorage.setItem('ops_refresh', refreshed.refresh);
+            resp = await downloadBlob(token);
+          }
+        }
+      }
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}`);
       }
