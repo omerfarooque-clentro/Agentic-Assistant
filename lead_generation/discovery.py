@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -16,6 +17,8 @@ import httpx
 from ddgs import DDGS
 
 from .models import ATSBoard, MAX_CAMPAIGN_QUOTA
+
+logger = logging.getLogger(__name__) 
 
 # ---------------------------------------------------------------------------
 # 1. Circuit Breaker Configuration & Thread-Safe Health State
@@ -453,9 +456,30 @@ def search_web(
                 if use_cache:
                     set_cached_search(query, results)
                 return results
-        except Exception:
+        except Exception as exc:
             if breaker:
                 breaker.record_failure()
+
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None)
+            if status_code == 429 and breaker:
+                retry_after = response.headers.get("Retry-After") if response else None
+                try:
+                    cooldown = max(1.0, float(retry_after)) if retry_after else breaker.cooldown_seconds
+                except (TypeError, ValueError):
+                    cooldown = breaker.cooldown_seconds
+                breaker.tripped_until = time.monotonic() + cooldown
+                logger.warning(
+                    "Lead search provider %s rate-limited; cooling down for %.0f seconds",
+                    provider_name,
+                    cooldown,
+                )
+            elif status_code:
+                logger.warning(
+                    "Lead search provider %s failed with HTTP %s",
+                    provider_name,
+                    status_code,
+                )
             continue
 
     return []

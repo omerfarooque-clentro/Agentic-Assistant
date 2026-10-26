@@ -1098,7 +1098,7 @@
 
   async function triggerAuthenticatedLeadDownload(url, fallbackFilename) {
     if (!url) return;
-    const token = localStorage.getItem('access_token') || '';
+    const token = localStorage.getItem('ops_access') || '';
     try {
       const resp = await fetch(url, {
         method: 'GET',

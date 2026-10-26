@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import httpx
+
 from lead_generation.ats import parse_ats_url, parse_ats_urls
 from lead_generation.discovery import (
     CircuitBreaker,
@@ -124,6 +126,38 @@ class DeterministicLeadGenTestSuite(unittest.TestCase):
             )
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0]["href"], "https://jobs.lever.co/skyralio/1")
+
+    def test_rate_limited_provider_uses_retry_after_before_failover(self):
+        request = httpx.Request("POST", "https://search.example.test")
+        response = httpx.Response(
+            429,
+            request=request,
+            headers={"Retry-After": "17"},
+        )
+
+        def limited_engine(q, n):
+            raise httpx.HTTPStatusError("limited", request=request, response=response)
+
+        def succeed_engine(q, n):
+            return [{"href": "https://jobs.lever.co/skyralio/1", "title": "Python"}]
+
+        breaker = CircuitBreaker(failure_threshold=2, cooldown_seconds=1200.0)
+        with patch.dict(
+            "lead_generation.discovery.PROVIDER_REGISTRY",
+            {"limited_test": limited_engine, "searxng": succeed_engine},
+        ), patch.dict(
+            "lead_generation.discovery.CIRCUIT_BREAKERS",
+            {"limited_test": breaker, "searxng": CircuitBreaker()},
+        ):
+            results = search_web(
+                "retry_after_failover_test_query",
+                providers=("limited_test", "searxng"),
+                use_cache=False,
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertGreater(breaker.tripped_until, 0)
+        self.assertFalse(breaker.is_available())
 
     def test_circuit_breaker_and_serp_cache(self):
         cb = CircuitBreaker(failure_threshold=2, cooldown_seconds=10.0)
