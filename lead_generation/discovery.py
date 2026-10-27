@@ -102,8 +102,14 @@ def _init_cache_db() -> None:
 _init_cache_db()
 
 
-def get_cached_search(query: str) -> list[dict] | None:
-    q_hash = hashlib.sha256(query.strip().lower().encode("utf-8")).hexdigest()
+def _cache_query_key(query: str, page: int = 1) -> str:
+    normalized_query = query.strip().lower()
+    return normalized_query if page == 1 else f"{normalized_query}\npage:{page}"
+
+
+def get_cached_search(query: str, page: int = 1) -> list[dict] | None:
+    cache_key = _cache_query_key(query, page)
+    q_hash = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()
     now = time.time()
     conn = sqlite3.connect(CACHE_DB_PATH)
     try:
@@ -123,8 +129,14 @@ def get_cached_search(query: str) -> list[dict] | None:
     return None
 
 
-def set_cached_search(query: str, results: list[dict], ttl_seconds: float = 432000.0) -> None:
-    q_hash = hashlib.sha256(query.strip().lower().encode("utf-8")).hexdigest()
+def set_cached_search(
+    query: str,
+    results: list[dict],
+    ttl_seconds: float = 432000.0,
+    page: int = 1,
+) -> None:
+    cache_key = _cache_query_key(query, page)
+    q_hash = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()
     expires_at = time.time() + ttl_seconds
     conn = sqlite3.connect(CACHE_DB_PATH)
     try:
@@ -133,7 +145,7 @@ def set_cached_search(query: str, results: list[dict], ttl_seconds: float = 4320
             INSERT OR REPLACE INTO serp_cache (query_hash, query_text, results_json, expires_at)
             VALUES (?, ?, ?, ?)
             """,
-            (q_hash, query.strip().lower(), json.dumps(results), expires_at),
+            (q_hash, cache_key, json.dumps(results), expires_at),
         )
         conn.commit()
     finally:
@@ -302,7 +314,7 @@ def _search_yahoo_html(query: str, max_results: int) -> list[dict]:
     return results
 
 
-def _search_serper(query: str, max_results: int) -> list[dict]:
+def _search_serper(query: str, max_results: int, page: int = 1) -> list[dict]:
     """Tier 2A: Serper.dev (2,500 free searches) when SERPER_API_KEY is configured."""
     api_key = os.getenv("SERPER_API_KEY")
     if not api_key:
@@ -311,7 +323,7 @@ def _search_serper(query: str, max_results: int) -> list[dict]:
         resp = client.post(
             "https://google.serper.dev/search",
             headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
-            json={"q": query, "num": min(max_results, 20)},
+            json={"q": query, "num": min(max_results, 20), "page": page},
         )
         resp.raise_for_status()
         organic = resp.json().get("organic", [])
@@ -423,11 +435,25 @@ DEFAULT_PROVIDER_CASCADE = (
 )
 
 
+def _default_provider_cascade() -> tuple[str, ...]:
+    preferred: list[str] = []
+    if os.getenv("SERPER_API_KEY"):
+        preferred.append("serper")
+    if os.getenv("TAVILY_API_KEY"):
+        preferred.append("tavily")
+    if os.getenv("BRAVE_SEARCH_API_KEY"):
+        preferred.append("brave")
+    if os.getenv("GOOGLE_API_KEY") and os.getenv("GOOGLE_CSE_ID"):
+        preferred.append("google")
+    return tuple(preferred + [name for name in DEFAULT_PROVIDER_CASCADE if name not in preferred])
+
+
 def search_web(
     query: str,
     max_results: int = 20,
-    providers: Iterable[str] = DEFAULT_PROVIDER_CASCADE,
+    providers: Iterable[str] | None = None,
     use_cache: bool = True,
+    page: int = 1,
 ) -> list[dict]:
     """
     Executes instant multi-provider web search without blocking rate-limit sleeps.
@@ -435,11 +461,12 @@ def search_web(
     2. Rotates across free & freemium search engines, skipping tripped circuit breakers.
     """
     if use_cache:
-        cached = get_cached_search(query)
+        cached = get_cached_search(query, page=page)
         if cached is not None:
             return cached
 
-    for provider_name in providers:
+    provider_order = providers if providers is not None else _default_provider_cascade()
+    for provider_name in provider_order:
         breaker = CIRCUIT_BREAKERS.get(provider_name)
         if breaker and not breaker.is_available():
             continue
@@ -449,12 +476,21 @@ def search_web(
             continue
 
         try:
-            results = engine_func(query, max_results)
+            if provider_name == "serper":
+                results = engine_func(query, max_results, page=page)
+            else:
+                results = engine_func(query, max_results)
+            if provider_name == "yahoo_html":
+                results = [
+                    item for item in results
+                    if item.get("snippet", "").strip()
+                    or item.get("title", "").strip() != item.get("href", "").strip()
+                ]
             if results:
                 if breaker:
                     breaker.record_success()
                 if use_cache:
-                    set_cached_search(query, results)
+                    set_cached_search(query, results, page=page)
                 return results
         except Exception as exc:
             if breaker:
@@ -817,12 +853,29 @@ def discover_company_slugs(
     seeds: set[tuple[str, str]] = set()
     capped_results = min(max_results, MAX_CAMPAIGN_QUOTA)
 
-    for dork in build_composite_search_dorks(role, location):
-        results = search_web(dork, max_results=capped_results)
-        for item in results:
-            platform, slug = extract_ats_slug(item.get("href", ""))
-            if platform and slug:
-                seeds.add((platform, slug))
+    serper_pagination = bool(os.getenv("SERPER_API_KEY"))
+    dorks = (
+        build_search_dorks(role, location).values()
+        if serper_pagination
+        else build_composite_search_dorks(role, location)
+    )
+    for dork in dorks:
+        pages = range(1, 6) if serper_pagination else (1,)
+        for page in pages:
+            results = search_web(
+                dork,
+                max_results=capped_results,
+                providers=("serper",) if serper_pagination else None,
+                page=page,
+            )
+            for item in results:
+                platform, slug = extract_ats_slug(item.get("href", ""))
+                if platform and slug:
+                    seeds.add((platform, slug))
+            if len(seeds) >= capped_results or not results:
+                break
+        if len(seeds) >= capped_results:
+            break
 
     # Fallback to individual platform dorks if boolean OR was unsupported by the active engine
     if not seeds:

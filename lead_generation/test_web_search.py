@@ -10,6 +10,7 @@ from lead_generation.discovery import (
     CircuitBreaker,
     build_composite_search_dorks,
     build_search_dorks,
+    discover_company_slugs,
     extract_ats_slug,
     get_cached_search,
     search_web,
@@ -172,6 +173,107 @@ class DeterministicLeadGenTestSuite(unittest.TestCase):
         mock_results = [{"href": "https://jobs.lever.co/testco/1", "title": "Test"}]
         set_cached_search(test_query, mock_results, ttl_seconds=60)
         self.assertEqual(get_cached_search(test_query), mock_results)
+
+        page_results = [{"href": "https://example.test/page-2", "title": "Page 2"}]
+        set_cached_search(test_query, page_results, ttl_seconds=60, page=2)
+        self.assertEqual(get_cached_search(test_query, page=2), page_results)
+        self.assertEqual(get_cached_search(test_query), mock_results)
+
+    def test_configured_search_api_is_prioritized(self):
+        calls = []
+
+        def fake_provider(name):
+            def search(query, max_results, **kwargs):
+                calls.append(name)
+                return [{"href": f"https://example.test/{name}", "title": name}]
+            return search
+
+        with patch.dict(
+            "lead_generation.discovery.PROVIDER_REGISTRY",
+            {"serper": fake_provider("serper"), "duckduckgo": fake_provider("duckduckgo")},
+            clear=True,
+        ), patch.dict(os.environ, {"SERPER_API_KEY": "configured"}):
+            results = search_web("provider_priority_test", use_cache=False)
+
+        self.assertEqual(calls, ["serper"])
+        self.assertEqual(results[0]["title"], "serper")
+
+    def test_yahoo_url_only_result_falls_through(self):
+        calls = []
+
+        def yahoo(query, max_results):
+            calls.append("yahoo")
+            return [{
+                "href": "https://www.linkedin.com/in/alex-smith",
+                "title": "https://www.linkedin.com/in/alex-smith",
+                "snippet": "",
+            }]
+
+        def fallback(query, max_results):
+            calls.append("fallback")
+            return [{
+                "href": "https://www.linkedin.com/in/alex-smith",
+                "title": "Alex Smith - CEO - Example Co",
+                "snippet": "CEO at Example Co",
+            }]
+
+        with patch.dict(
+            "lead_generation.discovery.PROVIDER_REGISTRY",
+            {"yahoo_html": yahoo, "fallback": fallback},
+            clear=True,
+        ):
+            results = search_web(
+                "yahoo_metadata_test",
+                providers=("yahoo_html", "fallback"),
+                use_cache=False,
+            )
+
+        self.assertEqual(calls, ["yahoo", "fallback"])
+        self.assertEqual(results[0]["title"], "Alex Smith - CEO - Example Co")
+
+    def test_company_discovery_uses_serper_pages(self):
+        requested_pages = []
+
+        def fake_search(query, max_results, providers=None, page=1):
+            requested_pages.append((query, page, providers))
+            return [
+                {
+                    "href": f"https://jobs.lever.co/company-{page}-{index}",
+                    "title": "Software Engineer",
+                    "snippet": "",
+                }
+                for index in range(20)
+            ]
+
+        with patch.dict(os.environ, {"SERPER_API_KEY": "configured"}), patch(
+            "lead_generation.discovery.search_web", side_effect=fake_search
+        ):
+            discovered = discover_company_slugs(
+                "Software Engineer",
+                "US",
+                max_results=100,
+                use_curated_fallback=False,
+            )
+
+        self.assertEqual([page for _, page, _ in requested_pages], [1, 2, 3, 4, 5])
+        self.assertTrue(all(providers == ("serper",) for _, _, providers in requested_pages))
+        self.assertEqual(len(discovered), 100)
+
+    def test_linkedin_company_match_accepts_common_suffixes(self):
+        cases = (
+            ("Fanatics Betting & Gaming", "Alex Smith - VP of Engineering - Fanatics"),
+            ("Civis Analytics", "Alex Smith - CEO - Civis"),
+            ("Lightyear-ai", "Alex Smith - CTO - Lightyear"),
+        )
+        for company, title in cases:
+            with self.subTest(company=company):
+                identity = parse_linkedin_snippet(
+                    title=title,
+                    snippet="",
+                    url="https://www.linkedin.com/in/alex-smith",
+                    company_name=company,
+                )
+                self.assertIsNotNone(identity)
 
     # ------------------------------------------------------------------
     # Gate 2A & 2B: Canonical Domain & RFC 5321/7505 DNS Router

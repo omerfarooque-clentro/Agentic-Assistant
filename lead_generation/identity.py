@@ -108,11 +108,43 @@ def _looks_like_valid_person_name(name: str, company_name: str) -> bool:
 
 def _company_matches_clause(company_name: str, text_clause: str) -> bool:
     """Checks if the target company name is genuinely present in a title or role clause."""
-    comp_slug = re.sub(r"[^a-z0-9]", "", company_name.lower())
-    if not comp_slug:
+    company_tokens = re.findall(r"[a-z0-9]+", company_name.lower())
+    if not company_tokens:
         return False
-    clause_slug = re.sub(r"[^a-z0-9]", "", text_clause.lower())
-    return comp_slug in clause_slug
+
+    candidates = {" ".join(company_tokens)}
+    suffixes = (
+        ("betting", "gaming"),
+        ("technologies",),
+        ("technology",),
+        ("analytics",),
+        ("industries",),
+        ("solutions",),
+        ("services",),
+        ("systems",),
+        ("labs",),
+        ("lab",),
+        ("space",),
+        ("inc",),
+        ("llc",),
+        ("ltd",),
+        ("limited",),
+        ("corp",),
+        ("corporation",),
+        ("ai",),
+    )
+    while len(company_tokens) > 1:
+        suffix = next(
+            (item for item in suffixes if tuple(company_tokens[-len(item):]) == item),
+            None,
+        )
+        if suffix is None or len(company_tokens) <= len(suffix):
+            break
+        company_tokens = company_tokens[:-len(suffix)]
+        candidates.add(" ".join(company_tokens))
+
+    clause = " ".join(re.findall(r"[a-z0-9]+", text_clause.lower()))
+    return any(f" {candidate} " in f" {clause} " for candidate in candidates)
 
 
 def _snippet_binds_role_to_company(snippet: str, company_name: str) -> bool:
