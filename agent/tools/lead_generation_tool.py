@@ -293,6 +293,14 @@ def execute_lead_generation_and_export(
     matched_jobs = campaign_result.get("jobs", [])
     dropped_companies = campaign_result.get("dropped_companies", [])
     regional_quotas = campaign_result.get("regional_quotas", {})
+    campaign_funnel = campaign_result.get("funnel") or {
+        "requested_quota": capped_quota,
+        "final_leads": len(leads),
+        "shortfall": max(0, capped_quota - len(leads)),
+        "companies_evaluated": len(leads) + len(dropped_companies),
+        "companies_dropped": len(dropped_companies),
+        "drop_reasons": {},
+    }
 
     _emit_step(
         {
@@ -397,6 +405,8 @@ def execute_lead_generation_and_export(
             "leads_with_corporate_email": with_email,
             "leads_with_verified_phone": with_phone,
         },
+        "campaign_status": campaign_result.get("status"),
+        "campaign_funnel": campaign_funnel,
         "grade_distribution_counts": grade_counts,
         "identity_confidence_counts": identity_confidence_counts,
         "routing_status_counts": routing_status_counts,

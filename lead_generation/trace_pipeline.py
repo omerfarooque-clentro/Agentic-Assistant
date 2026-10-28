@@ -14,12 +14,13 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
-# Ensure project root is in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Ensure project root is in sys.path and load its environment explicitly.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, PROJECT_ROOT)
 
 # Ensure .env is explicitly loaded
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 from lead_generation.ats import fetch_board_jobs, parse_ats_urls
 from lead_generation.discovery import (

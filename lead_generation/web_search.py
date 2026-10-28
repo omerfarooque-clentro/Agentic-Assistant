@@ -107,10 +107,20 @@ def run_lead_campaign(
     ats_urls: Iterable[str] | None = None,
     limit: int = MAX_CAMPAIGN_QUOTA,
     enable_live_smtp: bool = False,
+    company_size: str | None = None,
 ) -> dict:
+    from .filtering import parse_company_size_bounds
+
     locations = (location,) if isinstance(location, str) else tuple(location)
     capped_limit = max(0, min(limit, MAX_CAMPAIGN_QUOTA))
-    criteria = CampaignCriteria(role=role, locations=locations, quota=capped_limit)
+    bounds = parse_company_size_bounds(company_size) if company_size else None
+    criteria = CampaignCriteria(
+        role=role,
+        locations=locations,
+        quota=capped_limit,
+        min_company_size=bounds[0] if bounds else None,
+        max_company_size=bounds[1] if bounds else 150,
+    )
     pipeline = LeadGenerationPipeline()
     return pipeline.run_campaign(
         criteria,

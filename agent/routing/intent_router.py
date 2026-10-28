@@ -96,14 +96,13 @@ ALL_ROUTABLE_DOMAINS = {"email", "calendar", "docs", "sheets", "slack", "researc
 
 
 def get_candidate_intents(message: str, available_domains: set[str], top_k: int = 3) -> list[CandidateIntent]:
-    """Return the highest-probability intents across routable domains so disconnected services trigger connect_prompt."""
+    """Rank available-domain intents, or explicitly requested disconnected domains."""
     if top_k <= 0 or not message:
         return []
 
     cleaned = clean_conversational_prefix(message)
-    routable_domains = ALL_ROUTABLE_DOMAINS | set(available_domains or set())
-    explicit_domains = detect_explicit_domains(cleaned) & routable_domains
-    target_domains = explicit_domains if explicit_domains else routable_domains
+    explicit_domains = detect_explicit_domains(cleaned) & ALL_ROUTABLE_DOMAINS
+    target_domains = explicit_domains if explicit_domains else set(available_domains or set())
 
     probabilities = model.predict_proba([cleaned])[0]
     candidates = [

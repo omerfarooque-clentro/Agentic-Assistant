@@ -21,6 +21,7 @@ from lead_generation.domain_resolver import (
     generate_split_domain_candidates,
     infer_edge_provider,
     normalize_canonical_domain,
+    resolve_canonical_domain,
     resolve_domain_mail_routing,
 )
 from lead_generation.exporting import TransactionalOutbox, partition_leads_by_grade
@@ -297,6 +298,50 @@ class DeterministicLeadGenTestSuite(unittest.TestCase):
         </header>
         """
         self.assertEqual(extract_domain_from_ats_html(html_sample, "skyralio"), "skyral.io")
+
+    def test_search_fallback_rejects_unrelated_third_party_domain(self):
+        board = type(
+            "Board",
+            (),
+            {
+                "slug": "titan-ai",
+                "careers_page_url": None,
+            },
+        )()
+        with patch(
+            "lead_generation.domain_resolver.search_web",
+            return_value=[
+                {"href": "https://seamless.ai/company/titan-ai"},
+                {"href": "https://titan.ai/about"},
+            ],
+        ):
+            domain, _ = resolve_canonical_domain(board)
+
+        self.assertEqual(domain, "titan.ai")
+
+    def test_domain_hint_rejects_unrelated_third_party_domain(self):
+        board = type(
+            "Board",
+            (),
+            {
+                "slug": "titan-ai",
+                "careers_page_url": None,
+            },
+        )()
+        job = ATSJob(
+            platform="ashby",
+            board_slug="titan-ai",
+            external_id="1",
+            title="Software Engineer",
+            location="US",
+            absolute_url="https://jobs.ashbyhq.com/titan-ai/1",
+            company_domain_hint="seamless.ai",
+            company_name_hint="Titan AI",
+        )
+        with patch("lead_generation.domain_resolver.search_web", return_value=[]):
+            domain, _ = resolve_canonical_domain(board, [job])
+
+        self.assertEqual(domain, "titan-ai.com")
 
     def test_split_domain_candidates_skyral_case(self):
         cands = generate_split_domain_candidates("skyralio", "skyral.com")
@@ -878,5 +923,4 @@ class DeterministicLeadGenTestSuite(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 

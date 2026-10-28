@@ -210,6 +210,24 @@ def extract_domain_from_ats_html(html_text: str, slug: str) -> str | None:
     return None
 
 
+def _domain_matches_company_identity(
+    domain: str,
+    slug: str,
+    company_name: str | None = None,
+) -> bool:
+    """Accept a domain only when its registrable label identifies the ATS company."""
+    domain_label = re.sub(r"[^a-z0-9]", "", domain.split(".")[0].lower())
+    identity_values = [slug, company_name or ""]
+    for value in identity_values:
+        identity_label = re.sub(r"[^a-z0-9]", "", value.lower())
+        if identity_label and (
+            identity_label in domain_label
+            or domain_label in identity_label
+        ):
+            return True
+    return False
+
+
 def generate_split_domain_candidates(slug: str, primary_domain: str | None = None) -> list[str]:
     """
     Handles the Skyral split-domain edge case (e.g., skyral.com vs skyral.io).
@@ -255,7 +273,7 @@ def resolve_canonical_domain(
                 company_name = job.company_name_hint
             if job.company_domain_hint:
                 norm = normalize_canonical_domain(job.company_domain_hint)
-                if norm:
+                if norm and _domain_matches_company_identity(norm, slug, company_name):
                     return norm, company_name
 
     if slug in KNOWN_SLUG_DOMAINS:
@@ -277,7 +295,7 @@ def resolve_canonical_domain(
     search_results = search_web(f'"{slug}" official website', max_results=5)
     for item in search_results:
         dom = normalize_canonical_domain(item.get("href", ""))
-        if dom:
+        if dom and _domain_matches_company_identity(dom, slug, company_name):
             return dom, company_name
 
     # Deterministic slug TLD derivation

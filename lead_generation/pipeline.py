@@ -377,11 +377,32 @@ class LeadGenerationPipeline:
                 self.outbox.save_lead_idempotent(lead)
 
         tabs = partition_leads_by_grade(leads)
+        final_status = (
+            CampaignStatus.COMPLETED_TARGET_MET.value
+            if len(leads) >= target_quota and target_quota > 0
+            else CampaignStatus.COMPLETED_SUPPLY_EXHAUSTED.value
+        )
         return {
             **discovery_data,
             "leads": leads[:MAX_CAMPAIGN_QUOTA],
             "tabs": tabs,
             "dropped_companies": dropped_companies,
+            "status": final_status,
+            "funnel": {
+                "requested_quota": target_quota,
+                "final_leads": len(leads),
+                "shortfall": max(0, target_quota - len(leads)),
+                "companies_evaluated": evaluated_count,
+                "companies_dropped": len(dropped_companies),
+                "drop_reasons": {
+                    reason: sum(1 for item in dropped_companies if item.get("reason") == reason)
+                    for reason in sorted(
+                        {
+                            item.get("reason") or item.get("routing_status") or "UNSPECIFIED"
+                            for item in dropped_companies
+                        }
+                    )
+                },
+            },
             "completed_at": datetime.now(timezone.utc),
         }
-

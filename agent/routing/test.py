@@ -280,6 +280,32 @@ class TestCandidateExtraction(unittest.TestCase):
         self.assertNotIn("calendar.create", intents)
 
     @patch("agent.routing.intent_router.model")
+    def test_get_candidate_intents_only_considers_available_domains_without_explicit_domain(self, mock_model):
+        mock_model.classes_ = np.array(["email.send", "slack.send", "general"])
+        mock_model.predict_proba.return_value = np.array([[0.20, 0.70, 0.10]])
+
+        candidates = get_candidate_intents("hello?", available_domains={"email"}, top_k=3)
+        intents = [c["intent"] for c in candidates]
+
+        self.assertIn("email.send", intents)
+        self.assertIn("general", intents)
+        self.assertNotIn("slack.send", intents)
+
+    @patch("agent.routing.intent_router.model")
+    def test_get_candidate_intents_keeps_explicit_disconnected_domain(self, mock_model):
+        mock_model.classes_ = np.array(["email.send", "slack.send", "general"])
+        mock_model.predict_proba.return_value = np.array([[0.20, 0.70, 0.10]])
+
+        candidates = get_candidate_intents(
+            "Send a message on Slack",
+            available_domains={"email"},
+            top_k=3,
+        )
+        intents = [c["intent"] for c in candidates]
+
+        self.assertEqual(intents, ["slack.send"])
+
+    @patch("agent.routing.intent_router.model")
     def test_get_candidate_intents_each_domain_isolation(self, mock_model):
         domains = list(DOMAIN_INTENTS.keys())
         top_intent_per_domain = [DOMAIN_INTENTS[d][0] for d in domains]
